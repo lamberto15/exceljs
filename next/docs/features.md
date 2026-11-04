@@ -328,6 +328,8 @@ await w.end();
 
 `addTable` writes cells into a worksheet that holds them, so use it with the buffered `Workbook`/`writeXlsx` path.
 
+Backpressure: `addRow` is synchronous; `await s.addRows(iterable)` (sync or async iterable) and `await s.flush()` wait until the sink or the readable's consumer has caught up, so a slow consumer (a network upload, a slow disk) keeps memory flat. In a long synchronous loop call `await s.flush()` every few thousand rows. Pictures (`placeImage(s.worksheet, ...)`), number formats and the other style options work as in the buffered writer.
+
 ## Encryption
 
 See [`turbosheet/crypto` in api.md](./api.md#crypto):
