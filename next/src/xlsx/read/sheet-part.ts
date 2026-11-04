@@ -31,7 +31,44 @@ export interface SheetContext {
   /** Feature readers by element path ("pageSetup", "sheetPr/pageSetUpPr"); DOM mode only. */
   readonly features?: ReadonlyMap<string, SheetReader> | undefined;
   readonly featureCtx?: SheetReadCtx | undefined;
+  /** Round-trip capture of elements nobody models (DOM mode, preserveUnknown). */
+  readonly capture?: SheetCapture | undefined;
 }
+
+/** Raw subtree receiver: full (prefixed) names; `end()` when the element closes. */
+export interface RawHandler {
+  open(name: string, attrs: XmlAttrs, selfClosing: boolean): void;
+  close(name: string): void;
+  text(text: string): void;
+  end(): void;
+}
+
+/**
+ * Receives what the sheet parser does not model (outside sheetData): the root's attributes
+ * (namespace scope), `<sheetPr>` attributes, the attributes of consumed elements (to track which
+ * relationships they reference) and whole unknown elements (`start`, by path below <worksheet>:
+ * "rowBreaks", "sheetPr/outlinePr", "extLst/ext").
+ */
+export interface SheetCapture {
+  root(a: XmlAttrs): void;
+  sheetPr(a: XmlAttrs): void;
+  ref(a: XmlAttrs): void;
+  start(path: string, name: string, a: XmlAttrs, selfClosing: boolean): RawHandler;
+}
+
+/** Worksheet children the core parser handles itself. */
+const BUILTIN = new Set([
+  'sheetPr',
+  'dimension',
+  'sheetViews',
+  'sheetFormatPr',
+  'cols',
+  'sheetData',
+  'autoFilter',
+  'mergeCells',
+  'hyperlinks',
+  'extLst',
+]);
 
 /** Placeholder subtree handler for consumed leaf elements. */
 const LEAF: SubtreeHandler = {};
@@ -120,6 +157,9 @@ export class SheetHandler implements XmlHandler {
   private readonly fmap: ReadonlyMap<string, SheetReader> | undefined;
   private sub: SubtreeHandler | undefined;
   private subDepth = 0;
+  private readonly capt: SheetCapture | undefined;
+  private raw: RawHandler | undefined;
+  private rawDepth = 0;
   /** Local name of the current depth-2 element (for "parent/child" feature paths). */
   private el2 = '';
 
@@ -131,6 +171,7 @@ export class SheetHandler implements XmlHandler {
     this.xfMap = ctx.xfMap;
     this.styles = ctx.styles;
     this.fmap = ws !== undefined && ctx.features?.size ? ctx.features : undefined;
+    this.capt = ws !== undefined ? ctx.capture : undefined;
   }
 
   open(name: string, a: XmlAttrs, _selfClosing: boolean): void {
@@ -164,7 +205,13 @@ export class SheetHandler implements XmlHandler {
           return;
       }
     }
+    if (this.raw !== undefined) {
+      this.raw.open(name, a, _selfClosing);
+      return;
+    }
+    const cap = this.capt;
     if (this.sub !== undefined) {
+      if (cap) cap.ref(a);
       this.sub.open?.(ln, a, _selfClosing);
       return;
     }
@@ -172,9 +219,30 @@ export class SheetHandler implements XmlHandler {
       const key = d === 2 ? ln : `${this.el2}/${ln}`;
       const r = this.fmap.get(key);
       if (r !== undefined) {
-        this.sub = r.open?.(this.ctx.featureCtx!, key, a) ?? LEAF;
-        this.subDepth = d;
+        const h = r.open?.(this.ctx.featureCtx!, key, a);
+        // an "extLst/ext" nobody claims (all readers declined its uri) stays unknown
+        if (h !== undefined || key !== 'extLst/ext' || !cap) {
+          if (cap) cap.ref(a);
+          this.sub = h ?? LEAF;
+          this.subDepth = d;
+          return;
+        }
+      }
+    }
+    if (cap !== undefined) {
+      if (d === 1) cap.root(a);
+      else if (
+        d === 2
+          ? !BUILTIN.has(ln)
+          : d === 3 && ((this.el2 === 'sheetPr' && ln !== 'tabColor') || this.el2 === 'extLst')
+      ) {
+        this.raw = cap.start(d === 2 ? ln : `${this.el2}/${ln}`, name, a, _selfClosing);
+        this.rawDepth = d;
+        this.raw.open(name, a, _selfClosing);
         return;
+      } else {
+        if (d === 2 && ln === 'sheetPr') cap.sheetPr(a);
+        cap.ref(a);
       }
     }
     if (d === 2) {
@@ -254,6 +322,14 @@ export class SheetHandler implements XmlHandler {
           return;
       }
     }
+    if (this.raw !== undefined) {
+      if (d === this.rawDepth) {
+        this.raw.close(name);
+        this.raw.end();
+        this.raw = undefined;
+      } else this.raw.close(name);
+      return;
+    }
     if (this.sub !== undefined) {
       if (d === this.subDepth) {
         this.sub.end?.();
@@ -272,6 +348,7 @@ export class SheetHandler implements XmlHandler {
       this.hasV = true;
     } else if (this.cap === Cap.F) this.fText += t;
     else if (this.inIs) this.is.onText(t);
+    else if (this.raw !== undefined) this.raw.text(t);
     else if (this.sub !== undefined) this.sub.text?.(t);
   }
 

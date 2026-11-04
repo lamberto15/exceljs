@@ -38,6 +38,10 @@ export interface BookInfo {
   readonly definedNames?: readonly DefinedName[] | undefined;
   /** Write xl/theme/theme1.xml (default true). */
   readonly theme?: boolean | undefined;
+  /** Preserved (round-trip) pieces: raw workbookPr / calcPr attributes, extra `<sheet>`s. */
+  readonly prAttrs?: string | undefined;
+  readonly calcAttrs?: string | undefined;
+  readonly extraSheets?: string | undefined;
 }
 
 export const sheetPath = (i: number): string => `xl/worksheets/sheet${i + 1}.xml`;
@@ -56,7 +60,9 @@ export function contentTypesXml(
       s += `<Default Extension="${escapeAttr(ext)}" ContentType="${escapeAttr(ct)}"/>`;
     }
   }
-  s += `<Override PartName="/xl/workbook.xml" ContentType="${CT}spreadsheetml.sheet.main+xml"/>`;
+  if (!overrides.some((o) => o[0] === 'xl/workbook.xml')) {
+    s += `<Override PartName="/xl/workbook.xml" ContentType="${CT}spreadsheetml.sheet.main+xml"/>`;
+  }
   for (const [path, ct] of overrides) {
     s += `<Override PartName="/${escapeAttr(path)}" ContentType="${escapeAttr(ct)}"/>`;
   }
@@ -100,8 +106,9 @@ export function themeXml(): string {
   );
 }
 
-export function rootRelsXml(): string {
-  return `${XML_DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${REL}officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="${NS_PKG_REL}/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="${REL}extended-properties" Target="docProps/app.xml"/></Relationships>`;
+/** Package relationships; `extra` = more relationship elements (ids from rId4). */
+export function rootRelsXml(extra = ''): string {
+  return `${XML_DECL}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${REL}officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="${NS_PKG_REL}/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="${REL}extended-properties" Target="docProps/app.xml"/>${extra}</Relationships>`;
 }
 
 function isoDate(d: Date | undefined): string | undefined {
@@ -159,7 +166,7 @@ function definedNameXml(
  */
 export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []): string {
   const parts: [number, string][] = [
-    [2, b.date1904 ? '<workbookPr date1904="1"/>' : '<workbookPr/>'],
+    [2, `<workbookPr${b.date1904 ? ' date1904="1"' : ''}${b.prAttrs ?? ''}/>`],
     [
       4,
       `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="12300"${
@@ -196,11 +203,11 @@ export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []
       );
     }
   }
-  parts.push([5, `${sheets}</sheets>`]);
+  parts.push([5, `${sheets}${b.extraSheets ?? ''}</sheets>`]);
   if (names) parts.push([8, `<definedNames>${names}</definedNames>`]);
   parts.push([
     9,
-    b.formulas ? '<calcPr calcId="191029" fullCalcOnLoad="1"/>' : '<calcPr calcId="191029"/>',
+    `<calcPr${b.calcAttrs ?? ' calcId="191029"'}${b.formulas ? ' fullCalcOnLoad="1"' : ''}/>`,
   ]);
   let ext = '';
   for (const e of extra) {
@@ -332,7 +339,8 @@ function xfXml(x: Xf): string {
   return `${s}</xf>`;
 }
 
-export function stylesXml(reg: StyleRegistry): string {
+/** styles.xml; `tableStyles` / `tail` (colors, extLst): preserved raw pieces. */
+export function stylesXml(reg: StyleRegistry, tableStyles?: string, tail = ''): string {
   let s = `${XML_DECL}<styleSheet xmlns="${NS_MAIN}">`;
   const nf = reg.numFmts;
   if (nf.length > 0) {
@@ -355,5 +363,8 @@ export function stylesXml(reg: StyleRegistry): string {
   const dx = reg.dxfs;
   s += `<dxfs count="${dx.length}">`;
   for (const d of dx) s += dxfXml(d, reg);
-  return `${s}</dxfs><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/></styleSheet>`;
+  return `${s}</dxfs>${
+    tableStyles ??
+    '<tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>'
+  }${tail}</styleSheet>`;
 }

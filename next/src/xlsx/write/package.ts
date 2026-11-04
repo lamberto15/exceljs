@@ -58,6 +58,12 @@ export class PackageParts implements PackageWriteCtx {
   readonly defaults: Map<string, string> = new Map();
   private pending: PartRec[] = [];
   private readonly counters = new Map<string, number>();
+  private readonly reserved = new Set<string>();
+
+  /** Make `nextIndex(family)` skip the number in `key` ("drawing1" → drawing 1 is taken). */
+  reserve(key: string): void {
+    this.reserved.add(key);
+  }
 
   addPart(path: string, data: string | Uint8Array, contentType?: string): void {
     this.pending.push({ path, data });
@@ -69,7 +75,8 @@ export class PackageParts implements PackageWriteCtx {
   }
 
   nextIndex(family: string): number {
-    const n = (this.counters.get(family) ?? 0) + 1;
+    let n = (this.counters.get(family) ?? 0) + 1;
+    while (this.reserved.has(family + n)) n++;
     this.counters.set(family, n);
     return n;
   }
