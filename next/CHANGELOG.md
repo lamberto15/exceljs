@@ -1,5 +1,27 @@
 # turbosheet
 
+## 0.3.0
+
+### Minor Changes
+
+- 616bbd1: Add formula evaluation as a separate entry point, `turbosheet/formula`: `parseFormula`, `evaluate(wb)` (dependency-ordered, circular-reference detection, optional iterative calculation, results stored into `Formula.result`), `evaluateCell`, `evaluateFormula` and `createEvaluator({ functions })` for per-instance custom functions. 87 built-in functions (math and conditional aggregation, logical, lookup incl. XLOOKUP/XMATCH, text incl. TEXT formats, dates, info) with Excel's coercion, comparison and wildcard rules. The core bundles do not change.
+
+### Patch Changes
+
+- ddcd58b: ExcelJS parity additions (see docs/exceljs-parity.md):
+  
+  - Fonts model `family` and `scheme` (`'major' | 'minor' | 'none'`): read from styles, rich text and notes, written back, and part of the style identity. The default font is Calibri 11 family 2 scheme minor, as Excel writes it. Editing and saving an Excel file no longer drops `<scheme val="minor"/>` from its fonts.
+  - Alignment accepts the ExcelJS aliases `vertical: 'middle'` (stored as `'center'`) and `textRotation: 'vertical'` (stored as 255).
+  - `arraysToSheet` / `objectsToSheet`: empty strings (such as empty CSV fields from `parseCsv`) leave the cell empty; pass `{ emptyAs: 'string' }` for the previous behaviour.
+  - `readXlsx`: hyperlinks on formula cells are kept and written back while the cell still holds that formula (they used to be lost on a round trip).
+- 8d33b5e: Fixes found by porting the ExcelJS test suite (see docs/exceljs-parity.md):
+  
+  - Styles: a negative `alignment.textRotation` (-90..-1, the ExcelJS convention) is stored in Excel's encoding (90 + |deg|, e.g. -45 → 135) instead of being written as an invalid negative attribute that Excel rejects; out-of-range rotations and negative `indent` values are dropped.
+  - Styles: 6-digit `argb` colors (`'FF0000'`) get an opaque alpha (`'FFFF0000'`) in the model and in every written `rgb` attribute, so they are valid and read back unchanged.
+  - `Worksheet.addRow` (and the streaming writer's `addRow`) no longer leaves a half-written row behind when a value is rejected, which shifted every later row down by one.
+  - `Workbook.removeWorksheet` keeps sheet-scoped defined names (print area, print titles, local names) on their sheet: later sheets' indexes are shifted and the removed sheet's names are dropped.
+- 12e23ea: Write the `_xlfn.` prefix for Excel future functions so Excel no longer shows #NAME?; strip it on read.
+
 ## 0.2.1
 
 ### Patch Changes
