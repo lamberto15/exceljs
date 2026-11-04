@@ -129,7 +129,7 @@ describe('bug sweep (exceljs reports)', () => {
     }
   });
 
-  it('exceljs#1988: a hyperlink cell whose text is rich text keeps text, link and style', async () => {
+  it('exceljs#1988: a hyperlink cell whose text is rich text keeps text, link and formatting', async () => {
     const ex = new ExcelJS.Workbook();
     const ews = ex.addWorksheet('S');
     ews.getCell('A1').value = {
@@ -143,10 +143,27 @@ describe('bug sweep (exceljs reports)', () => {
     };
     expect(v.hyperlink).toBe('https://example.com');
     expect(v.text).toBe('rich link');
+    // #34: the runs' formatting is kept (Hyperlink.runs) and written back
+    const runs = [
+      { text: 'rich ', font: expect.objectContaining({ bold: true }) },
+      { text: 'link' },
+    ];
+    expect(v).toMatchObject({ runs });
     const again = readXlsx(writeXlsx(readXlsx(buf)))
       .getWorksheet('S')!
       .getValue('A1');
-    expect(again).toMatchObject({ text: 'rich link', hyperlink: 'https://example.com' });
+    expect(again).toMatchObject({ text: 'rich link', hyperlink: 'https://example.com', runs });
+    // set by hand
+    const wb = new Workbook();
+    wb.addWorksheet('T').setCell('A1', {
+      text: 'ab',
+      hyperlink: 'https://example.com',
+      runs: [{ text: 'a', font: { italic: true } }, { text: 'b' }],
+    });
+    expect(readXlsx(writeXlsx(wb)).getWorksheet('T')!.getValue('A1')).toMatchObject({
+      text: 'ab',
+      runs: [{ text: 'a', font: expect.objectContaining({ italic: true }) }, { text: 'b' }],
+    });
   });
 });
 

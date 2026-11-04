@@ -50,6 +50,8 @@ export interface RichText {
 export interface Hyperlink {
   readonly text: string;
   readonly hyperlink: string;
+  /** Formatted runs of the link text (their concatenated text equals `text`); kept from files. */
+  readonly runs?: readonly RichTextRun[] | undefined;
   readonly tooltip?: string | undefined;
 }
 
