@@ -259,6 +259,12 @@ export class SheetHandler implements XmlHandler {
           return;
         case 'autoFilter':
           if (this.ws && a.ref) this.ws.autoFilter = a.ref;
+          // criteria (filterColumn, sortState) are kept raw next to the modelled range
+          if (cap && !_selfClosing) {
+            this.raw = cap.start(ln, name, a, false);
+            this.rawDepth = d;
+            this.raw.open(name, a, false);
+          }
           return;
       }
       return;

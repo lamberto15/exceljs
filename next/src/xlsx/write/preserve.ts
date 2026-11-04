@@ -10,6 +10,7 @@
 // The writer core reaches all of this only through `presWrite`, which readXlsx attaches to the
 // kept data (`wb.preserved.w`, `ws.preserved.w`): write-only bundles do not include this module.
 
+import { type CellRange, decodeRange } from '../../core/address.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { escapeAttr } from '../../xml/index.js';
@@ -44,6 +45,33 @@ const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
 
 const OUTLINE = / outlineLevel(Row|Col)="\d+"/g;
 
+const FILTER_COL = /<((?:\w+:)?filterColumn)\b[^>]*?\scolId="(\d+)"[^>]*?(?:\/>|>[\s\S]*?<\/\1>)/g;
+const SORT_STATE = /<((?:\w+:)?sortState)\b(?:[^>]*\/>|[\s\S]*?<\/\1>)/;
+
+/**
+ * Kept `<autoFilter>` with its criteria for the model's range `ref`. When the range changed,
+ * filter columns are kept only if the range still starts in the same column and is wide enough
+ * (`colId` is relative to it); the sort state (absolute ranges) is dropped.
+ */
+function filterXml(kept: string, ref: string): string {
+  const old = / ref="([^"]*)"/.exec(kept)?.[1];
+  if (old === ref) return kept;
+  const bare = `<autoFilter ref="${escapeAttr(ref)}"/>`;
+  let a: CellRange;
+  let b: CellRange;
+  try {
+    a = decodeRange(old ?? '');
+    b = decodeRange(ref);
+  } catch {
+    return bare;
+  }
+  if (a.left !== b.left) return bare;
+  return kept
+    .replace(/ ref="[^"]*"/, ` ref="${escapeAttr(ref)}"`)
+    .replace(FILTER_COL, (x, _t, id: string) => (+id <= b.right - b.left ? x : ''))
+    .replace(SORT_STATE, '');
+}
+
 /** First `uri` attribute of a kept `<ext>` element. */
 const EXT_URI = /^<[^>]*?\suri="([^"]*)"/;
 
@@ -70,6 +98,11 @@ function sheetFrags(
       // model's (recomputed by the built-in emitter)
       const lv = out[k]?.match(OUTLINE)?.join('') ?? '';
       out[k] = f.xml.replace(OUTLINE, '').replace(/\/>$/, `${lv}/>`);
+      continue;
+    }
+    if (k === SheetSlot.autoFilter) {
+      // criteria of the model's autoFilter (none when it was removed)
+      if (out[k]) out[k] = filterXml(f.xml, ws.autoFilter!);
       continue;
     }
     if (k === SheetSlot.sheetPr) {

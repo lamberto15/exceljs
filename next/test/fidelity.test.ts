@@ -142,3 +142,88 @@ describe('fidelity: sheetFormatPr', () => {
     expect(el).toBe('<sheetFormatPr defaultRowHeight="15"/>');
   });
 });
+
+// ---------------------------------------------------------------- autoFilter criteria
+
+describe('fidelity: autoFilter criteria and sortState', () => {
+  const CRITERIA =
+    '<filterColumn colId="0"><filters blank="1"><filter val="1"/><filter val="3"/></filters></filterColumn>' +
+    '<filterColumn colId="1"><customFilters and="1"><customFilter operator="greaterThan" val="2"/><customFilter operator="lessThan" val="9"/></customFilters></filterColumn>' +
+    '<filterColumn colId="2"><top10 percent="1" val="10"/></filterColumn>';
+  const SORT = '<sortState ref="A2:C6"><sortCondition descending="1" ref="B2:B6"/></sortState>';
+  const AF = `<autoFilter ref="A1:C6">${CRITERIA}${SORT}</autoFilter>`;
+  const SHEET_SORT = '<sortState ref="A2:C6"><sortCondition ref="C2:C6"/></sortState>';
+  const src = (): Uint8Array =>
+    edit(base(), SHEET1, (s) => s.replace('</sheetData>', `</sheetData>${AF}${SHEET_SORT}`));
+
+  it('filterColumn criteria + sortState (inside autoFilter and sheet level) round-trip', async () => {
+    const wb = readXlsx(src());
+    expect(wb.worksheets[0]!.autoFilter).toBe('A1:C6');
+    const out = writeXlsx(wb);
+    const z = unzipSync(out);
+    checkPackage(z);
+    const s = text(z, SHEET1);
+    expect(s).toContain(AF);
+    expect(s).toContain(`</autoFilter>${SHEET_SORT}`);
+    expect(s.match(/<autoFilter/g)!.length).toBe(1);
+    expect(text(z, 'xl/workbook.xml')).toContain('_xlnm._FilterDatabase');
+    expect(text(unzipSync(trip(out)), SHEET1)).toContain(AF);
+    const x = await exceljsLoads(out);
+    expect(x.worksheets[0]!.autoFilter).toBeDefined();
+  });
+
+  it('dynamic / color / icon filters (with a dxfId) are kept', () => {
+    const af =
+      '<autoFilter ref="A1:C6"><filterColumn colId="0"><dynamicFilter type="aboveAverage"/></filterColumn><filterColumn colId="1"><colorFilter dxfId="0"/></filterColumn><filterColumn colId="2"><iconFilter iconSet="3Arrows" iconId="1"/></filterColumn></autoFilter>';
+    const s = text(
+      unzipSync(trip(edit(base(), SHEET1, (x) => x.replace('</sheetData>', `</sheetData>${af}`)))),
+      SHEET1,
+    );
+    expect(s).toContain('<dynamicFilter type="aboveAverage"/>');
+    expect(s).toContain('<colorFilter dxfId="0"/>');
+    expect(s).toContain('<iconFilter iconSet="3Arrows" iconId="1"/>');
+  });
+
+  it('range grown to the right / down: criteria kept, sortState dropped', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.autoFilter = 'A1:D20';
+    const s = text(unzipSync(writeXlsx(wb)), SHEET1);
+    expect(s).toContain(`<autoFilter ref="A1:D20">${CRITERIA}</autoFilter>`);
+    // the sheet-level sortState is independent of the filter
+    expect(s).toContain(SHEET_SORT);
+  });
+
+  it('range narrowed: columns outside the new range are dropped', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.autoFilter = 'A1:B6';
+    const s = text(unzipSync(writeXlsx(wb)), SHEET1);
+    const af = s.match(/<autoFilter[\s\S]*?<\/autoFilter>/)![0];
+    expect(af).toContain('colId="0"');
+    expect(af).toContain('colId="1"');
+    expect(af).not.toContain('colId="2"');
+  });
+
+  it('range moved to another first column: criteria dropped; removed: no autoFilter', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.autoFilter = 'B1:C6';
+    const s = text(unzipSync(writeXlsx(wb)), SHEET1);
+    expect(s).toContain('<autoFilter ref="B1:C6"/>');
+    expect(s).not.toContain('filterColumn');
+    wb.worksheets[0]!.autoFilter = undefined;
+    const s2 = text(unzipSync(writeXlsx(wb)), SHEET1);
+    expect(s2).not.toContain('<autoFilter');
+    expect(s2).not.toContain('filterColumn');
+  });
+
+  it('user edits nearby (cells inside the filtered range) keep the criteria', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.setCell('B3', 42);
+    expect(text(unzipSync(writeXlsx(wb)), SHEET1)).toContain(AF);
+  });
+
+  it('preserveUnknown: false keeps only the range', () => {
+    const s = text(unzipSync(writeXlsx(readXlsx(src(), { preserveUnknown: false }))), SHEET1);
+    expect(s).toContain('<autoFilter ref="A1:C6"/>');
+    expect(s).not.toContain('sortState');
+  });
+});
