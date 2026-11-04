@@ -234,6 +234,86 @@ describe('table part', () => {
   });
 });
 
+describe('dxf styles', () => {
+  const HEAD = { font: { bold: true, color: { argb: 'FFFF0000' } } };
+  const DATA = { numFmt: '0.00' };
+  const TOT = { font: { italic: true } };
+  const COL = {
+    fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFFF00' } },
+  } as const;
+
+  function styled(wb: Workbook): void {
+    const ws = wb.addWorksheet('S');
+    addTable(ws, {
+      name: 'Styled',
+      topLeft: 'A1',
+      columns: [
+        { name: 'A', totalsRowLabel: 'Sum', dataStyle: COL },
+        { name: 'B', totalsRowFunction: 'sum', headerStyle: COL, totalsStyle: HEAD },
+      ],
+      rows: [
+        ['x', 1],
+        ['y', 2],
+      ],
+      totalsRow: true,
+      headerStyle: HEAD,
+      dataStyle: DATA,
+      totalsStyle: TOT,
+    });
+  }
+
+  it('writes dxfIds for the table and its columns, deduping equal styles', () => {
+    const wb = new Workbook();
+    styled(wb);
+    const p = parts(writeXlsx(wb));
+    const t = p.get('xl/tables/table1.xml')!;
+    // dxf order = order of interning: table header, data, totals, then column styles
+    expect(t).toContain('headerRowDxfId="0" dataDxfId="1" totalsRowDxfId="2">');
+    expect(t).toContain('<tableColumn id="1" name="A" totalsRowLabel="Sum" dataDxfId="3"/>');
+    expect(t).toContain(
+      '<tableColumn id="2" name="B" totalsRowFunction="sum" headerRowDxfId="3" totalsRowDxfId="0"/>',
+    );
+    expect(p.get('xl/styles.xml')).toMatch(/<dxfs count="4">/);
+  });
+
+  it('omits header / totals dxfs when the row is absent', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    addTable(ws, {
+      name: 'NoRows',
+      columns: ['A'],
+      headerRow: false,
+      headerStyle: HEAD,
+      totalsStyle: TOT,
+      dataStyle: DATA,
+    });
+    const t = parts(writeXlsx(wb)).get('xl/tables/table1.xml')!;
+    expect(t).not.toContain('headerRowDxfId');
+    expect(t).not.toContain('totalsRowDxfId');
+    expect(t).toContain('dataDxfId="0"');
+  });
+
+  it('round-trips ours -> ours and exceljs accepts the file', async () => {
+    const wb = new Workbook();
+    styled(wb);
+    const buf = writeXlsx(wb);
+    for (const b of [buf, new Uint8Array(await new Response(xlsxStream(wb)).arrayBuffer())]) {
+      const back = readXlsx(b);
+      const t = back.getWorksheet('S')!.tables![0]!;
+      expect(t.headerStyle).toEqual(HEAD);
+      expect(t.dataStyle).toEqual(DATA);
+      expect(t.totalsStyle).toEqual(TOT);
+      expect(t.columns[0]!.dataStyle).toEqual(COL);
+      expect(t.columns[1]!.headerStyle).toEqual(COL);
+      expect(t.columns[1]!.totalsStyle).toEqual(HEAD);
+      expect(t.columns[0]!.headerStyle).toBeUndefined();
+      // and survives a second pass
+      expect(readXlsx(writeXlsx(back)).getWorksheet('S')!.tables![0]).toEqual(t);
+    }
+    expect((await oracle(buf)).getWorksheet('S')!.getTable('Styled')).toBeDefined();
+  });
+});
+
 describe('round trips', () => {
   it('ours -> ours (writeXlsx, xlsxStream)', async () => {
     const wb = new Workbook();

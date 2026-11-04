@@ -14,7 +14,8 @@
 // names unique, columns match the ref width, no overlap with other tables or merged cells.
 
 import { type CellRange, decodeRange, encodeAddr, encodeRange } from '../../core/address.js';
-import type { CellValue } from '../../core/types.js';
+import type { StyleRegistry } from '../../core/styles.js';
+import type { CellValue, Style } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { parseXml } from '../../xml/index.js';
 import { isValidName } from './defined-names.js';
@@ -43,6 +44,12 @@ export interface TableColumn {
   totalsRowFormula?: string | undefined;
   /** Formula (without '=') every data cell of a calculated column holds. */
   calculatedColumnFormula?: string | undefined;
+  /** Formatting of this column's header cell (a dxf: `headerRowDxfId`). */
+  headerStyle?: Style | undefined;
+  /** Formatting of this column's data cells (`dataDxfId`). */
+  dataStyle?: Style | undefined;
+  /** Formatting of this column's totals cell (`totalsRowDxfId`). */
+  totalsStyle?: Style | undefined;
 }
 
 export interface TableStyle {
@@ -70,6 +77,14 @@ export interface Table {
   style?: TableStyle | undefined;
   /** Filter buttons in the header (default true; requires a header row). */
   autoFilter?: boolean | undefined;
+  /**
+   * Differential formats applied by the table to the header row / data area / totals row (written
+   * as dxfs, `headerRowDxfId` / `dataDxfId` / `totalsRowDxfId`; per-column ones live on the
+   * columns). Only the listed properties override the table style.
+   */
+  headerStyle?: Style | undefined;
+  dataStyle?: Style | undefined;
+  totalsStyle?: Style | undefined;
 }
 
 export interface AddTableOptions {
@@ -87,6 +102,9 @@ export interface AddTableOptions {
   totalsRow?: boolean | undefined;
   style?: TableStyle | undefined;
   autoFilter?: boolean | undefined;
+  headerStyle?: Style | undefined;
+  dataStyle?: Style | undefined;
+  totalsStyle?: Style | undefined;
 }
 
 /** SUBTOTAL function numbers (ignoring hidden rows, like Excel's totals row). */
@@ -216,6 +234,9 @@ export function addTable(ws: Worksheet, o: AddTableOptions): Table {
   if (o.totalsRow !== undefined) t.totalsRow = o.totalsRow;
   if (o.style !== undefined) t.style = o.style;
   if (o.autoFilter !== undefined) t.autoFilter = o.autoFilter;
+  if (o.headerStyle !== undefined) t.headerStyle = o.headerStyle;
+  if (o.dataStyle !== undefined) t.dataStyle = o.dataStyle;
+  if (o.totalsStyle !== undefined) t.totalsStyle = o.totalsStyle;
   validateTable(ws, t, false);
   validateWorkbook(ws, t);
   if (rows) {
@@ -262,7 +283,22 @@ export function addTable(ws: Worksheet, o: AddTableOptions): Table {
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const TABLE_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml';
 
-function tableXml(t: Table, id: number): string {
+/** `headerRowDxfId` / `dataDxfId` / `totalsRowDxfId` attributes for the given styles. */
+function dxfAttrs(
+  styles: StyleRegistry,
+  h: Style | undefined,
+  d: Style | undefined,
+  tot: Style | undefined,
+  totals: boolean,
+): string {
+  return attrs({
+    headerRowDxfId: h && styles.internDxf(h),
+    dataDxfId: d && styles.internDxf(d),
+    totalsRowDxfId: totals && tot ? styles.internDxf(tot) : undefined,
+  });
+}
+
+function tableXml(t: Table, id: number, styles: StyleRegistry): string {
   const r = decodeRange(t.ref);
   const header = t.headerRow !== false;
   const totals = t.totalsRow === true;
@@ -271,7 +307,13 @@ function tableXml(t: Table, id: number): string {
     name: t.name,
     displayName: t.displayName ?? t.name,
     ref: t.ref,
-  })} headerRowCount="${header ? 1 : 0}"${totals ? ' totalsRowCount="1"' : ' totalsRowShown="0"'}>`;
+  })} headerRowCount="${header ? 1 : 0}"${totals ? ' totalsRowCount="1"' : ' totalsRowShown="0"'}${dxfAttrs(
+    styles,
+    header ? t.headerStyle : undefined,
+    t.dataStyle,
+    t.totalsStyle,
+    totals,
+  )}>`;
   if (header && t.autoFilter !== false) {
     s += `<autoFilter ref="${encodeRange({ ...r, bottom: totals ? r.bottom - 1 : r.bottom })}"/>`;
   }
@@ -284,7 +326,7 @@ function tableXml(t: Table, id: number): string {
       name: c.name,
       totalsRowFunction: fn && fn !== 'none' ? fn : undefined,
       totalsRowLabel: totals && (!fn || fn === 'none') ? c.totalsRowLabel : undefined,
-    })}`;
+    })}${dxfAttrs(styles, header ? c.headerStyle : undefined, c.dataStyle, c.totalsStyle, totals)}`;
     const inner =
       (c.calculatedColumnFormula
         ? `<calculatedColumnFormula>${escapeText(c.calculatedColumnFormula)}</calculatedColumnFormula>`
@@ -317,7 +359,7 @@ export const tablesWriter: FeatureWriter = {
             validateTable(c.ws, t, !c.streaming);
             validateWorkbook(c.ws, t);
             const n = c.nextIndex('table');
-            c.addPart(`xl/tables/table${n}.xml`, tableXml(t, n), TABLE_CT);
+            c.addPart(`xl/tables/table${n}.xml`, tableXml(t, n, c.styles), TABLE_CT);
             out += `<tablePart r:id="${c.addRel('table', `../tables/table${n}.xml`)}"/>`;
           }
           return `<tableParts count="${list.length}">${out}</tableParts>`;
@@ -329,11 +371,26 @@ export const tablesWriter: FeatureWriter = {
 
 // ---------------------------------------------------------------- reading
 
-function parseTable(xml: string): Table | undefined {
+function parseTable(xml: string, dxf: (id: string) => Style | undefined): Table | undefined {
   let t: Table | undefined;
   let col: TableColumn | undefined;
   let text = '';
   let hasFilter = false;
+  const dxfs = (
+    o: {
+      headerStyle?: Style | undefined;
+      dataStyle?: Style | undefined;
+      totalsStyle?: Style | undefined;
+    },
+    a: Record<string, string>,
+  ): void => {
+    const hs = a.headerRowDxfId !== undefined ? dxf(a.headerRowDxfId) : undefined;
+    const ds = a.dataDxfId !== undefined ? dxf(a.dataDxfId) : undefined;
+    const ts = a.totalsRowDxfId !== undefined ? dxf(a.totalsRowDxfId) : undefined;
+    if (hs) o.headerStyle = hs;
+    if (ds) o.dataStyle = ds;
+    if (ts) o.totalsStyle = ts;
+  };
   parseXml(xml, {
     open(name, a) {
       switch (name) {
@@ -342,6 +399,7 @@ function parseTable(xml: string): Table | undefined {
           if (a.displayName && a.displayName !== a.name) t.displayName = a.displayName;
           if ((num(a.headerRowCount) ?? 1) === 0) t.headerRow = false;
           if ((num(a.totalsRowCount) ?? 0) > 0) t.totalsRow = true;
+          dxfs(t, a);
           break;
         case 'autoFilter':
           hasFilter = true;
@@ -350,6 +408,7 @@ function parseTable(xml: string): Table | undefined {
           col = { name: a.name ?? '' };
           if (a.totalsRowFunction) col.totalsRowFunction = a.totalsRowFunction as TotalsRowFunction;
           if (a.totalsRowLabel !== undefined) col.totalsRowLabel = a.totalsRowLabel;
+          dxfs(col, a);
           t?.columns.push(col);
           break;
         case 'tableStyleInfo':
@@ -399,7 +458,7 @@ export const tablesReader: FeatureReader = {
       for (const id of ids) {
         const rel = ctx.rels?.get(id);
         const xml = rel && ctx.readText(rel.path);
-        const t = xml ? parseTable(xml) : undefined;
+        const t = xml ? parseTable(xml, (d) => ctx.workbook.styles.dxfs[ctx.dxf(d)]) : undefined;
         if (t) list.push(t);
       }
       if (list.length) ctx.ws.tables = list;
