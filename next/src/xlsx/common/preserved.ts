@@ -131,6 +131,16 @@ export interface PTable {
   readonly id: number;
 }
 
+/** A hyperlink of a formula cell, kept raw (see SheetCapture.formulaLink). */
+export interface PLink {
+  /** Single cell, "A1". */
+  readonly ref: string;
+  /** The cell's Formula object when read: the link is written while the cell still holds it. */
+  readonly formula: unknown;
+  /** `<hyperlink .../>` with relationship placeholders. */
+  readonly xml: string;
+}
+
 export interface PSheet {
   /** Sheet name when read: renaming the sheet drops its linked preserved content. */
   readonly name: string;
@@ -146,8 +156,14 @@ export interface PSheet {
   readonly drawing: PDrawing | undefined;
   readonly vml?: PVml | undefined;
   readonly tables?: readonly PTable[] | undefined;
+  readonly links?: readonly PLink[] | undefined;
   /** Writer hooks. */
   readonly w: PresWrite;
+}
+
+/** Kept formula-cell hyperlinks whose cell still holds the formula it had when read. */
+export function liveLinks(ws: Worksheet): PLink[] {
+  return ws.preserved?.links?.filter((l) => ws.getValue(l.ref) === l.formula) ?? [];
 }
 
 /**

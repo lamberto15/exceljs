@@ -5,7 +5,7 @@
 //    handed to the callback when the row closes; sheet-level features are ignored
 //    (hyperlinks live after <sheetData>, so they cannot be attached to streamed rows).
 
-import { decodeRange, MAX_ROWS } from '../../core/address.js';
+import { decodeRange, encodeAddr, MAX_ROWS } from '../../core/address.js';
 import { dateToSerial, serialToDate } from '../../core/dates.js';
 import type { StyleRegistry } from '../../core/styles.js';
 import type { CellValue, ErrorCode, Formula, Hyperlink, RichText } from '../../core/types.js';
@@ -56,6 +56,11 @@ export interface SheetCapture {
   /** `<sheetFormatPr>` attributes (kept when they say more than the writer's defaults). */
   formatPr(a: XmlAttrs): void;
   ref(a: XmlAttrs): void;
+  /**
+   * A hyperlink on a formula cell (a cell holds one kind, so it is not modelled): kept raw and
+   * written back while the cell still holds `formula` (the same object).
+   */
+  formulaLink?(ref: string, formula: unknown, h: HyperlinkAttrs): void;
   start(path: string, name: string, a: XmlAttrs, selfClosing: boolean): RawHandler;
 }
 
@@ -93,11 +98,16 @@ interface ColRange {
   xf: number;
 }
 
-interface HyperlinkRec {
-  ref: string;
+/** `<hyperlink>` attributes (relationship id resolved by the capture). */
+export interface HyperlinkAttrs {
   rId: string | undefined;
   location: string | undefined;
   tooltip: string | undefined;
+  display: string | undefined;
+}
+
+interface HyperlinkRec extends HyperlinkAttrs {
+  ref: string;
 }
 
 /** Above this many columns, a <col> range is only applied up to the last used column. */
@@ -291,6 +301,7 @@ export class SheetHandler implements XmlHandler {
             rId: attrLocal(a, 'id'),
             location: a.location,
             tooltip: a.tooltip,
+            display: a.display,
           });
         }
         return;
@@ -696,7 +707,11 @@ export class SheetHandler implements XmlHandler {
         let xf = 0;
         if (i >= 0) {
           const k = row!.kind[i]!;
-          if (k === CellKind.Formula || k === CellKind.Hyperlink) continue;
+          if (k === CellKind.Formula) {
+            this.capt?.formulaLink?.(encodeAddr(r, c), row!.obj![i], h);
+            continue;
+          }
+          if (k === CellKind.Hyperlink) continue;
           xf = row!.style[i]!;
           text = displayText(ws._valueAt(row!, i));
         } else if (range.top === range.bottom && range.left === range.right) {

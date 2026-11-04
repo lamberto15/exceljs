@@ -60,13 +60,13 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 31.73 KB |
-| read+write                     | root `*`                                                       | 64 KB | 62.52 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 20.74 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 38.37 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24.5 KB | 24.34 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.03 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 24.5 KB | 23.97 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 33 KB | 31.86 KB |
+| read+write                     | root `*`                                                       | 64 KB | 63.03 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 22 KB | 20.97 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 38.94 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 25.5 KB | 24.49 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.22 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 25.5 KB | 24.24 KB |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
 | formula                        | `./formula` `*`                                                | 16.5 KB | 16 KB  |
@@ -108,3 +108,5 @@ npx -y esbuild@0.25.12 /tmp/e.mjs --bundle --minify --format=esm --metafile=/tmp
 or `npx size-limit --why`.
 
 The root `*` budget (64 KB) measures importing every export at once (all features, auto-fit, charts): a worst case no app hits. The budgets that guard real-world size are the lite ones.
+
+0.3.0 headroom: after formula evaluation (the `_xlfn.` table), font family/scheme and the parity fixes, lite write-only measured 20.97 KB against a 21 KB limit, so budgets were raised by ~1 KB (lite write-only 22 KB, root write-only 33 KB, lite combos 25.5 KB) to keep ordinary fixes from failing CI. The lite write-only target remains ~20 KB.

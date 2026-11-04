@@ -220,6 +220,7 @@ What is kept next to the model, and what happens when you edit nearby:
 | Form controls (checkboxes, buttons: `<controls>`, ctrlProps parts, legacy VML shapes), also on sheets with notes | Notes are regenerated from `ws.comments` and the control shapes are merged into the same VML, keeping their shape ids. Shapes that link other parts (pictures in VML) cannot be merged on a sheet with notes, so they are dropped there. |
 | Chartsheet / dialogsheet tab positions | A kept sheet stays right after the worksheet it followed. If that worksheet was removed, it goes right before the worksheet it preceded, otherwise last. New worksheets go last. |
 | Query tables (table part → queryTable part, `tableType="queryTable"`) | While the table in `ws.tables` is unchanged, its original part is written back. A modified table is regenerated from the model without the query link. |
+| Hyperlinks on formula cells (a cell holds one value kind: the formula is modelled, the link kept raw) | Written back while the cell still holds the formula it was read with. Setting a new value (even an equal formula) or clearing the cell drops the link. |
 
 Dropped on purpose: `calcChain.xml` (Excel rebuilds it), kept content that references a sheet renamed or removed since reading, and kept content of a feature whose model you replace (for example, setting `ws.images` on a sheet read without the images reader).
 

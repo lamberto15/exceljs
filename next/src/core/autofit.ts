@@ -524,7 +524,7 @@ export function autoFitColumns(ws: Worksheet, opts: AutoFitOptions = {}): (numbe
           s.font,
           def,
           s.numFmt,
-          s.alignment?.textRotation,
+          s.alignment?.textRotation as number | undefined, // interned: always numeric
           s.alignment?.indent,
           fmts,
         );

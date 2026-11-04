@@ -31,8 +31,11 @@ export function toJsonValue(v: CellValue): unknown {
 }
 
 /** Convert an arbitrary JS value into something the worksheet can store. */
-function toCell(v: unknown): CellValue {
-  if (v === null || v === undefined) return null;
+/** How `objectsToSheet` / `arraysToSheet` store `''`: no cell (default) or an empty-string cell. */
+export type EmptyAs = 'empty' | 'string';
+
+function toCell(v: unknown, emptyAs?: EmptyAs): CellValue {
+  if (v === null || v === undefined || (v === '' && emptyAs !== 'string')) return null;
   switch (typeof v) {
     case 'string':
     case 'boolean':
@@ -167,19 +170,23 @@ export function sheetToArrays(
 /**
  * Write objects as rows. Header = `o.header` or the union of keys in first-seen order.
  * Nested objects/arrays are written as JSON strings. Materializes `rows` (needed for the
- * union of keys).
+ * union of keys). Empty strings leave the cell empty unless `emptyAs: 'string'`.
  */
 export function objectsToSheet(
   ws: Worksheet,
   rows: Iterable<Record<string, unknown>>,
-  o: { header?: readonly string[] | undefined; writeHeader?: boolean | undefined } = {},
+  o: {
+    header?: readonly string[] | undefined;
+    writeHeader?: boolean | undefined;
+    emptyAs?: EmptyAs | undefined;
+  } = {},
 ): Worksheet {
   const list = Array.from(rows);
   const keys = o.header ? [...o.header] : unionKeys(list);
   if (keys.length === 0) return ws;
   if (o.writeHeader !== false) ws.addRow(keys);
   for (const row of list) {
-    ws.addRow(keys.map((k) => (Object.hasOwn(row, k) ? toCell(row[k]) : null)));
+    ws.addRow(keys.map((k) => (Object.hasOwn(row, k) ? toCell(row[k], o.emptyAs) : null)));
   }
   return ws;
 }
@@ -198,9 +205,16 @@ function unionKeys(list: readonly Record<string, unknown>[]): string[] {
   return out;
 }
 
-/** Append arrays as rows (index 0 maps to column A). */
-export function arraysToSheet(ws: Worksheet, rows: Iterable<readonly unknown[]>): Worksheet {
-  for (const row of rows) ws.addRow(row.map((v) => toCell(v)));
+/**
+ * Append arrays as rows (index 0 maps to column A). Empty strings (e.g. empty CSV fields from
+ * `parseCsv`) leave the cell empty unless `emptyAs: 'string'`.
+ */
+export function arraysToSheet(
+  ws: Worksheet,
+  rows: Iterable<readonly unknown[]>,
+  o: { emptyAs?: EmptyAs | undefined } = {},
+): Worksheet {
+  for (const row of rows) ws.addRow(row.map((v) => toCell(v, o.emptyAs)));
   return ws;
 }
 

@@ -22,7 +22,9 @@ export function tElem(v: string): string {
 
 export function colorAttrs(c: Color): string {
   let s = '';
-  if (c.argb !== undefined) s += ` rgb="${escapeAttr(c.argb)}"`;
+  // ST_UnsignedIntHex is 8 hex digits: an RGB-only value gets an opaque alpha (as readers assume)
+  if (c.argb !== undefined)
+    s += ` rgb="${escapeAttr(c.argb.length === 6 ? `FF${c.argb}` : c.argb)}"`;
   else if (c.theme !== undefined) s += ` theme="${c.theme}"`;
   else if (c.indexed !== undefined) s += ` indexed="${c.indexed}"`;
   if (c.tint !== undefined && c.tint !== 0) s += ` tint="${c.tint}"`;
@@ -43,6 +45,8 @@ export function fontBody(f: Font, nameTag: 'name' | 'rFont'): string {
   if (f.size !== undefined) s += `<sz val="${f.size}"/>`;
   if (f.color) s += `<color${colorAttrs(f.color)}/>`;
   if (f.name !== undefined) s += `<${nameTag} val="${escapeAttr(f.name)}"/>`;
+  if (f.family !== undefined) s += `<family val="${f.family}"/>`;
+  if (f.scheme !== undefined) s += `<scheme val="${f.scheme}"/>`;
   return s;
 }
 
@@ -117,6 +121,12 @@ export function fontChild(f: Mutable<Font>, ln: string, a: XmlAttrs): void {
     }
     case 'vertAlign':
       if (a.val === 'superscript' || a.val === 'subscript') f.vertAlign = a.val;
+      break;
+    case 'family':
+      if (a.val !== undefined && +a.val >= 0) f.family = +a.val;
+      break;
+    case 'scheme':
+      if (a.val === 'major' || a.val === 'minor' || a.val === 'none') f.scheme = a.val;
       break;
   }
 }
