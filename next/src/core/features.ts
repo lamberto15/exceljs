@@ -7,6 +7,7 @@
 // Adding a feature field: one `import type` line and one documented optional field.
 
 import type { Note } from '../xlsx/features/comments.js';
+import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
 import type { Table } from '../xlsx/features/tables.js';
@@ -18,11 +19,17 @@ export interface WorksheetFeatureFields {
   headerFooter?: HeaderFooter | undefined;
   /** Cell notes (legacy comments), one per cell (features/comments; see addNote). */
   comments?: Note[] | undefined;
+  /** Pictures placed on the sheet (features/images; see placeImage). */
+  images?: ImagePlacement[] | undefined;
+  /** Sheet background picture: an id of workbook.images (features/images). */
+  backgroundImage?: number | undefined;
   /** Sheet protection; undefined = unprotected (features/sheet-protection). */
   protection?: SheetProtection | undefined;
   /** Tables / ListObjects (features/tables); use `addTable` to create one with its cells. */
   tables?: Table[] | undefined;
 }
 
-// biome-ignore lint/suspicious/noEmptyInterface: extension point for workbook-level features
-export interface WorkbookFeatureFields {}
+export interface WorkbookFeatureFields {
+  /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
+  images?: WorkbookImage[] | undefined;
+}

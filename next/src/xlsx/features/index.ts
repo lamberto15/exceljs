@@ -14,6 +14,17 @@ export {
   setPrintArea,
   setPrintTitles,
 } from './defined-names.js';
+export {
+  addImage,
+  type CellPosition,
+  type ImageAnchor,
+  type ImageExtension,
+  type ImagePlacement,
+  type ImageSize,
+  type PlaceImageOptions,
+  placeImage,
+  type WorkbookImage,
+} from './images.js';
 export type { HeaderFooter, PageMargins, PageSetup } from './print-setup.js';
 export { hashPassword, type SheetProtection } from './sheet-protection.js';
 export {
