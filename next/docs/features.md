@@ -103,6 +103,8 @@ An edit is validated before anything changes: one that would push cells off the 
 
 ExcelJS differences: these are functions, not methods; `spliceRows(ws, start, count, ...rows)` overwrites the first `min(count, rows.length)` rows in place (references to them stay) and deletes or inserts only the difference; `duplicateRow` adjusts the copied formulas' relative references, as a paste does; `inheritStyle` replaces the `'i'` / `'o'` style codes (and also formats empty cells, like `'i+'` / `'o+'`).
 
+Outline groups: `groupRows(ws, 2, 5)` / `groupColumns(ws, 'B', 'D')` put rows / columns one outline level deeper (Excel's *Data > Group*, max 7 levels); `{ collapsed: true }` also hides them and flags the summary row below (column to the right). Iterate with `for (const row of ws.rows())` and `for (const [col, value] of row.cells())`.
+
 Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, threaded comments, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
 
 ## Tables
@@ -117,7 +119,16 @@ addTable(ws, {
 });
 ```
 
-Writes the header, data and totals cells (`SUBTOTAL` formulas) and the table part. `ref`/`topLeft` position it; `calculatedColumnFormula`, `headerStyle`/`dataStyle`/`totalsStyle` (per table or per column) are supported. Existing tables are read into `ws.tables` and can be edited.
+Writes the header, data and totals cells (`SUBTOTAL` formulas) and the table part. `ref`/`topLeft` position it; `calculatedColumnFormula`, `headerStyle`/`dataStyle`/`totalsStyle` (per table or per column) are supported. Existing tables are read into `ws.tables` and can be edited. A column's `width` sets the sheet column width.
+
+```ts
+import { addTableRows, tableRows } from 'turbosheet';
+
+addTableRows(ws, 'Sales', [['East', 95], { Region: 'West', Units: 60 }]); // above the totals row
+tableRows(ws, 'Sales'); // [{ Region: 'North', Units: 120 }, ..., { Region: 'West', Units: 60 }]
+```
+
+`addTableRows` inserts sheet rows (cells below the table move down, references follow as with [`insertRows`](#inserting-and-deleting-rows-and-columns)), grows the table and fills calculated columns. `tableRows` returns the data rows keyed by column name; formula cells give their `Formula` object (`.result` is the cached value).
 
 ## Notes (comments)
 

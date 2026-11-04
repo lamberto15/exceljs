@@ -134,6 +134,8 @@ export interface RowProps {
   height?: number | undefined;
   hidden?: boolean | undefined;
   outlineLevel?: number | undefined;
+  /** Outline: the group next to this row is collapsed (set on the summary row). */
+  collapsed?: boolean | undefined;
   style?: Style | undefined;
   /** Row style as an xf index of `workbook.styles` (wins over `style`; 0 = none). */
   styleIndex?: number | undefined;
@@ -179,6 +181,8 @@ export class RowData {
   height = 0;
   hidden = false;
   outlineLevel = 0;
+  /** Outline: the adjacent group is collapsed (summary row). */
+  collapsed = false;
   /** Row default style xf; 0 = none. */
   xf = 0;
 
@@ -374,6 +378,8 @@ export class Column {
   width: number | undefined = undefined;
   hidden = false;
   outlineLevel = 0;
+  /** Outline: the adjacent group is collapsed (summary column). */
+  collapsed = false;
   private readonly _ws: Worksheet;
   private _key: string | undefined = undefined;
   private _xf = 0;
@@ -657,6 +663,7 @@ export class Worksheet {
       if (row.height) p.height = row.height;
       if (row.hidden) p.hidden = true;
       if (row.outlineLevel) p.outlineLevel = row.outlineLevel;
+      if (row.collapsed) p.collapsed = true;
       if (row.xf) p.style = this._styles.get(row.xf);
     }
     return p;
@@ -669,6 +676,7 @@ export class Worksheet {
     if ('height' in props) row.height = props.height ?? 0;
     if ('hidden' in props) row.hidden = props.hidden === true;
     if ('outlineLevel' in props) row.outlineLevel = props.outlineLevel ?? 0;
+    if ('collapsed' in props) row.collapsed = props.collapsed === true;
     if (props.styleIndex !== undefined) row.xf = props.styleIndex;
     else if (props.style !== undefined) row.xf = this._styles.intern(props.style);
   }
@@ -679,6 +687,15 @@ export class Worksheet {
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (row !== undefined && row.n > 0) cb(new RowView(this, r), r + 1);
+    }
+  }
+
+  /** Rows that contain cells, ascending: `for (const row of ws.rows())` (see eachRow). */
+  *rows(): Generator<RowView> {
+    const rows = this._rows;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      if (row !== undefined && row.n > 0) yield new RowView(this, r);
     }
   }
 
@@ -1096,6 +1113,15 @@ export class RowView {
       if (row.kind[i] !== CellKind.Empty) {
         cb(this.worksheet._valueAt(row, i), row.col[i]! + 1, row.style[i]!);
       }
+    }
+  }
+
+  /** Non-empty cells as [1-based column, value]: `for (const [col, v] of row.cells())`. */
+  *cells(): Generator<[number, CellValue]> {
+    const row = this.data;
+    if (!row) return;
+    for (let i = 0; i < row.n; i++) {
+      if (row.kind[i] !== CellKind.Empty) yield [row.col[i]! + 1, this.worksheet._valueAt(row, i)];
     }
   }
 

@@ -83,12 +83,16 @@ export {
   sheetProtectionWriter,
 } from './sheet-protection.js';
 export {
+  type AddTableColumn,
   type AddTableOptions,
   addTable,
+  addTableRows,
+  getTable,
   type Table,
   type TableColumn,
   type TableStyle,
   type TotalsRowFunction,
+  tableRows,
   tablesReader,
   tablesWriter,
 } from './tables.js';

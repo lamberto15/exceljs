@@ -95,6 +95,7 @@ interface ColRange {
   width: number | undefined;
   hidden: boolean;
   outlineLevel: number;
+  collapsed: boolean;
   xf: number;
 }
 
@@ -385,6 +386,7 @@ export class SheetHandler implements XmlHandler {
         if (c.width !== undefined) col.width = c.width;
         if (c.hidden) col.hidden = true;
         if (c.outlineLevel) col.outlineLevel = c.outlineLevel;
+        if (c.collapsed) col.collapsed = true;
         if (c.xf) col.styleIndex = c.xf;
       }
     }
@@ -404,13 +406,15 @@ export class SheetHandler implements XmlHandler {
     const ht = a.ht;
     const hidden = a.hidden !== undefined && attrBool(a.hidden);
     const ol = a.outlineLevel !== undefined ? +a.outlineLevel : 0;
+    const collapsed = a.collapsed !== undefined && attrBool(a.collapsed);
     const height = ht !== undefined && attrBool(a.customHeight) ? +ht : 0;
     const s = a.s !== undefined && attrBool(a.customFormat) ? this.xf(a.s) : 0;
-    if ((height || hidden || ol || s) && this.row >= 0) {
+    if ((height || hidden || ol || collapsed || s) && this.row >= 0) {
       this.ws!.setRowProps(this.row + 1, {
         height: height > 0 ? height : undefined,
         hidden,
         outlineLevel: ol,
+        collapsed,
         styleIndex: s,
       });
     }
@@ -643,9 +647,12 @@ export class SheetHandler implements XmlHandler {
       width: width !== undefined && width - width === 0 ? width : undefined,
       hidden: attrBool(a.hidden),
       outlineLevel: a.outlineLevel !== undefined ? +a.outlineLevel || 0 : 0,
+      collapsed: attrBool(a.collapsed),
       xf: a.style !== undefined ? this.xf(a.style) : 0,
     };
-    if (rec.width === undefined && !rec.hidden && !rec.outlineLevel && !rec.xf) return;
+    if (rec.width === undefined && !rec.hidden && !rec.outlineLevel && !rec.collapsed && !rec.xf) {
+      return;
+    }
     this.cols.push(rec);
   }
 

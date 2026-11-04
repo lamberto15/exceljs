@@ -637,6 +637,7 @@ function moveCols(e: Edit): void {
     nc.width = c.width;
     nc.hidden = c.hidden;
     nc.outlineLevel = c.outlineLevel;
+    nc.collapsed = c.collapsed;
     const a = c as unknown as ColState;
     const b = nc as unknown as ColState;
     b._key = a._key;
@@ -917,6 +918,7 @@ function cloneRow(src: RowData, r0: number): RowData {
   row.height = src.height;
   row.hidden = src.hidden;
   row.outlineLevel = src.outlineLevel;
+  row.collapsed = src.collapsed;
   row.xf = src.xf;
   if (src.obj !== undefined) {
     const dr = r0 - src.index;
@@ -954,4 +956,48 @@ export function duplicateRow(ws: Worksheet, rowNum: number, count: number, inser
     if (src) s._rows[r0 + k] = cloneRow(src, r0 + k);
     for (const m of rowMerges) ws.addMergeRaw({ ...m, top: r0 + k, bottom: r0 + k });
   }
+}
+
+export interface GroupOptions {
+  /** Collapse the group: hide its rows / columns and flag the summary row / column. */
+  collapsed?: boolean | undefined;
+}
+
+/**
+ * Group rows `from`..`to` (1-based, inclusive) one outline level deeper (max 7), like Excel's
+ * Data > Group. The summary row is the one below the group (Excel's default).
+ */
+export function groupRows(
+  ws: Worksheet,
+  from: number,
+  to: number,
+  options: GroupOptions = {},
+): void {
+  check(true, from - 1, to - from + 2);
+  for (let r = from; r <= to; r++) {
+    const level = Math.min(7, (ws.rowData[r - 1]?.outlineLevel ?? 0) + 1);
+    ws.setRowProps(
+      r,
+      options.collapsed ? { outlineLevel: level, hidden: true } : { outlineLevel: level },
+    );
+  }
+  if (options.collapsed) ws.setRowProps(to + 1, { collapsed: true });
+}
+
+/** Group columns `from`..`to` (numbers or letters) one outline level deeper; see groupRows. */
+export function groupColumns(
+  ws: Worksheet,
+  from: number | string,
+  to: number | string,
+  options: GroupOptions = {},
+): void {
+  const a = colArg(from);
+  const b = colArg(to);
+  check(false, a - 1, b - a + 2);
+  for (let c = a; c <= b; c++) {
+    const col = ws.getColumn(c);
+    col.outlineLevel = Math.min(7, col.outlineLevel + 1);
+    if (options.collapsed) col.hidden = true;
+  }
+  if (options.collapsed) ws.getColumn(b + 1).collapsed = true;
 }
