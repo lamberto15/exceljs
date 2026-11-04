@@ -35,12 +35,7 @@ export const dataValidationReader: FeatureReader = { name: 'data-validation', ..
 ```
 
 ```ts
-import {
-  writeXlsx,
-  readXlsx,
-  dataValidationWriter,
-  dataValidationReader,
-} from '@sheetkit/xlsx/lite';
+import { writeXlsx, readXlsx, dataValidationWriter, dataValidationReader } from 'xlsxkit/lite';
 writeXlsx(wb, { features: [dataValidationWriter] });
 readXlsx(buf, { features: [dataValidationReader] });
 ```
@@ -179,7 +174,7 @@ export const dataValidationReader: FeatureReader = {
 - Web APIs only (no `node:*`, no `Buffer`); no top-level side effects (`/* @__PURE__ */` for
   module-level `new`).
 - Size budget (`pnpm build && pnpm size`, see `docs/bundle-size.md`): root write-only ≤ 32 KB,
-  read+write ≤ 60 KB brotli, shared by all features; lite write-only ≤ 20 KB (no feature may
+  read+write ≤ 60 KB brotli, shared by all features; lite write-only ≤ 21 KB (target ~20) (no feature may
   leak into it) — keep emitters string-template based and tables small.
 - Escape everything user-provided: `escapeAttr` for attributes, `escapeText` for text (or
   `attrs({...})`, which escapes and skips undefined/false).

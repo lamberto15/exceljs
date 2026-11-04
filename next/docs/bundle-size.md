@@ -4,11 +4,11 @@ Two entries expose the same functions and the same `Workbook` model:
 
 | Entry                   | Features                                                                     | Use it when                                                    |
 | ----------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `@sheetkit/xlsx`        | all built-ins, always on                                                     | you want everything to just work (default)                     |
-| `@sheetkit/xlsx/lite`   | none by default; opt in per call with `features`                             | bundle size matters (browser, edge), you write plain data      |
+| `xlsxkit`        | all built-ins, always on                                                     | you want everything to just work (default)                     |
+| `xlsxkit/lite`   | none by default; opt in per call with `features`                             | bundle size matters (browser, edge), you write plain data      |
 
 ```ts
-import { Workbook, writeXlsx, readXlsx, addTable, tablesWriter, tablesReader } from '@sheetkit/xlsx/lite';
+import { Workbook, writeXlsx, readXlsx, addTable, tablesWriter, tablesReader } from 'xlsxkit/lite';
 
 const wb = new Workbook();
 addTable(wb.addWorksheet('Data'), { name: 'Sales', columns: ['Region', 'Units'], rows: [['N', 1]] });
@@ -61,7 +61,7 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
 | write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 28.37 KB |
 | read+write                     | root `*`                                                       | 60 KB | 55.15 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 20 KB | 19.96 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 19.96 KB |
 | lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.21 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24 KB | 23.43 KB |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |

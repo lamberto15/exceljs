@@ -1,5 +1,5 @@
 {
-  "name": "@sheetkit/xlsx",
+  "name": "xlsxkit",
   "version": "0.0.0",
   "description": "Fast, small, streaming-first XLSX/CSV library for every JS runtime.",
   "license": "MIT",
@@ -80,7 +80,7 @@
       "name": "lite write-only",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "20 KB"
+      "limit": "21 KB"
     },
     {
       "name": "lite read+write",

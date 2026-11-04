@@ -14,7 +14,7 @@ export class XlsxParseError extends Error {
 /** The input is an OLE compound file: a password-protected workbook (or a legacy .xls). */
 export class EncryptedFileError extends XlsxParseError {
   constructor() {
-    super("File is password-protected: use decryptXlsx from '@sheetkit/xlsx/crypto'");
+    super("File is password-protected: use decryptXlsx from 'xlsxkit/crypto'");
     this.name = 'EncryptedFileError';
   }
 }
