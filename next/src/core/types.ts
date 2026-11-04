@@ -226,6 +226,15 @@ export interface ReadOptions {
    * `preserveUnknown` and written back unchanged. `xlsxRows` ignores features.
    */
   features?: readonly FeatureReader[];
+  /**
+   * `xlsxRows` only: called after the last row of each sheet was yielded, with what the sheet
+   * XML stores after its cell data (merged ranges as A1 strings, e.g. "A1:C2").
+   */
+  /** Dates by local wall clock (see WorkbookOptions.localDates); also for xlsxRows. */
+  localDates?: boolean | undefined;
+  onSheetEnd?:
+    | ((info: { sheet: string; sheetIndex: number; merges: string[] }) => void)
+    | undefined;
 }
 
 export interface Limits {

@@ -283,7 +283,7 @@ let K = 0;
 let N = 0;
 let O: unknown;
 
-function classify(v: NonNullable<CellValue>, date1904: boolean): void {
+function classify(v: NonNullable<CellValue>, date1904: boolean, local: boolean): void {
   O = undefined;
   N = 0;
   switch (typeof v) {
@@ -309,7 +309,7 @@ function classify(v: NonNullable<CellValue>, date1904: boolean): void {
         const t = v.getTime();
         if (t - t === 0) {
           K = CellKind.Date;
-          N = dateToSerial(v, date1904);
+          N = dateToSerial(v, date1904, local);
         } else {
           K = CellKind.Error;
           O = '#VALUE!';
@@ -909,7 +909,7 @@ export class Worksheet {
       case CellKind.Boolean:
         return row.num[i] !== 0;
       case CellKind.Date:
-        return serialToDate(row.num[i]!, this.workbook.date1904);
+        return serialToDate(row.num[i]!, this.workbook.date1904, this.workbook.localDates);
       case CellKind.Error:
         return { error: row.obj![i] as ErrorCode };
       case CellKind.String:
@@ -983,7 +983,7 @@ export class Worksheet {
       this._clear(r0, c0, style);
       return;
     }
-    classify(value, this.workbook.date1904);
+    classify(value, this.workbook.date1904, this.workbook.localDates);
     const row = this._rows[r0] ?? this._newRow(r0, 1);
     let i = row.find(c0);
     let xf: number;
@@ -1033,6 +1033,7 @@ export class Worksheet {
     }
     const xfArg = style === undefined ? -1 : this._xf(style);
     const d1904 = this.workbook.date1904;
+    const local = this.workbook.localDates;
     const colXf = this._colXf;
     if (Array.isArray(values)) {
       const arr = values as readonly CellValue[];
@@ -1044,7 +1045,7 @@ export class Worksheet {
       for (let c = 0; c < len; c++) {
         const v = arr[c];
         if (v === null || v === undefined) continue;
-        classify(v, d1904);
+        classify(v, d1904, local);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));
@@ -1060,7 +1061,7 @@ export class Worksheet {
         const [key, c] = keys[k]!;
         const v = obj[key];
         if (v === null || v === undefined) continue;
-        classify(v, d1904);
+        classify(v, d1904, local);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));

@@ -9,7 +9,7 @@ Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, column
 ## Workbook
 
 ```ts
-new Workbook(options?: { date1904?: boolean; defaultFont?: Font })
+new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: boolean })
 ```
 
 | Member | Description |
@@ -166,13 +166,15 @@ interface ReadOptions {
   limits?: Partial<Limits>;        // maxEntries 10_000, maxEntryBytes 1 GiB, maxTotalBytes 2 GiB, maxCompressionRatio 1000
   preserveUnknown?: boolean;       // default true: keep charts, pivots, shapes, VBA, ... and write them back
   sheets?: readonly string[];      // only load these sheets (case-insensitive)
+  localDates?: boolean;            // Dates by local wall clock instead of UTC (also xlsxRows)
+  onSheetEnd?: (info: { sheet: string; sheetIndex: number; merges: string[] }) => void; // xlsxRows: after each sheet's last row
   profile?: 'low-memory' | 'balanced' | 'max-speed';  // used by xlsxRows (low-memory re-deflates buffered sheets)
   features?: readonly FeatureReader[];  // root: added to the built-ins; /lite: the only features modelled
 }
 interface XlsxRow { sheet: string; sheetIndex: number; row: number /* 1-based */; values: CellValue[] /* 0-based by column */ }
 ```
 
-`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive (Excel's order); otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored.
+`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive (Excel's order); otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
 
 Other exports: `listPreservedParts(wb)` -> `{ path, contentType }[]` of the parts the next write will emit from the original file; `translateFormula`; `SheetEntry`.
 

@@ -745,6 +745,45 @@ for (const [file, what] of [
   );
 }
 
+// 20: reported ExcelJS bugs that corrupt files there: fitToPage + outline + tab color (exceljs#1348),
+// a note inside a table (exceljs#1369), a headerless table (exceljs#1615)
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Sweep', { tabColor: { argb: 'FF00B050' } });
+  addTable(ws, {
+    name: 'WithNote',
+    columns: ['a', 'b'],
+    rows: [
+      [1, 2],
+      [3, 4],
+    ],
+  });
+  addNote(ws, 'B2', 'note inside a table');
+  addTable(ws, {
+    name: 'NoHeader',
+    topLeft: 'D1',
+    columns: ['x', 'y'],
+    rows: [
+      [5, 6],
+      [7, 8],
+    ],
+    headerRow: false,
+  });
+  for (let r = 6; r <= 10; r++) ws.setCell(r, 1, r);
+  groupRows(ws, 7, 9, { collapsed: true });
+  ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  ws.headerFooter = {
+    differentFirst: true,
+    firstHeader: '&CFirst page',
+    oddHeader: '&COther pages',
+  };
+  save(
+    '20-bug-sweep.xlsx',
+    writeXlsx(wb),
+    `"Sweep" (green tab): table WithNote A1:B3 with a note on B2; headerless table NoHeader D1:E2 (no header, no filter buttons); rows 7-9 grouped and collapsed (+ on row 10); Page Layout: fit to 1 page wide, first-page header "First page", others "Other pages". Excel must not crash or repair (exceljs#1348/#1369/#1615).`,
+  );
+}
+
 writeFileSync(
   join(out, 'CHECKLIST.md'),
   `# Excel compatibility check

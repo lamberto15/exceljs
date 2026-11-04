@@ -14,6 +14,12 @@ export interface WorkbookOptions {
    * Default: Calibri 11 (theme font).
    */
   defaultFont?: Font | undefined;
+  /**
+   * Convert JS Dates by their LOCAL wall clock (`new Date(2024, 0, 1)` is Jan 1 in Excel in
+   * every time zone) instead of UTC (the default: `new Date(Date.UTC(2024, 0, 1))`). Affects
+   * setCell / getValue; readers take it from `ReadOptions.localDates`.
+   */
+  localDates?: boolean | undefined;
 }
 
 export interface WorksheetOptions {
@@ -30,6 +36,8 @@ export interface Workbook extends WorkbookFeatureFields {}
 export class Workbook {
   /** 1904 date system flag; changing it after storing dates shifts them by 1462 days. */
   date1904: boolean;
+  /** Dates in setCell / getValue use the local wall clock (see WorkbookOptions.localDates). */
+  localDates: boolean;
   readonly styles: StyleRegistry = new StyleRegistry();
   creator: string | undefined = undefined;
   lastModifiedBy: string | undefined = undefined;
@@ -46,6 +54,7 @@ export class Workbook {
 
   constructor(options: WorkbookOptions = {}) {
     this.date1904 = options.date1904 === true;
+    this.localDates = options.localDates === true;
     const f = options.defaultFont;
     // no `scheme`: a theme scheme would make Excel show the theme font instead of `name`
     if (f) this.styles.setDefaultFont({ size: 11, color: { theme: 1 }, family: 2, ...f });

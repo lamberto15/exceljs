@@ -105,7 +105,10 @@ import { xlsxRows } from 'turbosheet';
 for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
   // row.sheet, row.row (1-based), row.values (0-based by column: values[0] is column A)
 }
+// merged ranges: xlsxRows(src, { onSheetEnd: ({ sheet, merges }) => ... })
 ```
+
+Dates: Excel dates have no time zone. turbosheet reads and writes JS `Date`s by their UTC wall clock (`new Date(Date.UTC(2024, 0, 1))` is Jan 1). If your code builds dates with `new Date(2024, 0, 1)`, use `new Workbook({ localDates: true })` and `readXlsx(buf, { localDates: true })` / `xlsxRows(src, { localDates: true })`.
 
 ### CSV
 

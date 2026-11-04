@@ -27,6 +27,8 @@ export interface SheetContext {
   readonly xfMap: Uint32Array | undefined;
   readonly styles: StyleRegistry;
   readonly date1904: boolean;
+  /** Row mode: Dates by local wall clock. */
+  readonly localDates?: boolean | undefined;
   /** The sheet's relationships (hyperlink targets). */
   readonly rels?: Map<string, Relationship> | undefined;
   /** Feature readers by element path ("pageSetup", "sheetPr/pageSetUpPr"); DOM mode only. */
@@ -127,6 +129,8 @@ export class SheetHandler implements XmlHandler {
   private readonly ctx: SheetContext;
   private readonly ws: Worksheet | undefined;
   private readonly onRow: RowCallback | undefined;
+  /** Row mode: merged ranges seen (A1 refs). */
+  readonly merges: string[] = [];
   private readonly strings: readonly StringItem[];
   private readonly xfMap: Uint32Array | undefined;
   private readonly styles: StyleRegistry;
@@ -281,7 +285,10 @@ export class SheetHandler implements XmlHandler {
       }
       return;
     }
-    if (this.ws === undefined) return;
+    if (this.ws === undefined) {
+      if (ln === 'mergeCell' && a.ref) this.merges.push(a.ref);
+      return;
+    }
     switch (ln) {
       case 'col':
         if (d === 3) this.addCol(a);
@@ -624,7 +631,7 @@ export class SheetHandler implements XmlHandler {
       case CellKind.Number:
         return num;
       case CellKind.Date:
-        return serialToDate(num, this.ctx.date1904);
+        return serialToDate(num, this.ctx.date1904, this.ctx.localDates);
       case CellKind.Boolean:
         return num !== 0;
       case CellKind.Error:

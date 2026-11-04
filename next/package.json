@@ -185,7 +185,7 @@
       "name": "lite autofit",
       "path": "dist/lite.js",
       "import": "{ Workbook, autoFitColumns }",
-      "limit": "10.5 KB"
+      "limit": "11 KB"
     },
     {
       "name": "lite write + charts",

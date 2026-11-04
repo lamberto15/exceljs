@@ -224,7 +224,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     parseStrict(wbXml, wbh, wbPath);
     pkg.sheetEntries = wbh.sheets;
   }
-  const wb = new Workbook({ date1904: wbh.date1904 });
+  const wb = new Workbook({ date1904: wbh.date1904, localDates: opts.localDates });
 
   const core = text('docProps/core.xml');
   if (core !== undefined) {
@@ -412,8 +412,12 @@ class StreamReader {
   readonly buffered = new Map<string, PartBuffer>();
   private readonly filter: Set<string> | undefined;
   private readonly compress: boolean;
+  private readonly onSheetEnd: ReadOptions['onSheetEnd'];
+  private readonly localDates: boolean;
 
   constructor(opts: ReadOptions) {
+    this.localDates = opts.localDates === true;
+    this.onSheetEnd = opts.onSheetEnd;
     this.filter = opts.sheets ? new Set(opts.sheets.map((s) => s.toLowerCase())) : undefined;
     this.compress = opts.profile === 'low-memory';
   }
@@ -526,19 +530,29 @@ class StreamReader {
   }
 
   /** A sheet parser that pushes finished rows into `out`. */
-  sheetParser(s: ResolvedSheet, out: XlsxRow[]): StrictXml {
+  sheetParser(
+    s: ResolvedSheet,
+    out: XlsxRow[],
+  ): { write(t: string): void; end(): void; done(): void } {
     const ctx: SheetContext = {
       strings: this.strings,
       xfMap: this.xfMap,
       styles: this.wb.styles,
       date1904: this.date1904,
+      localDates: this.localDates,
     };
     const name = s.name;
     const index = s.index;
     const h = new SheetHandler(ctx, undefined, (r0, values) => {
       out.push({ sheet: name, sheetIndex: index, row: r0 + 1, values });
     });
-    return new StrictXml(h, s.path);
+    const p = new StrictXml(h, s.path);
+    const cb = this.onSheetEnd;
+    return {
+      write: (t: string) => p.write(t),
+      end: () => p.end(),
+      done: () => cb?.({ sheet: name, sheetIndex: index, merges: h.merges }),
+    };
   }
 }
 
@@ -594,6 +608,7 @@ async function* xlsxRowsImpl(
       p.end();
       yield* out;
       out.length = 0;
+      p.done();
     }
   }
 
@@ -638,6 +653,7 @@ async function* xlsxRowsImpl(
         p.end();
         yield* out;
         out.length = 0;
+        p.done();
         continue;
       }
       await st.buffer(path, entry.chunks);
