@@ -1,0 +1,40 @@
+{
+  "files": {
+    "includes": ["src/**", "test/**", "bench/**", "!test/fixtures/exceljs/**"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["test/**", "bench/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noAssignInExpressions": "off",
+            "noTsIgnore": "off"
+          },
+          "complexity": {
+            "noCommaOperator": "off"
+          }
+        }
+      }
+    }
+  ]
+}
