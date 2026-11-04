@@ -5,7 +5,7 @@ Which ExcelJS 4.4 behaviours turbosheet supports, measured against the ExcelJS t
 Status legend:
 
 - ✅ **supported**: the ported test passes.
-- 🐛 **turbosheet bug**: the port failed because turbosheet was wrong. All but one are fixed (see [bugs found](#bugs-found-and-fixed)); the ported test is the regression test.
+- 🐛 **turbosheet bug**: the port failed because turbosheet was wrong. All are fixed (see [bugs found](#bugs-found-and-fixed)); the ported test is the regression test.
 - 🚫 **not supported**: the feature is missing; the port is `it.skip` with the reason.
 - ➖ **intentionally different**: API or semantics differ by design (sync I/O, 0-based arrays, immutable interned styles, ...); the port asserts turbosheet's behaviour and the comment explains the difference.
 - ❓ **not applicable**: tests ExcelJS internals (Anchor, Range, colCache caches, StreamBuf, ...) or Node file APIs.
@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 71 | 7 | 24 | 45 | 6 | 153 |
+| integration | 72 | 7 | 23 | 45 | 6 | 153 |
 | issues | 23 | 0 | 1 | 3 | 0 | 27 |
 | prs | 9 | 0 | 1 | 3 | 0 | 13 |
 | unit | 35 | 0 | 57 | 21 | 64 | 177 |
-| **all** | 138 | 8 | 83 | 72 | 70 | 371 |
+| **all** | 139 | 8 | 82 | 72 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -45,7 +45,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 21 | 0 | 48 | 21 | 0 | 90 |
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 3 | 0 | 5 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
-| [styles](../test/exceljs-parity/styles.test.ts) | 4 | 0 | 1 | 10 | 0 | 15 |
+| [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
 | [tables](../test/exceljs-parity/tables.test.ts) | 0 | 0 | 7 | 2 | 0 | 9 |
 | [values](../test/exceljs-parity/values.test.ts) | 12 | 6 | 0 | 4 | 0 | 22 |
 | (internals, no port) | 0 | 0 | 0 | 0 | 47 | 47 |
@@ -60,7 +60,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | `Worksheet.addRow` was not atomic: a rejected value (e.g. an ExcelJS `{ sharedFormula }`) threw after the row record was created, so every later `addRow` landed one row lower (in-memory and streaming writer). | `workbook-xlsx-writer.spec.js` "shared formula" | `fix(core)` |
 | `Workbook.removeWorksheet` did not update sheet-scoped defined names (`localSheetId` is a tab index): print area / print titles / local names of later sheets moved to a neighbour or vanished, and the removed sheet's names were written against another sheet. | defined-names port (extra check next to `workbook.spec.js` "defined names") | `fix(core)` |
 
-Open (needs a design decision, see below): the hyperlink of a **formula cell** is dropped on read and therefore lost on a read → write round trip (`formulas.xlsx` A1; `workbook-xlsx-reader.spec.js` "should contain the linked url").
+| The hyperlink of a **formula cell** was skipped by the reader (a cell holds one value kind) and lost on a read → write round trip. It is now kept raw in `ws.preserved` (relationship ids remapped) and written back while the cell still holds the formula it was read with; changing or clearing the cell drops it. | `workbook-xlsx-reader.spec.js` "should contain the linked url" (`formulas.xlsx` A1) | `fix(read)` |
 
 No failure was caused by the `_xlfn.` future-function prefix work happening on another branch: `formulas.xlsx` keeps `_xlfn.CONCAT(...)` exactly as stored, which is what ExcelJS expects.
 
@@ -68,19 +68,25 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 
 - Row/column structure edits: `insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow`, row splice (≈45 ExcelJS tests).
 - Shared-formula authoring (`fillFormula`, `{ sharedFormula }` values); shared formulas in files are expanded on read.
-- Gradient fills; font `family`, `scheme`, `charset`, `outline` (dropped on read, so a read → write round trip loses them).
+- Gradient fills; font `charset`, `outline`, `shadow`, `condense`, `extend` (dropped on read, so a read → write round trip loses them).
 - Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
 - Document properties beyond creator / lastModifiedBy / created / modified (company, manager, title, subject, keywords, category, description, language, revision, contentStatus).
 - Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`); `maxRows` / `maxCols` read limits; `getRows`, `getSheetValues`, `column.eachCell`, `eachRow({ includeEmpty })`, `actualRowCount`.
 - CSV: custom read date formats (ISO 8601 only), boolean / error typing, non-UTF-8 encodings.
 
-## Design questions for the maintainer
+## Additions made for parity
 
-1. **Hyperlinked formula cells** (open bug). A cell holds one kind, and the reader skips `<hyperlink>` on formula cells, so the link disappears on round trip. Options: add an optional `hyperlink` to `Formula` (or `formula` to `Hyperlink`), or keep such hyperlinks in `ws.preserved` and re-emit them while the cell is unchanged.
-2. **Font `family` / `scheme`** are not modelled, so editing and saving an Excel file drops `<scheme val="minor"/>` (theme-font linkage) from every font. Modelling them is cheap and fixes a silent fidelity loss.
-3. **ExcelJS alignment spellings**: `vertical: 'middle'` and `textRotation: 'vertical'` are rejected by the types but, from JavaScript, would be written verbatim (invalid XML). Accepting them as aliases (`center`, 255) would ease migration at a few bytes.
-4. **`arraysToSheet(ws, parseCsv(text))`** (the documented CSV → sheet recipe) stores empty CSV fields as `""` string cells; ExcelJS and Excel leave them empty. Treat `""` as empty there, or add an option.
-5. **`removeWorksheet`** now drops names scoped to the removed sheet; preserved workbook XML that refers to sheets by index is not adjusted (none found in the fixtures).
+Decided by the maintainer after the first audit and implemented on the same branch:
+
+- **Font `family` and `scheme`** are modelled (`Font.family?: number`, `Font.scheme?: 'major' | 'minor' | 'none'`): read from styles, rich text and notes, written after the font name, part of the style identity. The default font is Calibri 11, family 2, scheme minor (as Excel writes it); a partial font without its own name inherits them. Editing and saving an Excel file keeps `<scheme val="minor"/>`.
+- **ExcelJS alignment aliases** are accepted: `vertical: 'middle'` (stored as `'center'`) and `textRotation: 'vertical'` (stored as 255), next to negative rotations.
+- **Empty CSV fields leave cells empty**: `arraysToSheet` / `objectsToSheet` treat `''` as no cell (option `emptyAs: 'string'` keeps empty-string cells), so `arraysToSheet(ws, parseCsv(text))` matches ExcelJS.
+- **Hyperlinks on formula cells** are preserved raw (see the bug table).
+
+## Remaining notes for the maintainer
+
+- `removeWorksheet` drops names scoped to the removed sheet; preserved workbook XML that refers to sheets by index is not adjusted (none found in the fixtures).
+- A kept formula-cell hyperlink is matched by object identity: assigning an equal formula object also drops it (documented in features.md).
 
 ## Every ExcelJS test
 
@@ -90,7 +96,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| downloads a workbook | 🐛 | values | web `Response(xlsxStream(wb))` instead of express; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
+| downloads a workbook | 🐛 | values | web `Response(xlsxStream(wb))` instead of express; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
 
 ### `integration/gold.spec.js`
 
@@ -332,7 +338,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | should bail out if the file contains more rows than the limit | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
 | should be classified as a formula cell | ✅ | formulas / hyperlinks | hyperlinked formula: kind is Formula (➖) |
 | should be classified as a formula cell | ✅ | formulas / hyperlinks | hyperlinked formula: kind is Formula (➖) |
-| should contain the linked url | 🐛 | hyperlinks (skip) | OPEN: hyperlink on a formula cell is dropped on read and lost on round trip — needs a model decision |
+| should contain the linked url | 🐛 | hyperlinks | hyperlink on a formula cell was dropped on read and lost on round trip; now kept raw and written back while the cell holds that formula (`fix(read)`) |
 | should decode the underscore | ✅ | misc |  |
 | should fail fast on a huge file | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
 | should fail fast on a huge file | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
@@ -369,7 +375,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | with conditional formatting | ✅ | conditional-formatting |  |
 | with conditional formatting that contains numFmt (#1814) | ➖ | conditional-formatting | rule `style.numFmt` is the format code (exceljs `{ id, formatCode }`) |
 | with zip compression option | ✅ | data-validation |  |
-| writes notes | ✅ | notes | font `scheme` not modelled |
+| writes notes | ✅ | notes |  |
 | xlsx file | ✅ | values | row-level styles only (no per-cell styles in a streamed row) |
 
 ### `integration/workbook/images.spec.js`
@@ -394,7 +400,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| in-cell formats properly in xlsx file | 🚫 | styles | rich text matches except font `family`/`scheme` (not modelled) |
+| in-cell formats properly in xlsx file | ✅ | styles | rich text identical, incl. font `family`/`scheme` |
 | null cells retain style | ✅ | styles |  |
 | row styles and columns properly | ➖ | styles | row style via `setRowProps`; values identical |
 | sets col styles | ➖ | styles | row/column style applies to new/empty cells only; existing cells keep theirs |
@@ -413,7 +419,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | auto filter | ✅ | misc |  |
 | company, manager, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
 | creator, lastModifiedBy, etc | ✅ | misc |  |
-| csv file | ➖ | csv | via `sheetToArrays`/`writeCsv`/`parseCsv`/`arraysToSheet`; hyperlinks as text, booleans/errors untyped, empty field → `""` |
+| csv file | ➖ | csv | via `sheetToArrays`/`writeCsv`/`parseCsv`/`arraysToSheet`; hyperlinks as text, booleans/errors untyped |
 | dataValidations | ➖ | data-validation | sqref-based model, defined name instead of `cell.name`, formulas read as text |
 | defined names | ➖ | defined-names | no `cell.name(s)`/`addName`/`getRanges`; `addDefinedName` with ranges; sheet names always quoted |
 | empty string | ✅ | values |  |
@@ -434,11 +440,11 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | throws an error when csv file not found | ❓ | misc/csv (skip) | no file system API |
 | throws an error when xlsx file not found | ❓ | misc/csv (skip) | no file system API |
 | title, subject, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
-| xlsx file | 🐛 | values | failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
-| xlsx file with best compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
-| xlsx file with default compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
-| xlsx file with fast compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
-| xlsx file with no compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font family+outline / workbook views / sharedFormula values / merged-cell value proxy |
+| xlsx file | 🐛 | values | failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
+| xlsx file with best compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
+| xlsx file with default compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
+| xlsx file with fast compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
+| xlsx file with no compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
 
 ### `integration/worksheet-xlsx-writer.spec.js`
 
