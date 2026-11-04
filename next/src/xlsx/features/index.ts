@@ -2,6 +2,7 @@
 // Each feature adds its public exports here. The registry (registry.ts) and the extension-point
 // types (./types.ts) are internal.
 
+export { addNote, type Note } from './comments.js';
 export {
   addDefinedName,
   type DefinedNameOptions,
