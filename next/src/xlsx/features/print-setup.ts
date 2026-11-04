@@ -94,6 +94,8 @@ function printOptions(ws: Worksheet): string {
 
 function pageMargins(ws: Worksheet): string {
   const m = ws.pageSetup?.margins;
+  // defaults never replace margins kept raw (a read without this feature, see ./lite)
+  if (!m && ws.preserved?.frags.some((f) => f.slot === SheetSlot.pageMargins)) return '';
   return `<pageMargins${attrs({
     left: m?.left ?? 0.7,
     right: m?.right ?? 0.7,
@@ -147,6 +149,10 @@ function setup(ws: Worksheet): Mutable<PageSetup> {
   return ws.pageSetup;
 }
 
+/**
+ * Write half of the print setup (ws.pageSetup, ws.headerFooter) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const printSetupWriter: FeatureWriter = {
   name: 'print-setup',
   sheet: {
@@ -164,6 +170,10 @@ export const printSetupWriter: FeatureWriter = {
   },
 };
 
+/**
+ * Read half of the print setup (ws.pageSetup, ws.headerFooter) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const printSetupReader: FeatureReader = {
   name: 'print-setup',
   sheet: {

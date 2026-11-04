@@ -244,6 +244,10 @@ function drawing(c: SheetWriteCtx, list: readonly ImagePlacement[]): string {
   return `<drawing r:id="${c.addRel('drawing', `../drawings/drawing${n}.xml`)}"/>`;
 }
 
+/**
+ * Write half of the pictures (ws.images, ws.backgroundImage, wb.images) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const imagesWriter: FeatureWriter = {
   name: 'images',
   sheet: {
@@ -403,6 +407,10 @@ function parseDrawing(xml: string): RawPic[] {
 
 const DRAWING_KEY = {};
 
+/**
+ * Read half of the pictures (ws.images, ws.backgroundImage, wb.images) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const imagesReader: FeatureReader = {
   name: 'images',
   sheet: {

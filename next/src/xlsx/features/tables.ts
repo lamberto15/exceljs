@@ -345,6 +345,10 @@ function tableXml(t: Table, id: number, styles: StyleRegistry): string {
   return s;
 }
 
+/**
+ * Write half of the tables (ws.tables) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const tablesWriter: FeatureWriter = {
   name: 'tables',
   sheet: {
@@ -438,6 +442,10 @@ function parseTable(xml: string, dxf: (id: string) => Style | undefined): Table 
   return t;
 }
 
+/**
+ * Read half of the tables (ws.tables) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const tablesReader: FeatureReader = {
   name: 'tables',
   sheet: {

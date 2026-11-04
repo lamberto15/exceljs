@@ -263,7 +263,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     for (const r of pkg.relsOf(wbPath)?.values() ?? []) {
       if (!r.external && relTypeIs(r.type, 'calcChain')) owned.push(r.path);
     }
-    pres = new Preserver(files, pkg, owned);
+    pres = new Preserver(files, pkg, owned, dxfMap);
   }
 
   let strings: StringItem[] = [];

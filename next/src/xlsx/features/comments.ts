@@ -160,6 +160,10 @@ function emit(c: SheetWriteCtx): string {
   return `<legacyDrawing r:id="${c.addRel('vmlDrawing', `../drawings/vmlDrawing${v}.vml`)}"/>`;
 }
 
+/**
+ * Write half of the cell notes (ws.comments) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const commentsWriter: FeatureWriter = {
   name: 'comments',
   sheet: { emitters: [{ slot: SheetSlot.legacyDrawing, emit }] },
@@ -270,6 +274,10 @@ function readVml(xml: string): Map<string, Shape> {
   return out;
 }
 
+/**
+ * Read half of the cell notes (ws.comments) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const commentsReader: FeatureReader = {
   name: 'comments',
   sheet: {

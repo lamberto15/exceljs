@@ -14,7 +14,6 @@ import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.js';
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
-import { fillRels } from '../common/preserved.js';
 import { runsXml } from '../common/rich-text.js';
 import {
   type FeatureWriter,
@@ -34,7 +33,6 @@ import {
   tElem,
   XML_DECL,
 } from './parts.js';
-import { fragLive, sheetImplicit } from './preserve.js';
 
 /** Mutable per-sheet encoding state (also the features' SheetWriteCtx). */
 export interface SheetCtx extends SheetWriteCtx {
@@ -348,9 +346,41 @@ const BUILTIN: readonly Emitter[] = [
   },
 ];
 
+/**
+ * Worksheet model fields owned by a feature, as "field:FeatureWriter.name". Writing without
+ * that feature would silently drop the data, so it throws instead (a property check per sheet;
+ * no feature code is referenced). The public export is `<camelCase name>Writer`.
+ */
+const OWNED: readonly string[] = [
+  'tables:tables',
+  'comments:comments',
+  'images:images',
+  'backgroundImage:images',
+  'conditionalFormatting:conditional-formatting',
+  'dataValidations:data-validation',
+  'protection:sheet-protection',
+  'pageSetup:print-setup',
+  'headerFooter:print-setup',
+];
+
+function checkFeatures(ws: Worksheet, names: ReadonlySet<string>): void {
+  // drawing anchors (charts, shapes) kept by a read WITH the images feature: only it merges them
+  const drawing = ws.preserved?.drawing && ws.preserved.name === ws.name;
+  for (const o of drawing ? [...OWNED, 'preserved:images'] : OWNED) {
+    const [field, name] = o.split(':') as [keyof Worksheet, string];
+    const v = ws[field];
+    if (v == null || (Array.isArray(v) && v.length === 0) || names.has(name)) continue;
+    throw new Error(
+      `Worksheet '${ws.name}': ws.${field} is set but the '${name}' feature is not enabled; pass features: [${name.replace(/-(.)/g, (_, c: string) => c.toUpperCase())}Writer]`,
+    );
+  }
+}
+
 /** Per-write emitter list and `<worksheet>` start tag (see sheetPlan). */
 export interface SheetPlan {
   readonly writers: readonly FeatureWriter[];
+  /** FeatureWriter names of `writers`. */
+  readonly names: ReadonlySet<string>;
   readonly emitters: readonly Emitter[];
   readonly open: string;
 }
@@ -366,6 +396,7 @@ export function sheetPlan(writers: readonly FeatureWriter[]): SheetPlan {
   all.sort((a, b) => a.slot - b.slot || (a.order ?? 0) - (b.order ?? 0));
   return {
     writers,
+    names: new Set(writers.map((w) => w.name)),
     emitters: all,
     open: `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"${ns}>`,
   };
@@ -377,6 +408,7 @@ export function sheetPlan(writers: readonly FeatureWriter[]): SheetPlan {
  * wrapped once.
  */
 function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
+  checkFeatures(ctx.ws, ctx.plan.names);
   const out: string[] = [];
   const pr: [number, string][] = [];
   for (const e of ctx.plan.emitters) {
@@ -388,16 +420,7 @@ function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
   }
   const ws = ctx.ws;
   const ps = ws.preserved;
-  if (ps) {
-    for (const f of ps.frags) {
-      const k = f.slot;
-      if (k < lo || k > hi || !fragLive(f, ws)) continue;
-      if (k !== SheetSlot.sheetPr && k !== SheetSlot.extLst && out[k]) continue;
-      const x = fillRels(f.xml, ps.rels, ctx.path, ctx.addRel);
-      if (k === SheetSlot.sheetPr) pr.push([f.order, x]);
-      else out[k] = (out[k] ?? '') + x;
-    }
-  }
+  ps?.w.frags(ws, ctx.path, ctx.addRel, lo, hi, out, pr);
   const pa = lo === 0 ? (ps?.prAttrs ?? '') : '';
   if (pr.length || pa) {
     pr.sort((a, b) => a[0] - b[0]);
@@ -419,7 +442,7 @@ export function sheetHead(ctx: SheetCtx): string {
 /** `</sheetData>` through `</worksheet>`. Allocates the sheet's relationships (see ctx.rels). */
 export function sheetTail(ctx: SheetCtx): string {
   const s = `</sheetData>${runEmitters(ctx, SheetSlot.sheetData + 1, SheetSlot.extLst)}</worksheet>`;
-  sheetImplicit(ctx.ws, ctx.path, ctx.addRel);
+  ctx.ws.preserved?.w.implicit(ctx.ws, ctx.path, ctx.addRel);
   return s;
 }
 

@@ -4,8 +4,11 @@
 // - planPreserved (before the first sheet): collects the preserved parts reachable from the live
 //   model, names them (original path unless the writer generates that path: then the trailing
 //   number is bumped) and reserves their basenames so `nextIndex` families skip them.
-// - sheet fragments are merged by sheet.ts (runEmitters) and implicit sheet relationships are
-//   added in the tail (sheetImplicit); workbook pieces by bookParts (presBook).
+// - sheet fragments are merged into the emitted elements (sheetFrags, from sheet.ts runEmitters)
+//   and implicit sheet relationships are added in the tail (sheetImplicit); workbook pieces by
+//   bookParts (presBook).
+// The writer core reaches all of this only through `presWrite`, which readXlsx attaches to the
+// kept data (`wb.preserved.w`, `ws.preserved.w`): write-only bundles do not include this module.
 
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
@@ -20,33 +23,85 @@ import {
   PH,
   type PPart,
   type PRel,
+  type PresWrite,
   relTarget,
 } from '../common/preserved.js';
 import { SheetSlot } from '../features/types.js';
 import { type PackageParts, relsXml } from './package.js';
 
-/** Whether a sheet fragment is written (legacy VML: the comments feature wins when it has notes). */
-export function fragLive(f: PFrag, ws: Worksheet): boolean {
-  return (
-    !(f.linked && ws.preserved!.name !== ws.name) &&
-    !(f.slot === SheetSlot.legacyDrawing && ws.comments?.length)
-  );
+/**
+ * Slots whose kept element (and the parts it links) gives way to model data of the owning
+ * feature: the model wins, nothing is written twice. Raw elements only coexist with model
+ * fields when a workbook read without a feature (`./lite`) is written with it.
+ */
+const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
+  [SheetSlot.legacyDrawing]: (ws) => ws.comments?.length,
+  [SheetSlot.drawing]: (ws) => ws.images?.length,
+  [SheetSlot.picture]: (ws) => ws.backgroundImage !== undefined,
+  [SheetSlot.tableParts]: (ws) => ws.tables?.length,
+  [SheetSlot.pageSetup]: (ws) => ws.pageSetup,
+};
+
+/** First `uri` attribute of a kept `<ext>` element. */
+const EXT_URI = /^<[^>]*?\suri="([^"]*)"/;
+
+/**
+ * Merge the sheet's kept fragments of slots [lo, hi]: a kept element is written only when no
+ * emitter produced its slot; in the container slots, only children no emitter produced (same
+ * sheetPr child order, same extLst `uri`).
+ */
+function sheetFrags(
+  ws: Worksheet,
+  path: string,
+  add: AddRel,
+  lo: number,
+  hi: number,
+  out: string[],
+  pr: [number, string][],
+): void {
+  const ps = ws.preserved!;
+  for (const f of ps.frags) {
+    const k = f.slot;
+    if (k < lo || k > hi || !fragLive(f, ws)) continue;
+    if (k === SheetSlot.sheetPr) {
+      if (f.order !== 9 && pr.some((p) => p[0] === f.order)) continue;
+    } else if (k === SheetSlot.extLst) {
+      const uri = EXT_URI.exec(f.xml)?.[1];
+      if (uri && out[k]?.includes(`uri="${uri}"`)) continue;
+    } else if (out[k]) continue;
+    const x = fillRels(f.xml, ps.rels, path, add);
+    if (k === SheetSlot.sheetPr) pr.push([f.order, x]);
+    else out[k] = (out[k] ?? '') + x;
+  }
 }
 
-/** Implicit sheet relationships still valid (threaded comments need the legacy notes). */
+/** Whether a sheet fragment is written (not after a rename when linked; not when the model owns its slot). */
+export function fragLive(f: PFrag, ws: Worksheet): boolean {
+  return !(f.linked && ws.preserved!.name !== ws.name) && !OWNER[f.slot]?.(ws);
+}
+
+const COMMENTS = /\/comments$/;
+
+/**
+ * Implicit sheet relationships still valid: raw legacy notes give way to modelled ones;
+ * threaded comments need legacy notes (modelled or raw).
+ */
 function implicitRels(ws: Worksheet): PRel[] {
   const p = ws.preserved;
   if (!p || p.name !== ws.name) return [];
+  const notes = !!ws.comments?.length;
+  const raw = !notes && p.implicit.some((k) => COMMENTS.test(p.rels[k]!.type));
   const out: PRel[] = [];
   for (const k of p.implicit) {
     const r = p.rels[k]!;
-    if (!/threadedComment/i.test(r.type) || ws.comments?.length) out.push(r);
+    if (COMMENTS.test(r.type) ? !notes : !/threadedComment/i.test(r.type) || notes || raw)
+      out.push(r);
   }
   return out;
 }
 
 /** Add the sheet's implicit relationships (pivot tables, threaded comments, ...). */
-export function sheetImplicit(ws: Worksheet, path: string, add: AddRel): void {
+function sheetImplicit(ws: Worksheet, path: string, add: AddRel): void {
   for (const r of implicitRels(ws)) addPRel(r, path, add);
 }
 
@@ -54,7 +109,7 @@ export function sheetImplicit(ws: Worksheet, path: string, add: AddRel): void {
  * workbook.xml sheetIds: the ids read from the file where still unique (other parts refer to
  * them), else the worksheet's own id or a fresh one.
  */
-export function sheetIds(wb: Workbook): number[] {
+function sheetIds(wb: Workbook): number[] {
   const used = new Set<number>();
   const sheets = wb.worksheets;
   const out = sheets.map((ws) => {
@@ -128,7 +183,7 @@ export function listPreservedParts(wb: Workbook): PreservedPart[] {
 }
 
 /** Name the reachable preserved parts for this write; undefined when there is nothing kept. */
-export function planPreserved(wb: Workbook, pkg: PackageParts): PPart[] | undefined {
+function planPreserved(wb: Workbook, pkg: PackageParts): PPart[] | undefined {
   if (!wb.preserved && !wb.worksheets.some((w) => w.preserved)) return undefined;
   const list = reachable(wb, pkg);
   // names the writer generates outside nextIndex families (workbook-level parts, styles, docProps
@@ -148,23 +203,14 @@ export function planPreserved(wb: Workbook, pkg: PackageParts): PPart[] | undefi
   return list;
 }
 
-export interface PresBookOut {
-  /** workbook.xml fragments as [BookSlot, xml, order]. */
-  readonly frags: [number, string, number][];
-  /** Extra `<sheet>` elements (foreign sheets). */
-  readonly sheets: string;
-  /** Extra root relationships (to append to _rels/.rels, ids from rId4). */
-  readonly root: PRel[];
-}
-
 /** Write the planned parts (+ their rels and content types); workbook.xml pieces. */
-export function presBook(
+function presBook(
   wb: Workbook,
   pkg: PackageParts,
   parts: readonly PPart[],
   add: AddRel,
   ids: readonly number[],
-): PresBookOut {
+): ReturnType<PresWrite['book']> {
   for (const p of parts) {
     const out = p.out!;
     pkg.addPart(out, p.data(), p.ct);
@@ -202,3 +248,12 @@ export function presBook(
   }
   return { frags, sheets, root: pb ? [...pb.root] : [] };
 }
+
+/** The writer-side hooks (attached to kept data by readXlsx; see the header). */
+export const presWrite: PresWrite = {
+  plan: planPreserved,
+  ids: sheetIds,
+  frags: sheetFrags,
+  implicit: sheetImplicit,
+  book: presBook,
+};

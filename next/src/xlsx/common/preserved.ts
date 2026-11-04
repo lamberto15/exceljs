@@ -11,9 +11,49 @@
 //   path collides with one the writer generates, and writes every part reachable from the live
 //   model (parts only reachable from a removed sheet are dropped).
 //
+// - The writer side (../write/preserve.ts) is reached through `w` on the kept data: readXlsx
+//   attaches it, so bundles that never read a file (write-only) never include it.
+//
 // Internal: the shapes below are not public API (wb.preserved is opaque to users).
 
+import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import type { PackageParts } from '../write/package.js';
+
+/** Writer-side preservation (../write/preserve.ts `presWrite`), attached by the reader. */
+export interface PresWrite {
+  /** Name the reachable kept parts for this write (before the first sheet). */
+  plan(wb: Workbook, pkg: PackageParts): PPart[] | undefined;
+  /** workbook.xml sheetIds. */
+  ids(wb: Workbook): number[];
+  /**
+   * Merge a sheet's kept fragments of slots [lo, hi] into the emitted elements `out` (by slot)
+   * and sheetPr children `pr` ([order, xml]).
+   */
+  frags(
+    ws: Worksheet,
+    path: string,
+    add: AddRel,
+    lo: number,
+    hi: number,
+    out: string[],
+    pr: [number, string][],
+  ): void;
+  /** Add a sheet's implicit relationships (after its tail). */
+  implicit(ws: Worksheet, path: string, add: AddRel): void;
+  /** Write the planned parts; workbook.xml pieces. */
+  book(
+    wb: Workbook,
+    pkg: PackageParts,
+    parts: readonly PPart[],
+    add: AddRel,
+    ids: readonly number[],
+  ): {
+    readonly frags: [number, string, number][];
+    readonly sheets: string;
+    readonly root: PRel[];
+  };
+}
 
 /** A preserved zip part. */
 export interface PPart {
@@ -78,6 +118,8 @@ export interface PSheet {
   /** Raw `<sheetPr>` attributes (codeName, filterMode, ...), leading space. */
   readonly prAttrs: string;
   readonly drawing: PDrawing | undefined;
+  /** Writer hooks. */
+  readonly w: PresWrite;
 }
 
 /** A non-worksheet sheet (chartsheet, dialogsheet, macrosheet) kept in `<sheets>`. */
@@ -106,6 +148,13 @@ export interface PBook {
   readonly stylesTail: string;
   /** Part-family numbers taken by preserved content (e.g. "vmlShapeBlock1"). */
   readonly reserve: readonly string[];
+  /** Writer hooks. */
+  readonly w: PresWrite;
+}
+
+/** Writer hooks of a workbook read with preserveUnknown (undefined: nothing kept). */
+export function presOf(wb: Workbook): PresWrite | undefined {
+  return wb.preserved?.w ?? wb.worksheets.find((s) => s.preserved)?.preserved?.w;
 }
 
 /** Path relative to the directory of `from` ("xl/worksheets/sheet1.xml", "xl/charts/c.xml" → "../charts/c.xml"). */

@@ -137,6 +137,10 @@ function emit(ws: Worksheet, date1904: boolean): string {
   return `<dataValidations count="${list.length}">${s}</dataValidations>`;
 }
 
+/**
+ * Write half of the data validation (ws.dataValidations) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const dataValidationWriter: FeatureWriter = {
   name: 'data-validation',
   sheet: {
@@ -198,6 +202,10 @@ function handler(ws: Worksheet): SubtreeHandler {
   };
 }
 
+/**
+ * Read half of the data validation (ws.dataValidations) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const dataValidationReader: FeatureReader = {
   name: 'data-validation',
   sheet: {

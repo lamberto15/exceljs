@@ -7,7 +7,7 @@ import type { WriteOptions } from '../../core/types.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { nativeCompressor } from '../../zip/index.js';
-import type { PPart } from '../common/preserved.js';
+import { type PPart, presOf } from '../common/preserved.js';
 import type { BookWriteCtx, FeatureWriter } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts, type PartRec, RelList, relElems } from './package.js';
@@ -23,7 +23,6 @@ import {
   workbookRelsXml,
   workbookXml,
 } from './parts.js';
-import { planPreserved, presBook, sheetIds } from './preserve.js';
 import {
   afterSheetParts,
   encodeRow,
@@ -79,7 +78,7 @@ export function bookParts(
   let info = book;
   let rootExtra = '';
   if (kept) {
-    const pres = presBook(
+    const pres = presOf(wb)!.book(
       wb,
       pkg,
       kept,
@@ -148,8 +147,9 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
   const active = activeTabOf(sheets);
   const sst = o.strings === 'shared' ? new SharedStrings() : undefined;
   const pkg = new PackageParts();
-  const kept = planPreserved(wb, pkg);
-  const ids = sheetIds(wb);
+  const pw = presOf(wb);
+  const kept = pw?.plan(wb, pkg);
+  const ids = pw ? pw.ids(wb) : sheets.map((s) => s.id);
   const plan = sheetPlan(o.writers);
   let formulas = false;
 

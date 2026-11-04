@@ -1,8 +1,9 @@
-// Public API of the features (re-exported from the package root): model types and helpers.
-// Each feature adds its public exports here. The registry (registry.ts) and the extension-point
-// types (./types.ts) are internal.
+// Public API of the features (re-exported from the package root and from `./lite`): model
+// types, helpers and each feature's opt-in halves (`<name>Writer` / `<name>Reader`, for
+// `options.features` in `./lite`; the root always runs them). The registry (registry.ts) is
+// root-only and internal; of ./types.ts only the two extension-point interfaces are public.
 
-export { addNote, type Note } from './comments.js';
+export { addNote, commentsReader, commentsWriter, type Note } from './comments.js';
 export {
   addConditionalFormatting,
   type CfAboveAverageRule,
@@ -23,6 +24,8 @@ export {
   type Cfvo,
   type CfvoType,
   type ConditionalFormatting,
+  conditionalFormattingReader,
+  conditionalFormattingWriter,
 } from './conditional-formatting.js';
 export {
   addDataValidation,
@@ -30,6 +33,8 @@ export {
   type DataValidationFormula,
   type DataValidationOperator,
   type DataValidationType,
+  dataValidationReader,
+  dataValidationWriter,
 } from './data-validation.js';
 export {
   addDefinedName,
@@ -49,12 +54,25 @@ export {
   type ImageExtension,
   type ImagePlacement,
   type ImageSize,
+  imagesReader,
+  imagesWriter,
   type PlaceImageOptions,
   placeImage,
   type WorkbookImage,
 } from './images.js';
-export type { HeaderFooter, PageMargins, PageSetup } from './print-setup.js';
-export { hashPassword, type SheetProtection } from './sheet-protection.js';
+export {
+  type HeaderFooter,
+  type PageMargins,
+  type PageSetup,
+  printSetupReader,
+  printSetupWriter,
+} from './print-setup.js';
+export {
+  hashPassword,
+  type SheetProtection,
+  sheetProtectionReader,
+  sheetProtectionWriter,
+} from './sheet-protection.js';
 export {
   type AddTableOptions,
   addTable,
@@ -62,4 +80,8 @@ export {
   type TableColumn,
   type TableStyle,
   type TotalsRowFunction,
+  tablesReader,
+  tablesWriter,
 } from './tables.js';
+export { themeWriter } from './theme.js';
+export type { FeatureReader, FeatureWriter } from './types.js';

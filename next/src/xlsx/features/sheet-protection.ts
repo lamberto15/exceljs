@@ -130,11 +130,19 @@ function emit(ws: Worksheet): string {
   return s ? `<sheetProtection${s}/>` : '';
 }
 
+/**
+ * Write half of the sheet protection (ws.protection) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const sheetProtectionWriter: FeatureWriter = {
   name: 'sheet-protection',
   sheet: { emitters: [{ slot: SheetSlot.sheetProtection, emit: (c) => emit(c.ws) }] },
 };
 
+/**
+ * Read half of the sheet protection (ws.protection) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const sheetProtectionReader: FeatureReader = {
   name: 'sheet-protection',
   sheet: {

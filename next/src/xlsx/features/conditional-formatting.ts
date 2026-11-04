@@ -545,6 +545,10 @@ function emitExt(c: SheetWriteCtx): string {
     : '';
 }
 
+/**
+ * Write half of the conditional formatting (ws.conditionalFormatting) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
+ */
 export const conditionalFormattingWriter: FeatureWriter = {
   name: 'conditional-formatting',
   sheet: {
@@ -783,6 +787,10 @@ function extHandler(ctx: SheetReadCtx): SubtreeHandler {
   };
 }
 
+/**
+ * Read half of the conditional formatting (ws.conditionalFormatting) feature. Always on in the package root; in `./lite` pass it
+ * in `features` of readXlsx (without it, the elements are kept raw and written back).
+ */
 export const conditionalFormattingReader: FeatureReader = {
   name: 'conditional-formatting',
   sheet: {

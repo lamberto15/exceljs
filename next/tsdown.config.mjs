@@ -2,7 +2,7 @@ import { defineConfig } from 'tsdown';
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts', csv: 'src/csv/index.ts', json: 'src/json/index.ts',
+    index: 'src/index.ts', lite: 'src/lite.ts', csv: 'src/csv/index.ts', json: 'src/json/index.ts',
     crypto: 'src/crypto/index.ts',
   },
   format: ['esm', 'cjs'],
@@ -12,4 +12,5 @@ export default defineConfig({
   minify: false,
   sourcemap: true,
   clean: true,
+  unbundle: true,
 });
