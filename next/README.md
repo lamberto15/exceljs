@@ -148,7 +148,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Tables, notes, pictures, conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';

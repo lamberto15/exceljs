@@ -192,6 +192,19 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Sheet protection | `ws.protection` | `hashPassword(password, saltB64, spinCount)` | `sheetProtectionWriter`, `sheetProtectionReader` |
 | Default theme | | | `themeWriter` (write only) |
 
+### Column auto-fit
+
+```ts
+autoFitColumns(ws, opts?): (number | undefined)[]      // measures, sets column widths, returns them (index 0 = column A)
+estimateColumnWidths(rows: Iterable<readonly CellValue[]>, opts?): (number | undefined)[]   // no sheet needed (streaming writer)
+
+interface AutoFitOptions { columns?: (number | string)[]; min?: number /*0*/; max?: number /*100*/; padding?: number /*1.5*/;
+  includeHeader?: boolean /*true*/; rows?: { from?: number; to?: number }; sample?: number; apply?: boolean /*true*/ }
+interface EstimateWidthOptions { min?; max?; padding?; includeHeader?; headerBold?: boolean; numFmts?: (string | undefined)[]; font?: Font; sample?: number }
+```
+
+Pure model helpers exported from `xlsxkit` and `xlsxkit/lite`; not part of any writer, so unused they cost nothing. Model and limits: [features.md](./features.md#column-auto-fit).
+
 ### Defined names
 
 ```ts

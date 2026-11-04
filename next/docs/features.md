@@ -4,6 +4,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 
 - [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
 - [Styles and number formats](#styles-and-number-formats)
+- [Column auto-fit](#column-auto-fit)
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
@@ -46,6 +47,36 @@ ws.getColumn('B').width = 14;
 ```
 
 Styles are values: assign a new object to change one, do not mutate `getStyle()` results. Equal styles share one entry in `styles.xml`, so styling a million cells with the same object is cheap. For hot loops intern once and pass the index: `const xf = wb.styles.intern(style); ws.setCell(r, c, v, xf)`.
+
+## Column auto-fit
+
+```ts
+import { autoFitColumns, estimateColumnWidths } from 'xlsxkit'; // also from 'xlsxkit/lite'
+
+const widths = autoFitColumns(ws);                       // sets ws column widths, returns them (0-based index)
+autoFitColumns(ws, { columns: ['A', 'C'], max: 60, includeHeader: false, rows: { from: 2 }, sample: 5000 });
+```
+
+Options: `columns` (numbers, letters or keys; default every used column), `min` (default 0: columns with nothing to measure are left alone; with `min > 0` requested empty columns get it), `max` (100), `padding` (1.5 characters, includes Excel's 5 px cell padding), `includeHeader` (true; false skips the first row of the range), `rows: { from, to }` (1-based), `sample` (scan only the first N non-empty rows), `apply` (true; false only returns the widths).
+
+How it estimates (Excel's AutoFit, without fonts):
+
+- Units are characters of the default font's digit width (Calibri 11: 7 px). Text width is the sum of Calibri advance widths (a 95-entry ASCII table; CJK, full-width forms and emoji count as 2 digits, other characters as 1), scaled by `font.size / defaultFont.size` and by 1.1 for bold.
+- It measures the displayed text: General numbers (shortest form up to 11 characters, `E+` notation outside 1e-9..1e11), fixed decimals, thousands separators, percent, scientific, currency/literal text, negative sections like `(0.00)`; date formats by the width of the format (month and day names use the widest name, so they err wide); `TRUE`/`FALSE`; error codes; formula cached results; hyperlink text; rich text (runs concatenated, widest run font).
+- Multi-line text (wrapped or containing `\n`) uses its widest line. Cells in a merge spanning several columns are skipped. Rotated text (90, 180, 255) gets a small fixed width. `indent` adds about 1.3 characters per level.
+- Accuracy: within about 10 % of Excel for Latin text in Calibri (the tests derive references from Excel's width formula and hinted glyph widths). Other fonts are measured with Calibri metrics scaled by size, so wide fonts (Verdana) come out narrow and narrow ones (Arial Narrow) wide; kerning, hinting at other sizes, locale-specific formats, fractions (`# ?/?`) and conditional-format text are not modelled. Pass a larger `padding` if you prefer to err wide.
+- Speed: one pass over `rowData` with per-style caching and no per-cell allocation for numbers, strings and dates; 1,000,000 mixed cells take about 0.2 s.
+
+The streaming writer cannot fit columns after rows are flushed. Estimate from a sample first, then declare the widths:
+
+```ts
+const sample = rows.slice(0, 1000);                      // any Iterable<CellValue[]>; first row = header
+const widths = estimateColumnWidths(sample, { headerBold: true, numFmts: [undefined, '#,##0.00'], max: 60 });
+const w = createXlsxWriter(sink);
+const sheet = w.addWorksheet('Data', { columns: widths.map((width) => ({ width })) });
+```
+
+`estimateColumnWidths(rows, { min, max, padding, includeHeader, headerBold, numFmts, font, sample })` uses the same measuring code; it has no styles, so give number formats per column with `numFmts` (0-based) and the body font with `font`. Dates use `yyyy-mm-dd` (with time when any value has one) unless the column's `numFmts` entry is a date format.
 
 ## Tables
 

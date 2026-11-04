@@ -10,6 +10,12 @@ export {
   MAX_COLS,
   MAX_ROWS,
 } from './address.js';
+export {
+  type AutoFitOptions,
+  autoFitColumns,
+  type EstimateWidthOptions,
+  estimateColumnWidths,
+} from './autofit.js';
 export { dateToSerial, serialToDate } from './dates.js';
 export type { WorkbookFeatureFields, WorksheetFeatureFields } from './features.js';
 export {

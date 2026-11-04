@@ -168,6 +168,12 @@
       "limit": "24 KB"
     },
     {
+      "name": "lite autofit",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, autoFitColumns }",
+      "limit": "10.5 KB"
+    },
+    {
       "name": "csv",
       "path": "dist/csv.js",
       "import": "*",

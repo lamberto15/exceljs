@@ -59,11 +59,12 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 28.37 KB |
-| read+write                     | root `*`                                                       | 60 KB | 55.15 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 28.41 KB |
+| read+write                     | root `*`                                                       | 60 KB | 57.99 KB |
 | lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 19.96 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.21 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.24 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24 KB | 23.43 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.03 KB |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
 
