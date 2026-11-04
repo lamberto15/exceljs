@@ -8,6 +8,7 @@
 
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
+import type { Table } from '../xlsx/features/tables.js';
 
 export interface WorksheetFeatureFields {
   /** Page layout / print settings (features/print-setup). */
@@ -16,6 +17,8 @@ export interface WorksheetFeatureFields {
   headerFooter?: HeaderFooter | undefined;
   /** Sheet protection; undefined = unprotected (features/sheet-protection). */
   protection?: SheetProtection | undefined;
+  /** Tables / ListObjects (features/tables); use `addTable` to create one with its cells. */
+  tables?: Table[] | undefined;
 }
 
 // biome-ignore lint/suspicious/noEmptyInterface: extension point for workbook-level features

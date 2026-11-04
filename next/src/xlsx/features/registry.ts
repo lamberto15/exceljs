@@ -4,8 +4,17 @@
 
 import { printSetupReader, printSetupWriter } from './print-setup.js';
 import { sheetProtectionReader, sheetProtectionWriter } from './sheet-protection.js';
+import { tablesReader, tablesWriter } from './tables.js';
 import type { FeatureReader, FeatureWriter } from './types.js';
 
-export const WRITERS: readonly FeatureWriter[] = [printSetupWriter, sheetProtectionWriter];
+export const WRITERS: readonly FeatureWriter[] = [
+  printSetupWriter,
+  sheetProtectionWriter,
+  tablesWriter,
+];
 
-export const READERS: readonly FeatureReader[] = [printSetupReader, sheetProtectionReader];
+export const READERS: readonly FeatureReader[] = [
+  printSetupReader,
+  sheetProtectionReader,
+  tablesReader,
+];

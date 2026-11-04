@@ -144,6 +144,11 @@ export function addDefinedName(
   if (!isValidName(name)) throw new Error(`Invalid defined name "${name}"`);
   const scope = scopeOf(wb, options.localSheet);
   const dflt = scope === undefined ? undefined : wb.worksheets[scope]!.name;
+  for (const s of wb.worksheets) {
+    if (s.tables?.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error(`Defined name "${name}" clashes with a table name`);
+    }
+  }
   return put(wb, build(name, qualify(ref, dflt), scope, options));
 }
 

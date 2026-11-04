@@ -15,3 +15,11 @@ export {
 } from './defined-names.js';
 export type { HeaderFooter, PageMargins, PageSetup } from './print-setup.js';
 export { hashPassword, type SheetProtection } from './sheet-protection.js';
+export {
+  type AddTableOptions,
+  addTable,
+  type Table,
+  type TableColumn,
+  type TableStyle,
+  type TotalsRowFunction,
+} from './tables.js';
