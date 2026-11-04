@@ -777,19 +777,18 @@ export class SheetCap implements SheetCapture {
     this.prAttrs = rawAttrs(a);
   }
 
-  formatPr(name: string, a: XmlAttrs): void {
+  formatPr(a: XmlAttrs): void {
     // only worth keeping when it says more than the writer's own (defaultRowHeight 15 +
-    // outline levels, which are recomputed from the rows / columns)
+    // outline levels, which are recomputed from the rows / columns); extension attributes
+    // (x14ac:dyDescent) are rendering hints that would need mc:Ignorable on the root: dropped
+    let s = '';
     let more = false;
     for (const k in a) {
-      if (k === 'defaultRowHeight' ? +a[k]! !== 15 : !/^(outlineLevel|xmlns|\w+:dyDescent)/.test(k))
-        more = true;
+      if (k.includes(':') || k === 'xmlns') continue;
+      s += ` ${k}="${escapeAttr(a[k]!)}"`;
+      if (k === 'defaultRowHeight' ? +a[k]! !== 15 : !k.startsWith('outlineLevel')) more = true;
     }
-    if (!more) return;
-    const raw = this.start('sheetFormatPr', name, a, true);
-    raw.open(name, a, true);
-    raw.close(name);
-    raw.end();
+    if (more) this.frags.push([SheetSlot.sheetFormatPr, 9, `<sheetFormatPr${s}/>`]);
   }
 
   ref(a: XmlAttrs): void {

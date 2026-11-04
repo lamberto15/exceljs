@@ -87,10 +87,11 @@ describe('fidelity: sheetFormatPr', () => {
       'customHeight="1"',
       'zeroHeight="1"',
       'thickBottom="1"',
-      'x14ac:dyDescent="0.2"',
     ]) {
       expect(el).toContain(a);
     }
+    // extension attributes would need mc:Ignorable on the root: dropped
+    expect(el).not.toContain('dyDescent');
     expect(s.match(/<sheetFormatPr/g)!.length).toBe(1);
     // stable on a second trip
     expect(text(unzipSync(trip(out)), SHEET1).match(/<sheetFormatPr[^>]*\/>/)![0]).toBe(el);
