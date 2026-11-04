@@ -163,7 +163,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Formula evaluation (`turbosheet/formula`: 87 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Formula evaluation (`turbosheet/formula`: 87 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
@@ -226,7 +226,7 @@ This is a **0.x** release: the API may still change in minor versions, with chan
 
 Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. A 17-file pack covering every feature (including an encrypted file, the streaming writer and real files re-saved after reading; see `test/smoke/excel-pack.mjs`) was opened in **Microsoft Excel for Mac 16.114** with no repair prompts, and its content was checked through Excel (tables, conditional formatting, pictures, protection, chart sheets). Excel for Windows has not been checked yet. If you ever see a "We found a problem with some content" dialog, please open an issue with the file attached.
 
-Not supported yet: writing charts (existing charts are preserved on round trip), evaluating formulas (cached results are written and read as given), pivot table authoring (existing ones are preserved), `.xls` and `.xlsb`.
+Not supported yet: pivot table authoring (existing ones are preserved), dynamic-array spilling in the formula engine, `.xls` and `.xlsb`. See the [roadmap](./ROADMAP.md).
 
 ## Credits and license
 

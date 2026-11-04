@@ -10,17 +10,17 @@ Where turbosheet stands and what is next. Update this file with every release.
 | 0.2.0 | Chart writing (7 types), column auto-fit |
 | 0.2.1 | Round-trip fidelity: autoFilter criteria, sort state, named styles, form controls, chartsheet order, sheetFormatPr, table query links |
 | 0.3.0 | Formula evaluation (`/formula`, 87 functions), `_xlfn.` future-function prefix fix, ExcelJS parity audit + fixes ([docs/exceljs-parity.md](docs/exceljs-parity.md)) |
+| next (unreleased) | Row/column structure edits: `insertRows`, `deleteRows`, `spliceRows`, `insertColumns`, `deleteColumns`, `spliceColumns`, `duplicateRow`, with Excel-style reference adjustment |
 
 ## Next candidates (ordered by user value)
 
-1. **Row/column structure edits** — `insertRows`, `spliceRows`/`spliceColumns`, `duplicateRow` (≈45 ExcelJS tests; most-missed migration API). Must shift merges, formulas (reuse `translateFormula`), conditional formatting/validation ranges, tables, defined names.
-2. **Document properties** — title, subject, keywords, company, manager, … (`docProps/core.xml` + `app.xml`).
-3. **Formula engine** — OFFSET/INDIRECT/LOOKUP, statistical and financial functions, structured references, dynamic-array spilling, incremental recalculation.
-4. **Shared-formula authoring** (`fillFormula`) and gradient fills; remaining font attributes (charset, outline, shadow).
-5. **Workbook / multiple sheet views**, row/column `collapsed`.
-6. **Threaded comments** as an editable model (currently preserved raw); chart reading into the model; more chart types (combo, secondary axes, trendlines).
-7. **Excel for Windows verification** of the excel pack (only Excel for Mac 16.114 verified so far).
-8. Performance gate: profile the read path; Rust/WASM only if JS is clearly the bottleneck.
+1. **Document properties** — title, subject, keywords, company, manager, … (`docProps/core.xml` + `app.xml`).
+2. **Formula engine** — OFFSET/INDIRECT/LOOKUP, statistical and financial functions, structured references, dynamic-array spilling, incremental recalculation.
+3. **Shared-formula authoring** (`fillFormula`) and gradient fills; remaining font attributes (charset, outline, shadow).
+4. **Workbook / multiple sheet views**, row/column `collapsed`.
+5. **Threaded comments** as an editable model (currently preserved raw); chart reading into the model; more chart types (combo, secondary axes, trendlines).
+6. **Excel for Windows verification** of the excel pack (only Excel for Mac 16.114 verified so far).
+7. Performance gate: profile the read path; Rust/WASM only if JS is clearly the bottleneck.
 
 ## Known limitations
 

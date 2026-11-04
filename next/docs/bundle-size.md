@@ -61,7 +61,7 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
 | write-only                     | root `{ Workbook, writeXlsx }`                                 | 33 KB | 31.86 KB |
-| read+write                     | root `*`                                                       | 64 KB | 63.03 KB |
+| read+write                     | root `*`                                                       | 68 KB | 66.85 KB |
 | lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 22 KB | 20.97 KB |
 | lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 38.94 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 25.5 KB | 24.49 KB |
@@ -70,6 +70,9 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
 | formula                        | `./formula` `*`                                                | 16.5 KB | 16 KB  |
+
+Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
+bundles that don't import them.
 
 `./formula` is a separate entry, so it costs nothing unless imported (the core bundles above did
 not change when it was added). Its budget covers the whole evaluator, because `evaluate` reaches

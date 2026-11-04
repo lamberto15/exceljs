@@ -6,6 +6,7 @@ import {
   addDataValidation,
   CellKind,
   readXlsx,
+  spliceRows,
   translateFormula,
   Workbook,
   writeXlsx,
@@ -137,7 +138,15 @@ describe('exceljs parity: github issues', () => {
   });
 
   // exceljs: spec/integration/issues/issue-2125-spliceRows-last-row.spec.js — "issue 2125 - spliceRows remove last row"
-  it.skip('issue 2125: spliceRows removing the last row — not supported (no spliceRows)', () => {});
+  it('issue 2125: spliceRows removing the last row', () => {
+    const ws = new Workbook().addWorksheet('Sheet1');
+    for (const v of ['1st', '2nd', '3rd']) ws.addRow([v]);
+
+    spliceRows(ws, ws.rowCount, 1);
+
+    expect(ws.rowCount).toBe(2);
+    expect(ws.getRow(ws.rowCount).getValue(1)).toBe('2nd');
+  });
 
   describe('issue 219 - 1904 dates not supported', () => {
     // exceljs: spec/integration/issues/issue-219-1904-dates.spec.js — "Reading 1904.xlsx"

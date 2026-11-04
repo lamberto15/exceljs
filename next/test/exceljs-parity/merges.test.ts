@@ -2,7 +2,7 @@
 // workbook/workbook.spec.js "Merge Cells" and spec/unit/doc/worksheet.merge.spec.js.
 
 import { describe, expect, it } from 'vitest';
-import { CellKind, Workbook, type Worksheet } from '../../src/index.js';
+import { CellKind, insertRow, Workbook, type Worksheet } from '../../src/index.js';
 import { roundtrip, streamWrite } from './helpers.js';
 import { alignment, font, fontBack, numFmt1, styles } from './test-book.js';
 
@@ -87,7 +87,21 @@ describe('exceljs parity: merges', () => {
   });
 
   // exceljs: spec/unit/doc/worksheet.merge.spec.js — "preserves merges after row inserts"
-  it.skip('merges shift with insertRow — not supported (no insertRow)', () => {});
+  it('merges shift with insertRow', () => {
+    const ws = new Workbook().addWorksheet('testMergeAfterInsert');
+    ws.addRow([1, 2]);
+    ws.addRow([3, 4]);
+    ws.mergeCells('A1:B2');
+    insertRow(ws, 1, ['Inserted Row Text']);
+    // ➖ exceljs inspects its internal NumberValue / MergeValue cells (1 number + 3 merge
+    // slaves of A2); turbosheet has no Merge value type: the range moves, cells keep their values
+    expect(ws.merges).toEqual(['A2:B3']);
+    expect(ws.getRow(1).values).toEqual([undefined, 'Inserted Row Text']);
+    expect(ws.getRow(2).values).toEqual([undefined, 1, 2]);
+    expect(ws.getRow(3).values).toEqual([undefined, 3, 4]);
+    expect(ws.getKind('A2')).toBe(CellKind.Number);
+    expect(roundtrip(ws.workbook).getWorksheet('testMergeAfterInsert')!.merges).toEqual(['A2:B3']);
+  });
 
   describe('Workbook Merge Cells', () => {
     // exceljs: spec/integration/workbook/workbook.spec.js — "serialises and deserialises properly"

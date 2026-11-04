@@ -5,6 +5,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
 - [Styles and number formats](#styles-and-number-formats)
 - [Column auto-fit](#column-auto-fit)
+- [Inserting and deleting rows and columns](#inserting-and-deleting-rows-and-columns)
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
@@ -78,6 +79,31 @@ const sheet = w.addWorksheet('Data', { columns: widths.map((width) => ({ width }
 ```
 
 `estimateColumnWidths(rows, { min, max, padding, includeHeader, headerBold, numFmts, font, sample })` uses the same measuring code; it has no styles, so give number formats per column with `numFmts` (0-based) and the body font with `font`. Dates use `yyyy-mm-dd` (with time when any value has one) unless the column's `numFmts` entry is a date format.
+
+## Inserting and deleting rows and columns
+
+```ts
+import { deleteRows, duplicateRow, insertColumns, insertRows, spliceRows } from 'turbosheet'; // also from 'turbosheet/lite'
+
+ws.setCell('D1', { formula: 'SUM(B2:B5)' });
+insertRows(ws, 3, [['Inserted', 1]], { inheritStyle: 'above' }); // D1 is now SUM(B2:B6)
+deleteRows(ws, 2);                                               // ... and now SUM(B2:B5)
+insertColumns(ws, 'B', 1);                                       // ... and now SUM(C2:C5), in E1
+spliceRows(ws, 2, 1, ['Replaced', 2]);                           // ExcelJS spliceRows
+duplicateRow(ws, 2, 2, true);                                    // two copies of row 2 below it
+```
+
+The edits work like Excel's *Insert / Delete Sheet Rows / Columns*: cells move, and every reference to the edited sheet follows them:
+
+- **Formulas** of every sheet (unqualified refs on the edited sheet, `Data!A1` / `'My Data'!A1` on others), array-formula ranges, **defined names** (print area / titles too) and **chart series**. `$` makes no difference (it only matters for copy and fill). A range spanning an insertion point grows; a range losing some of its rows shrinks; a reference whose cells are all deleted becomes `#REF!` (a print area / titles part that is gone is dropped).
+- **Sheet data**: row and column properties (height, width, hidden, styles, keys), merges (dropped when deleted or reduced to one cell), conditional formatting and data validation ranges and formulas, notes, picture and chart anchors (two-cell anchors stretch, one-cell anchors move), `autoFilter`.
+- **Tables**: rows inserted inside a table extend it and get its calculated-column formulas; columns inserted inside one become new columns (`Column4`, header cell written); deleted columns drop their definitions; a table whose cells are all deleted is removed. Deleting a table's header row, or all of its data rows, throws.
+
+An edit is validated before anything changes: one that would push cells off the grid (row 1,048,576 / column XFD) throws and leaves the workbook as it was.
+
+ExcelJS differences: these are functions, not methods; `spliceRows(ws, start, count, ...rows)` overwrites the first `min(count, rows.length)` rows in place (references to them stay) and deletes or inserts only the difference; `duplicateRow` adjusts the copied formulas' relative references, as a paste does; `inheritStyle` replaces the `'i'` / `'o'` style codes (and also formats empty cells, like `'i+'` / `'o+'`).
+
+Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, threaded comments, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
 
 ## Tables
 

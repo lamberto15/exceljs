@@ -7,6 +7,7 @@ import {
   placeImage,
   readXlsx,
   type Style,
+  spliceColumns,
   Workbook,
   writeXlsx,
 } from '../../src/index.js';
@@ -65,7 +66,32 @@ describe('exceljs parity: pull requests', () => {
   });
 
   // exceljs: spec/integration/pr/test-pr-1334.spec.js — "pull request 1334 - Fix the error that comment does not delete at spliceColumn"
-  it.skip('pr 1334: spliceColumns moves/deletes notes — not supported (no spliceColumns)', () => {});
+  it('pr 1334: spliceColumns moves and deletes notes', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('testSheet');
+    ws.addRow(['test1', 'test2', 'test3', 'test4', 'test5', 'test6', 'test7', 'test8']);
+    for (const [ref, text] of [
+      ['A1', 'test1'],
+      ['B1', 'test2'],
+      ['C1', 'test3'],
+      ['D1', 'test4'],
+    ] as const)
+      addNote(ws, ref, text);
+
+    spliceColumns(ws, 2, 1);
+
+    // the note of the removed column B is gone, the others moved left
+    // (the original runs its assertions in a never-awaited async IIFE, so they cannot fail;
+    // here they are checked, and again after a round trip instead of just writing the file)
+    const check = (w: Workbook) => {
+      expect(noteText(w, 'testSheet', 'A1')).toBe('test1');
+      expect(noteText(w, 'testSheet', 'B1')).toBe('test3');
+      expect(noteText(w, 'testSheet', 'C1')).toBe('test4');
+      expect(noteText(w, 'testSheet', 'D1')).toBeUndefined();
+    };
+    check(wb);
+    check(roundtrip(wb));
+  });
 
   // exceljs: spec/integration/pr/test-pr-1431.spec.js — "pull request 1431 - streaming reader should handle rich text within shared strings"
   it('pr 1431: streaming reader returns rich text stored in shared strings', async () => {

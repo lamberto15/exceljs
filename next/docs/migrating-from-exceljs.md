@@ -60,7 +60,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.pageSetup`, `ws.headerFooter` | same shape (plain objects) |
 | `ws.protect(password, options)` | `ws.protection = { password, ...options }` |
 | `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues` | not supported (iterate with `eachRow`) |
-| `ws.insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow` | not supported yet |
+| `ws.insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow` | `insertRow(s)(ws, …)`, `spliceRows(ws, …)`, `spliceColumns(ws, …)`, `duplicateRow(ws, …)`, plus `deleteRows`, `insertColumns`, `deleteColumns`; formulas, merges, names, tables, … follow like in Excel ([details](./features.md#inserting-and-deleting-rows-and-columns)) |
 
 ### Values
 
@@ -184,4 +184,4 @@ To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `
 
 ## Not supported yet
 
-Chart writing; formula evaluation; gradient fills; row/column insert, splice and duplicate; `calcProperties` and workbook views; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.
+Gradient fills; `calcProperties` and workbook views; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.

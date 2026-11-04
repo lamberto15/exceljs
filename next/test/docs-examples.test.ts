@@ -11,12 +11,17 @@ import {
   addNote,
   addTable,
   createXlsxWriter,
+  deleteRows,
+  duplicateRow,
   getPrintArea,
+  insertColumns,
+  insertRows,
   listPreservedParts,
   placeImage,
   readXlsx,
   setPrintArea,
   setPrintTitles,
+  spliceRows,
   Workbook,
   type Worksheet,
   writeXlsx,
@@ -80,6 +85,28 @@ describe('docs/migrating-from-exceljs.md', () => {
 });
 
 describe('docs/features.md', () => {
+  it('inserting and deleting rows and columns', () => {
+    const ws = new Workbook().addWorksheet('Data');
+    ws.addRows([
+      ['Item', 'Qty'],
+      ['a', 1],
+      ['b', 2],
+      ['c', 3],
+      ['d', 4],
+    ]);
+    ws.setCell('D1', { formula: 'SUM(B2:B5)' });
+    insertRows(ws, 3, [['Inserted', 1]], { inheritStyle: 'above' });
+    expect(ws.getValue('D1')).toEqual({ formula: 'SUM(B2:B6)' });
+    deleteRows(ws, 2);
+    expect(ws.getValue('D1')).toEqual({ formula: 'SUM(B2:B5)' });
+    insertColumns(ws, 'B', 1);
+    expect(ws.getValue('E1')).toEqual({ formula: 'SUM(C2:C5)' });
+    spliceRows(ws, 2, 1, ['Replaced', 2]);
+    duplicateRow(ws, 2, 2, true);
+    expect(ws.getRow(4).values).toEqual([undefined, 'Replaced', 2]);
+    expect(ws.getValue('A5')).toBe('b');
+  });
+
   it('values and styles', () => {
     const wb = new Workbook();
     const ws = wb.addWorksheet('Data');
