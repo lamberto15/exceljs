@@ -1,28 +1,30 @@
 # turbosheet
 
+[![npm](https://img.shields.io/npm/v/turbosheet)](https://www.npmjs.com/package/turbosheet) [![CI](https://github.com/lamberto15/exceljs/actions/workflows/next.yml/badge.svg?branch=next)](https://github.com/lamberto15/exceljs/actions/workflows/next.yml?query=branch%3Anext) [![minzipped size](https://img.shields.io/bundlephobia/minzip/turbosheet)](https://bundlephobia.com/package/turbosheet) [![node](https://img.shields.io/node/v/turbosheet)](https://nodejs.org) [![license](https://img.shields.io/npm/l/turbosheet)](./LICENSE)
+
 Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript runtime.
 
 > Status: **0.x**. The API may change between minor versions. See [Status](#status).
 
 ## Why
 
-- **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.3 s vs 3.5 s for `xlsx.load`.
+- **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.2 s vs 3.4-4.7 s for `xlsx.load`.
 - **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
 - **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
 - **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/`.
 - **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
 
-Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data.
+Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data. Methodology and full tables: [docs/benchmarks.md](./docs/benchmarks.md); reproduce with `pnpm bench`.
 
 | 100k rows x 20 cols     | turbosheet                               | ExcelJS 4.4.0           |
 | ----------------------- | ------------------------------------- | ----------------------- |
 | write, in memory        | 2.2 s `writeXlsx` (balanced)          | 7.6 s `writeBuffer`     |
 | write, in memory, fast  | 1.4 s `writeXlsx` (`max-speed`)       |                         |
 | write, streaming        | 1.0-1.5 s `xlsxStream` / `createXlsxWriter` | 3.5 s `WorkbookWriter` |
-| read into a workbook    | 1.3 s `readXlsx`                      | 3.5 s `xlsx.load`       |
-| read, streaming rows    | 1.3 s `xlsxRows`                      | 1.8 s `WorkbookReader`  |
+| read into a workbook    | 1.2 s `readXlsx`                      | 3.4-4.7 s `xlsx.load`   |
+| read, streaming rows    | 1.2 s `xlsxRows`                      | 1.8-3.7 s `WorkbookReader` |
 | peak JS heap, in-memory write | ~145 MB (cells are partly off-heap) | 2.1 GB              |
-| peak JS heap, streaming write | 30-80 MB                        | 42-92 MB                |
+| peak JS heap, streaming write | 30-80 MB                        | 39-94 MB                |
 
 ## Install
 
@@ -30,7 +32,7 @@ Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple
 npm install turbosheet     # or pnpm add / yarn add / bun add
 ```
 
-ESM and CommonJS builds, TypeScript types included. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
+ESM and CommonJS builds, TypeScript types included. Releases from 0.2.0 on are published from CI with signed npm provenance. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
 
 ## Quick start
 
@@ -172,6 +174,8 @@ addConditionalFormatting(ws, 'B2:B3', [
 - [docs/features.md](./docs/features.md): one section per feature
 - [docs/migrating-from-exceljs.md](./docs/migrating-from-exceljs.md): ExcelJS to turbosheet
 - [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
+- [docs/benchmarks.md](./docs/benchmarks.md): benchmark methodology and results
+- [CONTRIBUTING.md](./CONTRIBUTING.md): development setup and PR flow
 - [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
 
 ## Entry points
