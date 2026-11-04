@@ -51,7 +51,7 @@ Styles are values: assign a new object to change one, do not mutate `getStyle()`
 ## Column auto-fit
 
 ```ts
-import { autoFitColumns, estimateColumnWidths } from 'xlsxkit'; // also from 'xlsxkit/lite'
+import { autoFitColumns, estimateColumnWidths } from 'turbosheet'; // also from 'turbosheet/lite'
 
 const widths = autoFitColumns(ws);                       // sets ws column widths, returns them (0-based index)
 autoFitColumns(ws, { columns: ['A', 'C'], max: 60, includeHeader: false, rows: { from: 2 }, sample: 5000 });

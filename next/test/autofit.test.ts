@@ -154,8 +154,8 @@ describe('autoFitColumns: displayed values', () => {
     near(fitCol([{ formula: 'A1&"x"', result: 'hello world' }]), fitCol(['hello world']), 0.001);
     expect(fitCol([{ formula: 'NOW()' }])).toBeUndefined(); // no cached result -> nothing measured
     near(
-      fitCol([{ text: 'xlsxkit', hyperlink: 'https://example.com/very/long' }]),
-      fitCol(['xlsxkit']),
+      fitCol([{ text: 'turbosheet', hyperlink: 'https://example.com/very/long' }]),
+      fitCol(['turbosheet']),
       0.001,
     );
   });

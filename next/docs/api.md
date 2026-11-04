@@ -203,7 +203,7 @@ interface AutoFitOptions { columns?: (number | string)[]; min?: number /*0*/; ma
 interface EstimateWidthOptions { min?; max?; padding?; includeHeader?; headerBold?: boolean; numFmts?: (string | undefined)[]; font?: Font; sample?: number }
 ```
 
-Pure model helpers exported from `xlsxkit` and `xlsxkit/lite`; not part of any writer, so unused they cost nothing. Model and limits: [features.md](./features.md#column-auto-fit).
+Pure model helpers exported from `turbosheet` and `turbosheet/lite`; not part of any writer, so unused they cost nothing. Model and limits: [features.md](./features.md#column-auto-fit).
 
 ### Defined names
 
