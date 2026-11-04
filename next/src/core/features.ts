@@ -7,6 +7,7 @@
 // Adding a feature field: one `import type` line and one documented optional field.
 
 import type { Note } from '../xlsx/features/comments.js';
+import type { DataValidation } from '../xlsx/features/data-validation.js';
 import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
@@ -23,6 +24,8 @@ export interface WorksheetFeatureFields {
   images?: ImagePlacement[] | undefined;
   /** Sheet background picture: an id of workbook.images (features/images). */
   backgroundImage?: number | undefined;
+  /** Data validations (features/data-validation; see addDataValidation). */
+  dataValidations?: DataValidation[] | undefined;
   /** Sheet protection; undefined = unprotected (features/sheet-protection). */
   protection?: SheetProtection | undefined;
   /** Tables / ListObjects (features/tables); use `addTable` to create one with its cells. */

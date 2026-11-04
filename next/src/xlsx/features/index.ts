@@ -4,6 +4,13 @@
 
 export { addNote, type Note } from './comments.js';
 export {
+  addDataValidation,
+  type DataValidation,
+  type DataValidationFormula,
+  type DataValidationOperator,
+  type DataValidationType,
+} from './data-validation.js';
+export {
   addDefinedName,
   type DefinedNameOptions,
   getDefinedName,
