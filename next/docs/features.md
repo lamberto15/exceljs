@@ -210,6 +210,19 @@ const out = writeXlsx(wb);                  // charts and pivots are still there
 - Parts reachable only from removed or renamed sheets are dropped. Delete `wb.preserved` / `ws.preserved` to drop content explicitly.
 - `createXlsxWriter` starts from a new private workbook and never carries preserved content.
 
+What is kept next to the model, and what happens when you edit nearby:
+
+| Kept | When you edit |
+| --- | --- |
+| AutoFilter criteria (`filterColumn`: values, custom, top 10, dynamic, color, icon filters) and its `sortState`; sheet-level `sortState` | `ws.autoFilter` is the range. Changing the range keeps the filter columns only when it still starts in the same column and covers their position; the autoFilter's sort state is dropped. Removing `ws.autoFilter` removes the criteria. |
+| Named cell styles (`cellStyleXfs` / `cellStyles`: "Heading 1", "Good", custom styles) and each cell format's link to its style | Styles you set get no named style. Reusing a style object read from a cell (`ws.setStyle(ref, ws.getStyle(other))`) keeps the link. |
+| `sheetFormatPr` (`defaultColWidth`, `baseColWidth`, non-default `defaultRowHeight`, `customHeight`, `zeroHeight`, `thickTop`/`thickBottom`) | Outline levels are recomputed from rows and columns. Extension attributes (`x14ac:dyDescent`) are dropped. |
+| Form controls (checkboxes, buttons: `<controls>`, ctrlProps parts, legacy VML shapes), also on sheets with notes | Notes are regenerated from `ws.comments` and the control shapes are merged into the same VML, keeping their shape ids. Shapes that link other parts (pictures in VML) cannot be merged on a sheet with notes, so they are dropped there. |
+| Chartsheet / dialogsheet tab positions | A kept sheet stays right after the worksheet it followed. If that worksheet was removed, it goes right before the worksheet it preceded, otherwise last. New worksheets go last. |
+| Query tables (table part → queryTable part, `tableType="queryTable"`) | While the table in `ws.tables` is unchanged, its original part is written back. A modified table is regenerated from the model without the query link. |
+
+Dropped on purpose: `calcChain.xml` (Excel rebuilds it), kept content that references a sheet renamed or removed since reading, and kept content of a feature whose model you replace (for example, setting `ws.images` on a sheet read without the images reader).
+
 ## Streaming with features
 
 The streaming writer exposes metadata-only sheets, so sheet-level features work as long as they do not need the cells:
