@@ -4,6 +4,27 @@
 
 export { addNote, type Note } from './comments.js';
 export {
+  addConditionalFormatting,
+  type CfAboveAverageRule,
+  type CfBlankErrorRule,
+  type CfCellIsRule,
+  type CfColorScaleRule,
+  type CfDataBarRule,
+  type CfExpressionRule,
+  type CfIconSetName,
+  type CfIconSetRule,
+  type CfOperator,
+  type CfRule,
+  type CfTextRule,
+  type CfTimePeriod,
+  type CfTimePeriodRule,
+  type CfTop10Rule,
+  type CfValuesRule,
+  type Cfvo,
+  type CfvoType,
+  type ConditionalFormatting,
+} from './conditional-formatting.js';
+export {
   addDataValidation,
   type DataValidation,
   type DataValidationFormula,
