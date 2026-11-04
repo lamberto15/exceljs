@@ -32,6 +32,7 @@ import {
   Worksheet,
   type WorksheetView,
 } from '../../core/worksheet.js';
+import { nativeCompressor } from '../../zip/index.js';
 import { activeTabOf, bookParts, CHUNK, sheetEntry } from './book.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts } from './package.js';
@@ -298,7 +299,11 @@ export class XlsxWriter {
       );
     }
     // native CompressionStream when available: deflate runs off the main thread
-    this._zip = new ZipOut((chunk, final) => this._out(chunk, final), this._o.compression, true);
+    this._zip = new ZipOut(
+      (chunk, final) => this._out(chunk, final),
+      this._o.compression,
+      nativeCompressor(),
+    );
   }
 
   /** Add a worksheet. Commits the currently open sheet (sheets are written sequentially). */

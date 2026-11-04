@@ -57,7 +57,8 @@ export function inflateStream(onData): ByteStream;          // module outside sr
 export class ZipLimitError extends Error {}
 ```
 Limit accounting lives in `src/zip/limits.ts` (`Budget`) and is shared by every unzip path.
-Async writers (`xlsxStream`, `createXlsxWriter`) pass `{ native: true }` to `ZipStreamWriter`: entries
+Async writers (`xlsxStream`, `createXlsxWriter`) pass `{ compressor: nativeCompressor() }` to
+`ZipStreamWriter` (kept out of the sync path so write-only bundles don't ship it): entries
 are deflated by `CompressionStream('deflate-raw')` when the runtime has it (off the main thread in
 Node), inside fflate's Zip container (data descriptors). Level 0 still stores; sync `writeXlsx` always
 uses fflate. Async mode exposes `ready(maxBytes)` (backpressure) and `idle()` (all output emitted).

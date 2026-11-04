@@ -7,6 +7,7 @@
 // Native deflate has no level knob; callers use this only for level > 0.
 
 import { ZipPassThrough } from 'fflate';
+import type { AsyncCompressor } from './zip.js';
 
 let available: boolean | undefined;
 
@@ -116,4 +117,21 @@ export class NativeDeflateFile extends ZipPassThrough {
     }
     if (final) this.w.close().catch((e) => q.fail(e));
   }
+}
+
+/**
+ * An async compressor backed by `CompressionStream('deflate-raw')`, or undefined when the
+ * runtime lacks it (callers then fall back to fflate). One per zip.
+ */
+export function nativeCompressor(): AsyncCompressor | undefined {
+  if (!nativeDeflateAvailable()) return undefined;
+  const q = new Inflight();
+  return {
+    file: (path) => new NativeDeflateFile(path, q),
+    below: (max) => q.below(max),
+    idle: () => q.idle(),
+    get error() {
+      return q.error;
+    },
+  };
 }

@@ -1,6 +1,6 @@
 // Thin adapter over ZipStreamWriter: sequential parts, string chunks encoded with TextEncoder.
 
-import { ZipStreamWriter } from '../../zip/index.js';
+import { type AsyncCompressor, ZipStreamWriter } from '../../zip/index.js';
 
 type ZipFile = { push(data: Uint8Array | string, final?: boolean): void };
 
@@ -15,11 +15,15 @@ export class ZipOut {
   private curPath = '';
 
   /**
-   * `native`: deflate with the platform's CompressionStream when available (async paths only;
-   * output then arrives asynchronously — use `ready()` for backpressure and await `idle()`).
+   * `compressor`: async entry compressor (async writers pass `nativeCompressor()`); output then
+   * arrives asynchronously — use `ready()` for backpressure and await `idle()`.
    */
-  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number, native = false) {
-    this.zip = new ZipStreamWriter(onData, level, { native });
+  constructor(
+    onData: (chunk: Uint8Array, final: boolean) => void,
+    level: number,
+    compressor?: AsyncCompressor,
+  ) {
+    this.zip = new ZipStreamWriter(onData, level, { compressor });
   }
 
   /** Wait (async mode only) until little enough input is queued for compression. */

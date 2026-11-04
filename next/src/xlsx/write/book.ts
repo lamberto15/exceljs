@@ -6,6 +6,7 @@ import { SharedStrings } from '../../core/sharedstrings.js';
 import type { WriteOptions } from '../../core/types.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import { nativeCompressor } from '../../zip/index.js';
 import { WRITERS } from '../features/registry.js';
 import type { BookWriteCtx } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
@@ -188,7 +189,11 @@ export function xlsxStream(wb: Workbook, opts?: WriteOptions): ReadableStream<Ui
       gen = pieces(wb, o);
       // Native CompressionStream (when available) deflates off the main thread; chunks are
       // enqueued as the compressor produces them.
-      zip = new ZipOut((c) => c.length > 0 && controller.enqueue(c), o.compression, true);
+      zip = new ZipOut(
+        (c) => c.length > 0 && controller.enqueue(c),
+        o.compression,
+        nativeCompressor(),
+      );
     },
     async pull(controller) {
       for (;;) {

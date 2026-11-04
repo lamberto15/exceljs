@@ -11,7 +11,6 @@ import {
 } from 'fflate';
 import type { Limits } from '../core/types.js';
 import { Budget, ZipLimitError, ZipPathError } from './limits.js';
-import { Inflight, NativeDeflateFile, nativeDeflateAvailable } from './native.js';
 
 export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 
@@ -42,19 +41,30 @@ export function zipSync(entries: ZipEntryIn[], level: number): Uint8Array {
   return fflateZipSync(z);
 }
 
+/** Entry compressor producing output asynchronously (see `nativeCompressor()`). */
+export interface AsyncCompressor {
+  /** A zip entry for fflate's Zip (deflate, data descriptor). */
+  file(path: string): ZipInputFile & { push(chunk: Uint8Array, final?: boolean): void };
+  /** Resolves once at most `maxBytes` of input await compression; undefined = no wait. */
+  below(maxBytes: number): Promise<void> | undefined;
+  /** Resolves when every entry so far has been compressed (rejects on the first error). */
+  idle(): Promise<void>;
+  readonly error: unknown;
+}
+
 export interface ZipStreamOptions {
   /**
-   * Deflate entries with the platform's native `CompressionStream('deflate-raw')` when
-   * available (output then arrives asynchronously: await `idle()` before relying on it).
-   * Native deflate has no level setting; level-0 entries are still stored.
+   * Compress level > 0 entries with this async compressor (e.g. `nativeCompressor()`); output
+   * then arrives asynchronously — await `idle()` before relying on it. Level-0 entries are
+   * still stored synchronously.
    */
-  native?: boolean;
+  compressor?: AsyncCompressor | undefined;
 }
 
 export class ZipStreamWriter {
   readonly #zip: Zip;
   readonly #level: number;
-  readonly #native: Inflight | undefined;
+  readonly #native: AsyncCompressor | undefined;
 
   constructor(
     onData: (chunk: Uint8Array, final: boolean) => void,
@@ -62,8 +72,7 @@ export class ZipStreamWriter {
     opts?: ZipStreamOptions,
   ) {
     this.#level = level;
-    const native = opts?.native && nativeDeflateAvailable() ? new Inflight() : undefined;
-    this.#native = native;
+    this.#native = opts?.compressor;
     this.#zip = new Zip((err, chunk, final) => {
       if (err) throw err;
       onData(chunk, final);
@@ -84,7 +93,7 @@ export class ZipStreamWriter {
       lvl === 0
         ? new ZipPassThrough(path)
         : n
-          ? new NativeDeflateFile(path, n)
+          ? n.file(path)
           : new ZipDeflate(path, { level: lvl as Level });
     this.#zip.add(f);
     return {
