@@ -9,7 +9,7 @@ Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, column
 ## Workbook
 
 ```ts
-new Workbook(options?: { date1904?: boolean })
+new Workbook(options?: { date1904?: boolean; defaultFont?: Font })
 ```
 
 | Member | Description |
@@ -206,7 +206,8 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[])` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
 | Data validation | `ws.dataValidations` | `addDataValidation(ws, dv)` | `dataValidationWriter`, `dataValidationReader` |
-| Print setup | `ws.pageSetup`, `ws.headerFooter` | (plain objects) | `printSetupWriter`, `printSetupReader` |
+| Print setup | `ws.pageSetup`, `ws.headerFooter`, `ws.rowBreaks`, `ws.colBreaks` | (plain objects) | `printSetupWriter`, `printSetupReader` |
+| Ignored errors | `ws.ignoredErrors` | (plain objects) | `ignoredErrorsWriter`, `ignoredErrorsReader` |
 | Sheet protection | `ws.protection` | `hashPassword(password, saltB64, spinCount)` | `sheetProtectionWriter`, `sheetProtectionReader` |
 | Default theme | | | `themeWriter` (write only) |
 
@@ -260,7 +261,7 @@ addTableRows(ws, name, rows)                      // append above the totals row
 
 ### Print setup and protection
 
-`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
+`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. Page breaks: `ws.rowBreaks` / `ws.colBreaks` (manual breaks after these 1-based rows / columns). `ws.ignoredErrors: IgnoredError[]` (`sqref` + `evalError`, `twoDigitTextYear`, `numberStoredAsText`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`; feature `ignoredErrorsWriter` / `ignoredErrorsReader`). `setSheetStyle(ws, style)` formats the whole sheet (all cells, rows, columns). `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
 
 ### Custom features
 

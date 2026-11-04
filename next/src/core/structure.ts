@@ -13,7 +13,7 @@
 //   deleted or reduced to one cell), conditional formatting and data validation ranges and their
 //   formulas, tables (rows inserted inside a table extend it and get its calculated columns;
 //   columns inserted inside one become new table columns), notes, picture and chart anchors,
-//   `autoFilter`, formula-cell hyperlinks kept from a read file.
+//   `autoFilter`, page breaks, ignored-error ranges, formula-cell hyperlinks kept from a read file.
 // - Not adjusted: content kept raw from a read file (`ws.preserved`: charts read from a file,
 //   pivot tables, sparklines, threaded comments, ...), hyperlink targets ("#Sheet!A1"),
 //   `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external references.
@@ -482,6 +482,23 @@ function edit(ws: Worksheet, rows: boolean, at: number, n: number): void {
       if (typeof dv.formula1 === 'string') dv.formula1 = shiftAnchored(e, dv.formula1, old, e.name);
       if (typeof dv.formula2 === 'string') dv.formula2 = shiftAnchored(e, dv.formula2, old, e.name);
       return dv.sqref !== '';
+    });
+  }
+  const brk = rows ? 'rowBreaks' : 'colBreaks';
+  const breaks = ws[brk];
+  if (breaks) {
+    // a break after row / column N moves with N and goes when N is deleted
+    const out: number[] = [];
+    for (const b of breaks) {
+      const p = mapPoint(e, b - 1);
+      if (p >= 0) out.push(p + 1);
+    }
+    ws[brk] = out;
+  }
+  if (ws.ignoredErrors) {
+    ws.ignoredErrors = ws.ignoredErrors.filter((x) => {
+      x.sqref = shiftSqref(e, x.sqref);
+      return x.sqref !== '';
     });
   }
   if (ws.comments) {

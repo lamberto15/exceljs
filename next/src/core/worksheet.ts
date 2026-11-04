@@ -60,6 +60,9 @@
  *   not restyle existing cells; the writer emits row/column default styles as-is.
  * - Date cells whose resulting style has the General number format get 'yyyy-mm-dd', or
  *   'yyyy-mm-dd hh:mm:ss' when the value has a time part, merged into that style.
+ * - Text containing "\n" gets `alignment.wrapText` merged into its style, as when typing
+ *   Alt+Enter in Excel (line breaks only show when wrapping). Hyperlinks stored without any style get Excel's
+ *   hyperlink look (underlined, theme hyperlink color).
  */
 
 import {
@@ -338,6 +341,8 @@ function classify(v: NonNullable<CellValue>, date1904: boolean): void {
   throw new TypeError(`Unsupported cell value: ${String(v)}`);
 }
 
+/** Excel's Hyperlink cell style look: underlined, theme hyperlink color. */
+const LINK_STYLE: Style = { font: { underline: 'single', color: { theme: 10 } } };
 const DATE_FMT = 'yyyy-mm-dd';
 const DATETIME_FMT = 'yyyy-mm-dd hh:mm:ss';
 
@@ -954,11 +959,18 @@ export class Worksheet {
     return row;
   }
 
-  /** Store the classified value (K/N/O) into slot i with style xf. */
+  /**
+   * Store the classified value (K/N/O) into slot i with style xf. Like Excel: dates get a date
+   * format, text with line breaks gets wrapText, unstyled hyperlinks the hyperlink look.
+   */
   private _store(row: RowData, i: number, xf: number): void {
     row.kind[i] = K;
     row.num[i] = N;
-    row.style[i] = K === CellKind.Date ? this._dateXf(xf, N) : xf;
+    if (K === CellKind.Date) xf = this._dateXf(xf, N);
+    else if (K === CellKind.String) {
+      if ((O as string).indexOf('\n') >= 0) xf = this._styles.withWrap(xf);
+    } else if (K === CellKind.Hyperlink && xf === 0) xf = this._styles.intern(LINK_STYLE);
+    row.style[i] = xf;
     if (O !== undefined) {
       if (row.obj === undefined) row.obj = [];
       row.obj[i] = O;
