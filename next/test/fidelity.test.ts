@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import ExcelJS from 'exceljs';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { readXlsx, Workbook, writeXlsx } from '../src/index.js';
+import { addNote, readXlsx, Workbook, writeXlsx } from '../src/index.js';
 
 const DATA = new URL('../../spec/integration/data/', import.meta.url);
 const fixture = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(name, DATA)));
@@ -345,5 +345,130 @@ describe('fidelity: named cell styles (cellStyleXfs / cellStyles)', () => {
     expect(st).toContain(
       '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>',
     );
+  });
+});
+
+// ---------------------------------------------------------------- form controls + notes
+
+describe('fidelity: form controls on a sheet with notes (legacy VML merge)', () => {
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
+  const CHECKBOX =
+    '<v:shapetype id="_x0000_t201" coordsize="21600,21600" o:spt="201" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path shadowok="f" o:extrusionok="f" strokeok="f" fillok="f" o:connecttype="rect"/><o:lock v:ext="edit" shapetype="t"/></v:shapetype>' +
+    '<v:shape id="_x0000_s1026" type="#_x0000_t201" style="position:absolute;margin-left:200pt;margin-top:20pt;width:80pt;height:18pt;z-index:2" filled="f" stroked="f" o:insetmode="auto"><v:textbox style="mso-direction-alt:auto" o:singleclick="f"><div style="text-align:left"><font face="Segoe UI" size="160" color="auto">Done</font></div></v:textbox><x:ClientData ObjectType="Checkbox"><x:SizeWithCells/><x:Anchor>4, 0, 1, 0, 5, 40, 2, 4</x:Anchor><x:AutoFill>False</x:AutoFill><x:AutoLine>False</x:AutoLine><x:TextVAlign>Center</x:TextVAlign><x:Checked>1</x:Checked><x:NoThreeD/></x:ClientData></v:shape>';
+  const CONTROLS = `<mc:AlternateContent xmlns:mc="${MC}"><mc:Choice Requires="x14"><controls><mc:AlternateContent xmlns:mc="${MC}"><mc:Choice Requires="x14"><control shapeId="1026" r:id="rIdCtl" name="Check Box 2"><controlPr defaultSize="0" autoFill="0" autoLine="0" autoPict="0"><anchor moveWithCells="1"><from><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></from><to><xdr:col>5</xdr:col><xdr:colOff>40</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>4</xdr:rowOff></to></anchor></controlPr></control></mc:Choice></mc:AlternateContent></controls></mc:Choice></mc:AlternateContent>`;
+  const CTRL_PROP =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<formControlPr xmlns="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" objectType="CheckBox" checked="Checked" lockText="1" noThreeD="1"/>';
+
+  /** Data has a note (A1) + a checkbox in the same VML; Other has a note. */
+  function src(): Uint8Array {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.addRow(['a', 'b']);
+    addNote(ws, 'A1', 'first note');
+    addNote(wb.addWorksheet('Other'), 'B2', 'other note');
+    const b = writeXlsx(wb);
+    const z = unzipSync(b);
+    const relsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
+    const vmlRel = /Target="\.\.\/drawings\/(vmlDrawing\d+\.vml)"/.exec(text(z, relsPath))![1]!;
+    const vmlPath = `xl/drawings/${vmlRel}`;
+    return patch(b, {
+      [vmlPath]: text(z, vmlPath).replace('</xml>', `${CHECKBOX}</xml>`),
+      [SHEET1]: text(z, SHEET1)
+        .replace(
+          '<worksheet ',
+          '<worksheet xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" ',
+        )
+        .replace('</worksheet>', `${CONTROLS}</worksheet>`),
+      [relsPath]: text(z, relsPath).replace(
+        '</Relationships>',
+        `<Relationship Id="rIdCtl" Type="${REL}/ctrlProp" Target="../ctrlProps/ctrlProp1.xml"/></Relationships>`,
+      ),
+      'xl/ctrlProps/ctrlProp1.xml': CTRL_PROP,
+      '[Content_Types].xml': text(z, '[Content_Types].xml').replace(
+        '</Types>',
+        '<Override PartName="/xl/ctrlProps/ctrlProp1.xml" ContentType="application/vnd.ms-excel.controlproperties+xml"/></Types>',
+      ),
+    });
+  }
+
+  /** The VML part linked from a sheet. */
+  function vmlOf(z: Zip, sheet: number): string {
+    const rels = text(z, `xl/worksheets/_rels/sheet${sheet}.xml.rels`);
+    return text(z, `xl/drawings/${/Target="\.\.\/drawings\/([^"]+\.vml)"/.exec(rels)![1]}`);
+  }
+
+  const shapeIds = (vml: string): string[] =>
+    [...vml.matchAll(/<v:shape id="_x0000_s(\d+)"/g)].map((m) => m[1]!);
+
+  it('notes are regenerated and the checkbox shape kept in the same VML; controls stay linked', async () => {
+    const wb = readXlsx(src());
+    expect(wb.worksheets[0]!.comments!.length).toBe(1);
+    const out = writeXlsx(wb);
+    const z = unzipSync(out);
+    checkPackage(z);
+    const vml = vmlOf(z, 1);
+    expect(vml).toContain('ObjectType="Note"');
+    expect(vml).toContain('ObjectType="Checkbox"');
+    expect(vml).toContain('<x:Checked>1</x:Checked>');
+    expect(vml).toContain('id="_x0000_t201"');
+    expect(vml.match(/id="_x0000_t202"/g)!.length).toBe(1);
+    // the checkbox keeps its id (the control refers to it); notes use another block
+    const ids = shapeIds(vml);
+    expect(ids).toContain('1026');
+    expect(new Set(ids).size).toBe(ids.length);
+    const blocks = /<o:idmap v:ext="edit" data="([\d,]+)"/.exec(vml)![1]!.split(',');
+    expect(blocks).toContain('1');
+    for (const id of ids) expect(blocks).toContain(String(Math.floor(+id / 1024)));
+    // no other VML in the package uses the kept block
+    const other = vmlOf(z, 2);
+    expect(/data="([\d,]+)"/.exec(other)![1]!.split(',')).not.toContain('1');
+    const s = text(z, SHEET1);
+    expect(s.match(/<legacyDrawing /g)!.length).toBe(1);
+    expect(s).toContain('<control shapeId="1026" r:id="rId');
+    expect(s).toMatch(/<mc:AlternateContent xmlns:mc="[^"]+"[^>]*><mc:Choice Requires="x14"/);
+    expect(s.indexOf('<legacyDrawing')).toBeLessThan(s.indexOf('<mc:AlternateContent'));
+    expect(text(z, 'xl/ctrlProps/ctrlProp1.xml')).toBe(CTRL_PROP);
+    // stable on a second trip
+    const z2 = unzipSync(trip(out));
+    checkPackage(z2);
+    expect(shapeIds(vmlOf(z2, 1)).sort()).toEqual(ids.sort());
+    expect(text(z2, SHEET1)).toContain('<control shapeId="1026"');
+    const x = await exceljsLoads(out);
+    expect(x.worksheets[0]!.getCell('A1').note).toBeDefined();
+  });
+
+  it('user edits nearby: notes added / removed keep the checkbox', () => {
+    const wb = readXlsx(src());
+    const ws = wb.worksheets[0]!;
+    addNote(ws, 'C3', 'new');
+    let vml = vmlOf(unzipSync(writeXlsx(wb)), 1);
+    expect(vml.match(/ObjectType="Note"/g)!.length).toBe(2);
+    expect(vml).toContain('ObjectType="Checkbox"');
+    ws.comments = [];
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    vml = vmlOf(z, 1);
+    expect(vml).not.toContain('ObjectType="Note"');
+    expect(vml).toContain('_x0000_s1026');
+    expect(text(z, 'xl/worksheets/_rels/sheet1.xml.rels')).not.toContain('/comments"');
+  });
+
+  it('renaming the sheet drops the controls and their shapes together', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.name = 'Renamed';
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    expect(vmlOf(z, 1)).not.toContain('Checkbox');
+    expect(text(z, SHEET1)).not.toContain('<control ');
+  });
+
+  it('controls on a sheet without notes: VML and controls kept as they are', () => {
+    const b = edit(src(), 'xl/worksheets/sheet1.xml', (s) => s);
+    const wb = readXlsx(b, { features: [] });
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    expect(vmlOf(z, 1)).toContain('Checkbox');
+    expect(text(z, SHEET1)).toContain('<control shapeId="1026"');
   });
 });

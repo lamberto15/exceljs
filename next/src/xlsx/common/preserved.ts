@@ -105,6 +105,14 @@ export interface PDrawing {
   readonly maxId: number;
 }
 
+/** Non-note shapes of a legacy VML that also held notes: merged into the regenerated VML. */
+export interface PVml {
+  /** Shape types + shapes, raw (VML namespaces v / o / x as on the regenerated root). */
+  readonly xml: string;
+  /** `o:idmap` shape-id blocks the shapes use (kept: form controls refer to shape ids). */
+  readonly blocks: readonly number[];
+}
+
 export interface PSheet {
   /** Sheet name when read: renaming the sheet drops its linked preserved content. */
   readonly name: string;
@@ -118,6 +126,7 @@ export interface PSheet {
   /** Raw `<sheetPr>` attributes (codeName, filterMode, ...), leading space. */
   readonly prAttrs: string;
   readonly drawing: PDrawing | undefined;
+  readonly vml?: PVml | undefined;
   /** Writer hooks. */
   readonly w: PresWrite;
 }
@@ -188,6 +197,12 @@ export function fillRels(xml: string, rels: readonly PRel[], from: string, add: 
     ids[+k] ??= addPRel(rels[+k]!, from, add);
     return ids[+k]!;
   });
+}
+
+/** Kept non-note VML shapes of a sheet, unless the sheet was renamed since it was read. */
+export function presVml(ws: Worksheet): PVml | undefined {
+  const p = ws.preserved;
+  return p && p.name === ws.name ? p.vml : undefined;
 }
 
 /** Kept drawing anchors of a sheet, unless the sheet was renamed since it was read. */
