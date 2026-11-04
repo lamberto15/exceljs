@@ -2,6 +2,8 @@
 // Formula parser + evaluation engine (turbosheet/formula).
 
 import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CellKind, encodeAddr, type Formula, Workbook } from '../src/core/index.js';
 import {
@@ -19,7 +21,8 @@ import { addDefinedName } from '../src/xlsx/features/index.js';
 import { readXlsx } from '../src/xlsx/read/index.js';
 import { writeXlsx } from '../src/xlsx/write/index.js';
 
-const SPEC = new URL('../../spec/integration/data/', import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: the latter yields '/D:/...' on Windows.
+const SPEC = fileURLToPath(new URL('../../spec/integration/data/', import.meta.url));
 
 function book(): Workbook {
   const wb = new Workbook();
@@ -580,7 +583,7 @@ describe('evaluate', () => {
     for (const f of readdirSync(SPEC).filter((n) => n.endsWith('.xlsx'))) {
       let wb: Workbook;
       try {
-        wb = readXlsx(new Uint8Array(readFileSync(SPEC + f)));
+        wb = readXlsx(new Uint8Array(readFileSync(join(SPEC, f))));
       } catch {
         continue; // invalid fixtures
       }
