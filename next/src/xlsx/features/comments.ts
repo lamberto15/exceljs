@@ -15,15 +15,16 @@
 // modelled: Excel also writes a legacy note for each thread ("[Threaded comment] ...", author
 // "tc={id}"), which is what is read here; readXlsx keeps the threaded part and the persons part
 // (round-trip preservation) and writes them back while the sheet still has notes.
-// The VML part is regenerated from the notes; a VML part that also holds other shapes (form
-// controls) is kept as is instead, unless the sheet has notes to write (ours win).
+// The VML part is regenerated from the notes. Other shapes of a read VML (form controls) are
+// kept: merged into the regenerated VML when the sheet had notes (ws.preserved.vml, see
+// read/preserve.ts), else the whole part is kept with its <legacyDrawing>.
 
 import { decodeAddr, decodeCol, encodeAddr } from '../../core/address.js';
 import type { RichText } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, parseXml } from '../../xml/index.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot, type SheetWriteCtx } from './types.js';
-import { escapeText, num, runsXml, StringItemBuilder, tElem } from './util.js';
+import { escapeText, num, presVml, runsXml, StringItemBuilder, tElem } from './util.js';
 
 export interface Note {
   /** Cell address, "B2". */
@@ -121,10 +122,12 @@ function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): stri
     const d = rows[i];
     return d?.hidden ? 0 : d?.height ? Math.round((d.height * 96) / 72) : 20;
   };
-  // shape ids come in blocks of 1024 per <o:idmap> entry, unique within the package
+  // shape ids come in blocks of 1024 per <o:idmap> entry, unique within the package; shapes
+  // kept from the read file (form controls) keep theirs (controls refer to them)
   const blocks: number[] = [];
   for (let k = 0; k * 1023 < notes.length; k++) blocks.push(c.nextIndex('vmlShapeBlock'));
-  let s = `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="${blocks.join(',')}"/></o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>`;
+  const kept = presVml(c.ws);
+  let s = `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="${[...blocks, ...(kept?.blocks ?? [])].join(',')}"/></o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>${kept?.xml ?? ''}`;
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i]!;
     const { row, col } = decodeAddr(cells[i]!);
@@ -145,18 +148,21 @@ function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): stri
 }
 
 function emit(c: SheetWriteCtx): string {
-  const notes = c.ws.comments;
-  if (!notes || notes.length === 0) return '';
+  const notes = c.ws.comments ?? [];
+  // without notes, a VML is still needed for shapes kept next to the read file's notes
+  if (notes.length === 0 && !presVml(c.ws)) return '';
   const cells = notes.map((n) => {
     const a = decodeAddr(n.ref);
     return encodeAddr(a.row, a.col);
   });
-  const n = c.nextIndex('comments');
   const v = c.nextIndex('vmlDrawing');
-  c.addPart(`xl/comments${n}.xml`, commentsXml(notes, cells), CT_COMMENTS);
+  if (notes.length > 0) {
+    const n = c.nextIndex('comments');
+    c.addPart(`xl/comments${n}.xml`, commentsXml(notes, cells), CT_COMMENTS);
+    c.addRel('comments', `../comments${n}.xml`);
+  }
   c.addPart(`xl/drawings/vmlDrawing${v}.vml`, vmlXml(c, notes, cells));
   c.addDefault('vml', CT_VML);
-  c.addRel('comments', `../comments${n}.xml`);
   return `<legacyDrawing r:id="${c.addRel('vmlDrawing', `../drawings/vmlDrawing${v}.vml`)}"/>`;
 }
 

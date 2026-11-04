@@ -216,7 +216,12 @@ that. What that means for a feature:
   `ws.comments` is unset, so a lite read keeps the notes).
 - **Mixed parts** are decided in `read/preserve.ts`: drawings keep their non-picture anchors
   (`ws.preserved.drawing`, merged by the shared `drawingEmitter` of `./drawing.ts`, which any
-  feature contributing drawing anchors enables); a legacy VML with only note shapes is dropped (comments regenerate it).
+  feature contributing drawing anchors enables); a legacy VML with only note shapes is dropped
+  (comments regenerate it); its other shapes (form controls) on a sheet with notes are kept in
+  `ws.preserved.vml` and merged by the comments writer (`presVml`); an unchanged table whose part
+  has relationships (query table) is written from its kept part by the tables writer
+  (`presTable`). Kept elements next to a model field: `<autoFilter>` criteria and
+  `<sheetFormatPr>` attributes are merged with the built-in emitters' output in `write/preserve.ts`.
 - Part names: kept parts keep their path unless the writer generates it; `nextIndex(family)`
   skips numbers taken by kept parts (by basename: `drawing1` reserves drawing 1).
 - Invalidation: kept content is not updated when cells change (Excel recalculates charts /

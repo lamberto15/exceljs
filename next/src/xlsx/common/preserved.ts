@@ -18,6 +18,7 @@
 
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import type { Table } from '../features/tables.js';
 import type { PackageParts } from '../write/package.js';
 
 /** Writer-side preservation (../write/preserve.ts `presWrite`), attached by the reader. */
@@ -50,7 +51,10 @@ export interface PresWrite {
     ids: readonly number[],
   ): {
     readonly frags: [number, string, number][];
-    readonly sheets: string;
+    /** Kept non-worksheet `<sheet>`s by position (see BookInfo.extraSheets). */
+    readonly sheets: string[];
+    /** Worksheet index → position in `<sheets>`. */
+    readonly at: number[] | undefined;
     readonly root: PRel[];
   };
 }
@@ -105,6 +109,28 @@ export interface PDrawing {
   readonly maxId: number;
 }
 
+/** Non-note shapes of a legacy VML that also held notes: merged into the regenerated VML. */
+export interface PVml {
+  /** Shape types + shapes, raw (VML namespaces v / o / x as on the regenerated root). */
+  readonly xml: string;
+  /** `o:idmap` shape-id blocks the shapes use (kept: form controls refer to shape ids). */
+  readonly blocks: readonly number[];
+}
+
+/**
+ * A modelled table whose part has relationships of its own (a query table): while the model
+ * table is unchanged, its original part is written instead of a regenerated one.
+ */
+export interface PTable {
+  readonly table: Table;
+  /** JSON of `table` when read. */
+  readonly key: string;
+  /** Sheet → table part relationship. */
+  readonly rel: PRel;
+  /** The part's table `id` (kept unique against generated tables). */
+  readonly id: number;
+}
+
 export interface PSheet {
   /** Sheet name when read: renaming the sheet drops its linked preserved content. */
   readonly name: string;
@@ -118,16 +144,24 @@ export interface PSheet {
   /** Raw `<sheetPr>` attributes (codeName, filterMode, ...), leading space. */
   readonly prAttrs: string;
   readonly drawing: PDrawing | undefined;
+  readonly vml?: PVml | undefined;
+  readonly tables?: readonly PTable[] | undefined;
   /** Writer hooks. */
   readonly w: PresWrite;
 }
 
-/** A non-worksheet sheet (chartsheet, dialogsheet, macrosheet) kept in `<sheets>`. */
+/**
+ * A non-worksheet sheet (chartsheet, dialogsheet, macrosheet) kept in `<sheets>`. Tab order:
+ * written right after the worksheet it followed in the file (`prev`), or, when that one is gone,
+ * right before the one it preceded (`next`), else last.
+ */
 export interface PForeignSheet {
   readonly name: string;
   readonly sheetId: number;
   readonly state: string;
   readonly rel: PRel;
+  readonly prev: Worksheet | undefined;
+  readonly next: Worksheet | undefined;
 }
 
 export interface PBook {
@@ -146,6 +180,8 @@ export interface PBook {
   /** styles.xml pieces: raw `<tableStyles>` (dxfIds remapped) and `<colors>` + `<extLst>`. */
   readonly tableStyles: string | undefined;
   readonly stylesTail: string;
+  /** Named cell styles: raw `<cellStyleXfs>` (ids remapped) and `<cellStyles>`. */
+  readonly named: readonly [string, string] | undefined;
   /** Part-family numbers taken by preserved content (e.g. "vmlShapeBlock1"). */
   readonly reserve: readonly string[];
   /** Writer hooks. */
@@ -186,6 +222,18 @@ export function fillRels(xml: string, rels: readonly PRel[], from: string, add: 
     ids[+k] ??= addPRel(rels[+k]!, from, add);
     return ids[+k]!;
   });
+}
+
+/** Kept non-note VML shapes of a sheet, unless the sheet was renamed since it was read. */
+export function presVml(ws: Worksheet): PVml | undefined {
+  const p = ws.preserved;
+  return p && p.name === ws.name ? p.vml : undefined;
+}
+
+/** The kept part of a table read from the file, while the model table is unchanged. */
+export function presTable(ws: Worksheet, t: Table): PTable | undefined {
+  const k = ws.preserved?.tables?.find((x) => x.table === t);
+  return k && JSON.stringify(t) === k.key ? k : undefined;
 }
 
 /** Kept drawing anchors of a sheet, unless the sheet was renamed since it was read. */

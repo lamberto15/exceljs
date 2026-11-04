@@ -35,6 +35,11 @@ export interface Xf {
   readonly borderId: number;
   readonly alignment?: Alignment | undefined;
   readonly protection?: Protection | undefined;
+  /**
+   * Named cell style (styles.xml cellStyleXfs index) the xf derives from; set by the reader
+   * when it keeps the file's named styles (round-trip preservation), else 0.
+   */
+  readonly xfId?: number | undefined;
 }
 
 export interface NumFmt {
@@ -301,7 +306,8 @@ export class StyleRegistry {
   internXf(raw: Xf): number {
     const alignment = normAlignment(raw.alignment);
     const protection = normProtection(raw.protection);
-    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}`;
+    const named = raw.xfId;
+    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}${named ? `,${named}` : ''}`;
     const hit = this._xfIdx.get(key);
     if (hit !== undefined) return hit;
     if (
@@ -319,6 +325,7 @@ export class StyleRegistry {
     };
     if (alignment) xf.alignment = alignment;
     if (protection) xf.protection = protection;
+    if (named) xf.xfId = named;
     const idx = this._xfs.length;
     this._xfs.push(xf);
     this._xfIdx.set(key, idx);

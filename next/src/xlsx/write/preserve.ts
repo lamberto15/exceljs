@@ -10,6 +10,7 @@
 // The writer core reaches all of this only through `presWrite`, which readXlsx attaches to the
 // kept data (`wb.preserved.w`, `ws.preserved.w`): write-only bundles do not include this module.
 
+import { type CellRange, decodeRange } from '../../core/address.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { escapeAttr } from '../../xml/index.js';
@@ -24,6 +25,7 @@ import {
   type PPart,
   type PRel,
   type PresWrite,
+  presTable,
   relTarget,
 } from '../common/preserved.js';
 import { SheetSlot } from '../features/types.js';
@@ -41,6 +43,35 @@ const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
   [SheetSlot.tableParts]: (ws) => ws.tables?.length,
   [SheetSlot.pageSetup]: (ws) => ws.pageSetup,
 };
+
+const OUTLINE = / outlineLevel(Row|Col)="\d+"/g;
+
+const FILTER_COL = /<((?:\w+:)?filterColumn)\b[^>]*?\scolId="(\d+)"[^>]*?(?:\/>|>[\s\S]*?<\/\1>)/g;
+const SORT_STATE = /<((?:\w+:)?sortState)\b(?:[^>]*\/>|[\s\S]*?<\/\1>)/;
+
+/**
+ * Kept `<autoFilter>` with its criteria for the model's range `ref`. When the range changed,
+ * filter columns are kept only if the range still starts in the same column and is wide enough
+ * (`colId` is relative to it); the sort state (absolute ranges) is dropped.
+ */
+function filterXml(kept: string, ref: string): string {
+  const old = / ref="([^"]*)"/.exec(kept)?.[1];
+  if (old === ref) return kept;
+  const bare = `<autoFilter ref="${escapeAttr(ref)}"/>`;
+  let a: CellRange;
+  let b: CellRange;
+  try {
+    a = decodeRange(old ?? '');
+    b = decodeRange(ref);
+  } catch {
+    return bare;
+  }
+  if (a.left !== b.left) return bare;
+  return kept
+    .replace(/ ref="[^"]*"/, ` ref="${escapeAttr(ref)}"`)
+    .replace(FILTER_COL, (x, _t, id: string) => (+id <= b.right - b.left ? x : ''))
+    .replace(SORT_STATE, '');
+}
 
 /** First `uri` attribute of a kept `<ext>` element. */
 const EXT_URI = /^<[^>]*?\suri="([^"]*)"/;
@@ -63,6 +94,18 @@ function sheetFrags(
   for (const f of ps.frags) {
     const k = f.slot;
     if (k < lo || k > hi || !fragLive(f, ws)) continue;
+    if (k === SheetSlot.sheetFormatPr) {
+      // kept attributes (default widths / heights, zeroHeight, ...); the outline levels are the
+      // model's (recomputed by the built-in emitter)
+      const lv = out[k]?.match(OUTLINE)?.join('') ?? '';
+      out[k] = f.xml.replace(OUTLINE, '').replace(/\/>$/, `${lv}/>`);
+      continue;
+    }
+    if (k === SheetSlot.autoFilter) {
+      // criteria of the model's autoFilter (none when it was removed)
+      if (out[k]) out[k] = filterXml(f.xml, ws.autoFilter!);
+      continue;
+    }
     if (k === SheetSlot.sheetPr) {
       if (f.order !== 9 && pr.some((p) => p[0] === f.order)) continue;
     } else if (k === SheetSlot.extLst) {
@@ -161,6 +204,12 @@ function reachable(wb: Workbook, pkg?: PackageParts): PPart[] {
     for (const f of p.frags) if (fragLive(f, ws)) used(f.xml, p.rels);
     for (const r of implicitRels(ws)) visit(r.target);
     if (p.drawing && p.name === ws.name) used(p.drawing.xml, p.drawing.rels);
+    for (const t of ws.tables ?? []) {
+      const k = presTable(ws, t);
+      if (!k) continue;
+      visit(k.rel.target);
+      pkg?.reserve(`table${k.id}`); // generated tables number their ids around it
+    }
   }
   return list;
 }
@@ -230,23 +279,40 @@ function presBook(
   }
   const pb = wb.preserved;
   const frags: [number, string, number][] = [];
-  let sheets = '';
+  const ws = wb.worksheets;
+  const n = ws.length;
+  const sheets: string[] = [];
+  let at: number[] | undefined;
   if (pb) {
     const from = 'xl/workbook.xml';
     for (const f of pb.frags) frags.push([f.slot, fillRels(f.xml, pb.rels, from, add), f.order]);
     for (const k of pb.implicit) addPRel(pb.rels[k]!, from, add);
     const used = new Set(ids);
     let next = Math.max(0, ...ids, ...pb.sheets.map((s) => s.sheetId));
+    const count: number[] = [];
     for (const s of foreign(wb, pb)) {
       const id = used.has(s.sheetId) ? ++next : s.sheetId;
       used.add(id);
-      sheets += `<sheet name="${escapeAttr(s.name)}" sheetId="${id}"${
+      // original neighbours: after the previous worksheet, else before the next one, else last
+      const p = s.prev ? ws.indexOf(s.prev) : -1;
+      const q = s.next ? ws.indexOf(s.next) : -1;
+      const pos = p >= 0 ? p + 1 : q >= 0 ? q : n;
+      count[pos] = (count[pos] ?? 0) + 1;
+      sheets[pos] = `${sheets[pos] ?? ''}<sheet name="${escapeAttr(s.name)}" sheetId="${id}"${
         s.state !== 'visible' ? ` state="${s.state}"` : ''
       } r:id="${addPRel(s.rel, from, add)}"/>`;
     }
+    if (count.length) {
+      at = [];
+      let k = 0;
+      for (let i = 0; i < n; i++) {
+        k += count[i] ?? 0;
+        at.push(i + k);
+      }
+    }
     if (pb.mainCt) pkg.overrides.push(['xl/workbook.xml', pb.mainCt]);
   }
-  return { frags, sheets, root: pb ? [...pb.root] : [] };
+  return { frags, sheets, at, root: pb ? [...pb.root] : [] };
 }
 
 /** The writer-side hooks (attached to kept data by readXlsx; see the header). */

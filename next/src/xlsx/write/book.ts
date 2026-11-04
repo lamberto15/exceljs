@@ -86,7 +86,13 @@ export function bookParts(
       book.sheets.map((s) => s.sheetId),
     );
     extra.push(...pres.frags);
-    info = { ...book, prAttrs: pb?.prAttrs, calcAttrs: pb?.calcAttrs, extraSheets: pres.sheets };
+    info = {
+      ...book,
+      prAttrs: pb?.prAttrs,
+      calcAttrs: pb?.calcAttrs,
+      extraSheets: pres.sheets,
+      at: pres.at,
+    };
     const root = new RelList(4);
     for (const r of pres.root) {
       const t = r.target;
@@ -106,7 +112,10 @@ export function bookParts(
         extra.map((e) => [e[0], e[1]]),
       ),
     },
-    { path: 'xl/styles.xml', data: stylesXml(wb.styles, pb?.tableStyles, pb?.stylesTail) },
+    {
+      path: 'xl/styles.xml',
+      data: stylesXml(wb.styles, pb?.tableStyles, pb?.stylesTail, pb?.named),
+    },
   );
   if (sst) out.push({ path: 'xl/sharedStrings.xml', data: sharedStringsXml(sst) });
   out.push(

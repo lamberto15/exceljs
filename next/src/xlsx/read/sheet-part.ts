@@ -52,6 +52,8 @@ export interface RawHandler {
 export interface SheetCapture {
   root(a: XmlAttrs): void;
   sheetPr(a: XmlAttrs): void;
+  /** `<sheetFormatPr>` attributes (kept when they say more than the writer's defaults). */
+  formatPr(a: XmlAttrs): void;
   ref(a: XmlAttrs): void;
   start(path: string, name: string, a: XmlAttrs, selfClosing: boolean): RawHandler;
 }
@@ -242,6 +244,7 @@ export class SheetHandler implements XmlHandler {
         return;
       } else {
         if (d === 2 && ln === 'sheetPr') cap.sheetPr(a);
+        else if (d === 2 && ln === 'sheetFormatPr') cap.formatPr(a);
         cap.ref(a);
       }
     }
@@ -256,6 +259,12 @@ export class SheetHandler implements XmlHandler {
           return;
         case 'autoFilter':
           if (this.ws && a.ref) this.ws.autoFilter = a.ref;
+          // criteria (filterColumn, sortState) are kept raw next to the modelled range
+          if (cap && !_selfClosing) {
+            this.raw = cap.start(ln, name, a, false);
+            this.rawDepth = d;
+            this.raw.open(name, a, false);
+          }
           return;
       }
       return;

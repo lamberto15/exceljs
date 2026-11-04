@@ -237,12 +237,16 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
 
   let xfMap: Uint32Array | undefined;
   let dxfMap: Uint32Array | undefined;
+  /** Styles handler when the file has named cell styles to keep (preserveUnknown). */
+  let named: StylesHandler | undefined;
   const stylesPath = pkg.stylesPath();
   const stylesXml = stylesPath ? text(stylesPath) : undefined;
   if (stylesXml !== undefined) {
     const sh = new StylesHandler();
     parseStrict(stylesXml, sh, stylesPath!);
-    xfMap = sh.apply(wb.styles);
+    // named cell styles are kept (raw) with preserveUnknown: so is each xf's link to them
+    if (opts.preserveUnknown !== false && (sh.styleXfs > 1 || sh.cellStyles > 1)) named = sh;
+    xfMap = sh.apply(wb.styles, named !== undefined);
     dxfMap = sh.applyDxfs(wb.styles);
   }
   const pctx: PackageReadCtx = {
@@ -321,7 +325,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   wb.definedNames = modelNames(wbh.definedNames, sheetMap);
   for (const f of readers) f.book?.(pctx);
-  pres?.book(wb, wbPath, wbXml, wbh.sheets, filter, stylesXml, dxfMap);
+  pres?.book(wb, wbPath, wbXml, wbh.sheets, filter, stylesXml, dxfMap, named, sheetMap);
   return wb;
 }
 

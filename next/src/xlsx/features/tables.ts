@@ -12,6 +12,9 @@
 // cell filling and the header check are unavailable.
 // Writer validation: names unique workbook-wide (case-insensitive), valid identifiers, column
 // names unique, columns match the ref width, no overlap with other tables or merged cells.
+// Round trip: the table part is regenerated from the model, except for a table whose part has
+// relationships of its own (query table → queryTable part): while that table is unchanged, its
+// original part is written back (see read/preserve.ts).
 
 import { type CellRange, decodeRange, encodeAddr, encodeRange } from '../../core/address.js';
 import type { StyleRegistry } from '../../core/styles.js';
@@ -20,7 +23,7 @@ import type { Worksheet } from '../../core/worksheet.js';
 import { parseXml } from '../../xml/index.js';
 import { isValidName } from './defined-names.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot } from './types.js';
-import { attrs, bool, escapeText, num } from './util.js';
+import { addPRel, attrs, bool, escapeText, num, presTable } from './util.js';
 
 export type TotalsRowFunction =
   | 'none'
@@ -362,6 +365,12 @@ export const tablesWriter: FeatureWriter = {
           for (const t of list) {
             validateTable(c.ws, t, !c.streaming);
             validateWorkbook(c.ws, t);
+            // unchanged table read with a part of its own relationships (query table): kept
+            const kept = presTable(c.ws, t);
+            if (kept) {
+              out += `<tablePart r:id="${addPRel(kept.rel, c.path, c.addRel)}"/>`;
+              continue;
+            }
             const n = c.nextIndex('table');
             c.addPart(`xl/tables/table${n}.xml`, tableXml(t, n, c.styles), TABLE_CT);
             out += `<tablePart r:id="${c.addRel('table', `../tables/table${n}.xml`)}"/>`;
