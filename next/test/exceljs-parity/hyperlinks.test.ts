@@ -25,7 +25,7 @@ describe('exceljs parity: hyperlinks', () => {
 
     // exceljs: spec/integration/workbook-xlsx-reader.spec.js — "should have the formula source" (hyperlinked)
     it('has the formula source', () => {
-      expect((a1() as { formula: string }).formula).toBe('_xlfn.CONCAT("someone","@example.com")');
+      expect((a1() as { formula: string }).formula).toBe('CONCAT("someone","@example.com")'); // _xlfn. stripped on read
     });
 
     // exceljs: spec/integration/workbook-xlsx-reader.spec.js — "should contain the linked url"

@@ -95,9 +95,11 @@ describe('exceljs parity: formulas', () => {
     });
 
     // exceljs: spec/integration/workbook-xlsx-reader.spec.js — "should have the formula source"
-    it('has the formula source (with the _xlfn. prefix as stored)', () => {
+    // ExcelJS exposes the raw stored text `_xlfn.CONCAT(...)`; turbosheet strips the future-function
+    // prefix on read (and re-adds it on write), so the model shows what Excel's UI shows.
+    it('has the formula source (future-function _xlfn. prefix stripped on read)', () => {
       expect((ws().getValue('A2') as { formula: string }).formula).toBe(
-        '_xlfn.CONCAT("someone","@example.com")',
+        'CONCAT("someone","@example.com")',
       );
     });
 
