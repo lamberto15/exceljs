@@ -1,43 +1,112 @@
 {
   "name": "xlsxkit",
-  "version": "0.0.0",
-  "description": "Fast, small, streaming-first XLSX/CSV library for every JS runtime.",
+  "version": "0.1.0",
+  "description": "Fast, small, streaming-first XLSX and CSV library for TypeScript on every JavaScript runtime (Node, Bun, Deno, browsers, workers).",
+  "keywords": [
+    "xlsx",
+    "excel",
+    "spreadsheet",
+    "csv",
+    "ooxml",
+    "streaming",
+    "exceljs",
+    "typescript",
+    "encryption",
+    "worksheet"
+  ],
+  "homepage": "https://github.com/lamberto15/exceljs/tree/next/next#readme",
+  "bugs": {
+    "url": "https://github.com/lamberto15/exceljs/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lamberto15/exceljs.git",
+    "directory": "next"
+  },
+  "author": "xlsxkit contributors",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "engines": {
     "node": ">=22"
   },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./lite": {
-      "types": "./dist/lite.d.ts",
-      "import": "./dist/lite.js",
-      "require": "./dist/lite.cjs"
+      "import": {
+        "types": "./dist/lite.d.ts",
+        "default": "./dist/lite.js"
+      },
+      "require": {
+        "types": "./dist/lite.d.cts",
+        "default": "./dist/lite.cjs"
+      }
     },
     "./csv": {
-      "types": "./dist/csv.d.ts",
-      "import": "./dist/csv.js",
-      "require": "./dist/csv.cjs"
+      "import": {
+        "types": "./dist/csv.d.ts",
+        "default": "./dist/csv.js"
+      },
+      "require": {
+        "types": "./dist/csv.d.cts",
+        "default": "./dist/csv.cjs"
+      }
     },
     "./json": {
-      "types": "./dist/json.d.ts",
-      "import": "./dist/json.js",
-      "require": "./dist/json.cjs"
+      "import": {
+        "types": "./dist/json.d.ts",
+        "default": "./dist/json.js"
+      },
+      "require": {
+        "types": "./dist/json.d.cts",
+        "default": "./dist/json.cjs"
+      }
     },
     "./crypto": {
-      "types": "./dist/crypto.d.ts",
-      "import": "./dist/crypto.js",
-      "require": "./dist/crypto.cjs"
+      "import": {
+        "types": "./dist/crypto.d.ts",
+        "default": "./dist/crypto.js"
+      },
+      "require": {
+        "types": "./dist/crypto.d.cts",
+        "default": "./dist/crypto.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "lite": [
+        "dist/lite.d.ts"
+      ],
+      "csv": [
+        "dist/csv.d.ts"
+      ],
+      "json": [
+        "dist/json.d.ts"
+      ],
+      "crypto": [
+        "dist/crypto.d.ts"
+      ]
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsdown",
@@ -47,13 +116,17 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "bench": "node --expose-gc bench/run.mjs",
-    "size": "size-limit"
+    "size": "size-limit",
+    "changeset": "changeset",
+    "release": "changeset publish",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
     "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
+    "@changesets/cli": "^3.0.3",
     "@size-limit/preset-small-lib": "^11.0.0",
     "@types/node": "^22.20.5",
     "exceljs": "4.4.0",

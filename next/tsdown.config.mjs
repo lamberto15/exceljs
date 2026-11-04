@@ -10,7 +10,7 @@ export default defineConfig({
   platform: 'neutral',
   target: 'es2022',
   minify: false,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   unbundle: true,
 });
