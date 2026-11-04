@@ -23,7 +23,9 @@ function check(cf: ConditionalFormatting[] | undefined): void {
     const want = json[item.rules[0]!.type] as ConditionalFormatting;
     expect(item.ref).toBe(want.ref);
     expect(item.rules.length).toBe(want.rules.length);
-    item.rules.forEach((r, i) => expect(r).toMatchObject({ type: want.rules[i]!.type }));
+    item.rules.forEach((r, i) => {
+      expect(r).toMatchObject({ type: want.rules[i]!.type });
+    });
   }
 }
 
