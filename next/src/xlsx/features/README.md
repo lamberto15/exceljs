@@ -12,13 +12,52 @@ elements, a `sheetPr` child, a subtree with text).
 | File                                                           | What you add                                                                                                                        |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `src/xlsx/features/<name>.ts` (or `<name>/index.ts` + helpers) | the feature: model types, `<name>Writer: FeatureWriter`, `<name>Reader: FeatureReader`                                              |
-| `src/xlsx/features/registry.ts`                                | ONE import line + one entry in `WRITERS` and one in `READERS`                                                                       |
+| `src/xlsx/features/registry.ts`                                | ONE import line + one entry in `WRITERS` and one in `READERS` (the package root's built-ins)                                        |
 | `src/core/features.ts`                                         | the model field(s): one `import type` line + one documented optional field in `WorksheetFeatureFields` (or `WorkbookFeatureFields`) |
-| `src/xlsx/features/index.ts`                                   | public exports (model types, helpers) — re-exported from the package root                                                           |
+| `src/xlsx/features/index.ts`                                   | public exports (model types, helpers, `<name>Writer` / `<name>Reader`) — re-exported from the root and `./lite`                     |
+| `src/xlsx/write/sheet.ts` `OWNED`                              | one `'field:<name>'` entry per worksheet field (lite: writing the field without the feature throws)                                 |
 | `test/<name>.test.ts`                                          | tests, including the exceljs oracle (below)                                                                                         |
 
-Nothing else: do not edit `write/sheet.ts`, `read/sheet-part.ts`, `core/worksheet.ts`, ... If an
-extension point is missing, add it to the framework in its own commit.
+Nothing else: do not edit `read/sheet-part.ts`, `core/worksheet.ts`, ... (in `write/sheet.ts` only
+the `OWNED` table). If an extension point is missing, add it to the framework in its own commit.
+
+## Opt-in (`./lite`) and the public feature object
+
+The package root runs every feature in `registry.ts`; the `./lite` entry runs only what the user
+passes. So each feature exports its two halves, as named `const`s, from `features/index.ts`:
+
+```ts
+// features/data-validation.ts
+/** Write half of the data validation feature. ... */
+export const dataValidationWriter: FeatureWriter = { name: 'data-validation', ... };
+/** Read half ... */
+export const dataValidationReader: FeatureReader = { name: 'data-validation', ... };
+```
+
+```ts
+import {
+  writeXlsx,
+  readXlsx,
+  dataValidationWriter,
+  dataValidationReader,
+} from '@sheetkit/xlsx/lite';
+writeXlsx(wb, { features: [dataValidationWriter] });
+readXlsx(buf, { features: [dataValidationReader] });
+```
+
+- Halves, not one `{ writer, reader }` object: an object literal keeps both halves alive, so a
+  write-only user would ship the reader too (measured: +1.9 KB brotli for tables, +2.8 KB for
+  tables + images). Separate `const`s tree-shake per direction.
+- Naming: `<camelCaseName>Writer` / `<camelCaseName>Reader` where `name` is the kebab-case
+  `FeatureWriter.name` (`'data-validation'` → `dataValidationWriter`); the missing-feature error
+  derives the export name from it.
+- Keep module top level pure: no calls, `new` only with `/* @__PURE__ */`. A feature module is
+  only dropped from a lite bundle when nothing of it is used (module-level `sideEffects: false`
+  tree-shaking on the unbundled dist).
+- Feature-owned worksheet fields go into `OWNED` (`write/sheet.ts`): writing such a field while
+  the feature is disabled throws `ws.<field> is set but the '<name>' feature is not enabled; pass
+  features: [<name>Writer]` instead of silently dropping it. Empty arrays are not data.
+- A feature that only writes (no reader needed) exports just the writer — see `theme.ts`.
 
 ## Model data
 
@@ -134,31 +173,44 @@ export const dataValidationReader: FeatureReader = {
 - **Imports**: only `src/core/*`, `src/xml/*`, `./types.ts`, `./util.ts` (bool/num/attrs/
   base64/escape helpers, rich text runs: `runsXml` / `tElem` / `StringItemBuilder`) and your own
   files. Never import runtime code from `src/xlsx/read/*`
-  or `src/xlsx/write/*`: every registered writer ships in the write-only bundle and every reader
-  in the read bundle.
+  or `src/xlsx/write/*`: every built-in writer ships in the root write-only bundle and every
+  reader in the read bundle (and in any lite bundle that enables the feature). Never import
+  `registry.ts` from a module `./lite` reaches.
 - Web APIs only (no `node:*`, no `Buffer`); no top-level side effects (`/* @__PURE__ */` for
   module-level `new`).
-- Size budget (`pnpm build && pnpm size`): write-only ≤ 30 KB, read+write ≤ 60 KB brotli, shared
-  by all features — keep emitters string-template based and tables small.
+- Size budget (`pnpm build && pnpm size`, see `docs/bundle-size.md`): root write-only ≤ 32 KB,
+  read+write ≤ 60 KB brotli, shared by all features; lite write-only ≤ 20 KB (no feature may
+  leak into it) — keep emitters string-template based and tables small.
 - Escape everything user-provided: `escapeAttr` for attributes, `escapeText` for text (or
   `attrs({...})`, which escapes and skips undefined/false).
 
 ## Round-trip preservation
 
 `readXlsx` keeps whatever no reader consumes (`preserveUnknown`, default true; code in
-`read/preserve.ts`, model in `common/preserved.ts`, writer in `write/preserve.ts`) and
-`writeXlsx` / `xlsxStream` write it back (`createXlsxWriter` never has any). What that means for
-a feature:
+`read/preserve.ts`, model in `common/preserved.ts`, writer in `write/preserve.ts`, reached via
+the `w` hooks on the kept data) and `writeXlsx` / `xlsxStream` write it back (`createXlsxWriter`
+never has any). A feature disabled at read time (`./lite`) claims nothing, so everything it
+would have modelled is kept raw and round-trips unchanged — your reader must not be needed for
+that. What that means for a feature:
 
 - **Claiming = owning.** A worksheet element listed in `elements` is consumed: it is not kept,
   and the relationships its `r:id` attributes reference are not kept either. Elements nobody
   claims (and `extLst/ext` entries every claimant declined by returning `undefined`) are kept
   raw and re-emitted in their `SheetSlot`. Claim only what you regenerate.
 - **One owner per slot**: a kept element is written only when no emitter produced its slot
-  (container slots `sheetPr` / `extLst` merge). Drop-in support for a new element = claim it.
+  (container slots `sheetPr` / `extLst` merge, minus kept children an emitter produced: same
+  `SheetPrOrder`, same ext `uri`). Drop-in support for a new element = claim it. If the kept
+  element links parts (`r:id`), add the slot to `OWNER` in `write/preserve.ts` so they are not
+  written orphaned when the model takes over (raw and model only meet when a workbook read
+  without the feature is written with it).
+- **Never emit defaults over kept content**: an emitter that writes something without model data
+  (print setup's default `<pageMargins>`) must return `''` when the sheet kept that element.
+- **dxf references** in kept XML are remapped (`*dxfId` attributes of sheet fragments and of
+  table / pivot parts) because the reader interns, and may merge, the file's dxfs.
 - **Relationships no element references** (pivotTable, threadedComments, queryTable, ...) are
-  kept; a feature that models such a part must make the preserve layer skip it (see the
-  `comments` exclusion in `Preserver.finishSheet`).
+  kept; a feature that models such a part must make the preserve layer skip it only when it
+  produced model data (see the `comments` exclusion in `Preserver.finishSheet`: raw when
+  `ws.comments` is unset, so a lite read keeps the notes).
 - **Mixed parts** are decided in `read/preserve.ts`: drawings keep their non-picture anchors
   (`ws.preserved.drawing`, merged by the images writer via `presDrawing` / `fillRels` from
   `./util.ts`); a legacy VML with only note shapes is dropped (comments regenerate it).

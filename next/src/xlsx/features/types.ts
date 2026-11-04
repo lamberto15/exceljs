@@ -1,7 +1,8 @@
 // Feature extension points. A feature is a self-contained module (see README.md) exporting a
-// `FeatureWriter` and a `FeatureReader` that the static lists in ./registry.ts register. The writers and the reader
-// drive every registered feature through the interfaces below; feature data lives on the model
-// via TypeScript module augmentation (optional fields on Worksheet / Workbook).
+// `FeatureWriter` and a `FeatureReader`. The writers and the reader drive the features they are
+// given (`options.features`; the package root adds every built-in from ./registry.ts) through the
+// interfaces below; feature data lives on the model as optional Worksheet / Workbook fields
+// declared in src/core/features.ts.
 
 import type { StyleRegistry } from '../../core/styles.js';
 import type { Workbook } from '../../core/workbook.js';
@@ -211,7 +212,8 @@ export interface SheetReader {
 
 /**
  * Write half of a feature. Kept separate from the read half so write-only bundles do not ship
- * feature readers (and vice versa): registry.ts lists them in WRITERS / READERS.
+ * feature readers (and vice versa): `./lite` users pass `<name>Writer` to the writers and
+ * `<name>Reader` to readXlsx; registry.ts lists the built-ins in WRITERS / READERS.
  */
 export interface FeatureWriter {
   /** Unique name (diagnostics). */

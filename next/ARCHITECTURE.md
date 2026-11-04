@@ -1,6 +1,10 @@
 # Architecture & module contracts
 
-Single published package, subpath exports for tree-shaking (`.`, `./csv`, `./json`, `./crypto`).
+Single published package, subpath exports for tree-shaking (`.`, `./lite`, `./csv`, `./json`, `./crypto`).
+`.` is batteries-included (every XLSX feature on); `./lite` is the same API with features opt-in
+(`options.features`, see "src/xlsx" below and `docs/bundle-size.md`). The build is unbundled
+(tsdown `unbundle`: one dist file per source module) so consumer bundlers can drop whole unused
+modules (`sideEffects: false`); a single shared chunk would keep every feature object alive.
 Shared value/style types live in `src/core/types.ts` — import from there, never redefine.
 
 Rules for every module:
@@ -100,18 +104,28 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
   available). Sheet XML = head emitters + `encodeRow` (shared hot loop) + tail emitters. Package order:
   each sheet part, then its feature parts and rels; workbook-level parts (workbook.xml, styles, sst,
   rels, `[Content_Types].xml`, docProps) last, from `bookParts()` shared by all writers.
+  The implementations (`book.ts`, `stream-writer.ts`) are feature-agnostic: they run the
+  `FeatureWriter`s in `options.features` (resolved to `ResolvedWriteOptions.writers`; one emitter
+  plan per write, `sheetPlan`). `write/index.ts` (the root API) wraps them with every built-in.
 - `read/`: `readXlsx` (DOM; lazy unzip, one part inflated at a time) and `xlsxRows` (streaming rows).
   `readXlsx` throws `EncryptedFileError` (a `XlsxParseError`) for OLE/CFB input, pointing at `./crypto`.
-- `features/`: extension points (`types.ts`) and the static registry (`registry.ts`: `WRITERS`,
-  `READERS`). Every worksheet element is produced by a `SheetEmitter` bound to a CT_Worksheet slot
+  Same split: `read/reader.ts` runs `options.features` readers, `read/index.ts` adds all built-ins.
+- `features/`: extension points (`types.ts`), one module per feature exporting its `<name>Writer` /
+  `<name>Reader` halves (public, for `./lite` opt-in; the default theme is `themeWriter`), and the
+  root-only list of built-ins (`registry.ts`: `WRITERS`, `READERS`, never imported by `./lite`).
+  Every worksheet element is produced by a `SheetEmitter` bound to a CT_Worksheet slot
   (`SheetSlot`), built-ins included, so element order is global. Features also add package parts,
   relationships and content types, and consume worksheet subtrees when reading (never inside
-  `sheetData`). How to add a feature: `src/xlsx/features/README.md`.
+  `sheetData`). Writing a feature-owned model field while that feature is disabled throws
+  (`checkFeatures` in `write/sheet.ts`: a property check per sheet). How to add a feature:
+  `src/xlsx/features/README.md`.
 - Round-trip preservation (`ReadOptions.preserveUnknown`, default true): `read/preserve.ts`
   captures parts / XML nobody models into `wb.preserved` / `ws.preserved` (model:
   `common/preserved.ts`: lazy raw parts + their rels, fragments with rId placeholders);
-  `write/preserve.ts` (small: it ships in write-only bundles) names and re-emits them. See
-  "Round-trip preservation" in the features README.
+  `write/preserve.ts` names and re-emits them. The writer core reaches it only through the
+  `w` hooks readXlsx attaches to the kept data, so write-only bundles never include it. Features
+  disabled at read time (`./lite`) are not claimed, so their content falls through to
+  preservation and round-trips raw. See "Round-trip preservation" in the features README.
 
 ## src/crypto — password-protected files (`./crypto`, MS-OFFCRYPTO)
 ```ts
