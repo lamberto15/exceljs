@@ -28,6 +28,7 @@ import type { CellValue, Style, WriteOptions } from '../../core/types.js';
 import { Workbook, type WorksheetOptions } from '../../core/workbook.js';
 import {
   type ColumnDef,
+  type RowObject,
   type RowProps,
   Worksheet,
   type WorksheetView,
@@ -72,7 +73,7 @@ export interface StreamSheetOptions extends WorksheetOptions {
   autoFilter?: string | undefined;
 }
 
-type RowValues = readonly CellValue[] | Readonly<Record<string, CellValue>>;
+type RowValues = readonly CellValue[] | RowObject;
 
 export class StreamSheet {
   /** Metadata holder (columns, views, merges, autoFilter, state). Never contains cells. */

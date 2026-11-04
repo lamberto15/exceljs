@@ -167,8 +167,9 @@ describe('writers add the prefix, readers strip it', () => {
     const ws = back.getWorksheet('S')!;
     expect((ws.getValue('C1') as Formula).formula).toBe('SORT(A1:B1)+_xlfn.UNKNOWNFN(1)');
     expect((ws.getValue('C2') as Formula).formula).toBe('SORT(A2:B2)+_xlfn.UNKNOWNFN(1)');
+    // SORT spills: written as a dynamic-array formula (cm + t="array"), prefix kept
     expect(part(writeXlsx(back), 'xl/worksheets/sheet1.xml')).toContain(
-      '<f>_xlfn._xlws.SORT(A1:B1)+_xlfn.UNKNOWNFN(1)</f>',
+      '<c r="C1" cm="1"><f t="array" ref="C1">_xlfn._xlws.SORT(A1:B1)+_xlfn.UNKNOWNFN(1)</f>',
     );
   });
 

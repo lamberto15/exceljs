@@ -52,6 +52,8 @@ export interface SheetCtx extends SheetWriteCtx {
   tabSelected: boolean;
   /** Emitters of this write (built-in + enabled features). */
   readonly plan: SheetPlan;
+  /** The package being written (shared by the sheets of one write). */
+  readonly pkg: PackageParts;
 }
 
 export interface NewSheetCtx {
@@ -87,8 +89,13 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
     addPart: (path, data, ct) => pkg.addPart(path, data, ct),
     addDefault: (ext, ct) => pkg.addDefault(ext, ct),
     nextIndex: (f) => pkg.nextIndex(f),
+    pkg,
   };
 }
+
+/** Functions whose results spill (dynamic arrays): such formulas get the metadata by default. */
+const SPILL =
+  /(?:^|[^\w.])(?:_xlfn\.(?:_xlws\.)?)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
 
 // ---- caches (module level; contents are deterministic, so sharing is safe) -------------
 
@@ -151,8 +158,14 @@ function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string 
         break;
     }
   }
-  const fa = f.array ? ` t="array" ref="${escapeAttr(f.array)}"` : '';
-  return `<c r="${ref}"${s}${t}><f${fa}>${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
+  const dyn = f.dynamic ?? (f.array === undefined && SPILL.test(f.formula));
+  if (dyn) ctx.pkg.dynamicArrays = true;
+  const fa = dyn
+    ? ` t="array" ref="${escapeAttr(f.array ?? ref)}"`
+    : f.array
+      ? ` t="array" ref="${escapeAttr(f.array)}"`
+      : '';
+  return `<c r="${ref}"${s}${t}${dyn ? ' cm="1"' : ''}><f${fa}>${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
 }
 
 /**

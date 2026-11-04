@@ -52,6 +52,8 @@ export function relsXml(recs: readonly RelRec[]): string {
 }
 
 export class PackageParts implements PackageWriteCtx {
+  /** Set when a dynamic-array formula was written (xl/metadata.xml is needed). */
+  dynamicArrays = false;
   /** [part path, content type] registered by features. */
   readonly overrides: [string, string][] = [];
   /** Extension (lower-case) → content type registered by features. */

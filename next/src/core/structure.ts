@@ -36,9 +36,9 @@ import {
   MAX_ROWS,
 } from './address.js';
 import type { CellValue, DefinedName, Formula, Style } from './types.js';
-import { CellKind, Column, RowData, type Worksheet } from './worksheet.js';
+import { CellKind, Column, RowData, type RowObject, type Worksheet } from './worksheet.js';
 
-type RowValues = readonly CellValue[] | Readonly<Record<string, CellValue>>;
+type RowValues = readonly CellValue[] | RowObject;
 
 /** Private Worksheet / Column state this module rewires (runtime-visible TS privates). */
 interface WsState {

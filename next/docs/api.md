@@ -87,6 +87,8 @@ groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max
 groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
 
+Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the copy last; "Name (2)" by default) and `copyRange(src, 'A1:D10', dst, 'F2')` (values, styles, merges; relative refs adjusted). Column keys may be dotted paths (`key: 'address.city'` reads nested objects in `addRow`).
+
 Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.
 
 `RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
@@ -107,6 +109,8 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
 | `null` / `undefined` | empty |
 
+
+`Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
 ## Style
 
 Styles are **plain, immutable-by-convention objects**. They are interned into the workbook's `StyleRegistry` (one `xf` index per distinct style); objects returned by `getStyle` or `StyleRegistry.get` are shared and must not be mutated. Change a style by assigning a new object.

@@ -373,6 +373,23 @@ function indexMerge(idx: Map<number, CellRange[]>, m: CellRange): void {
 
 type Addr = string | number;
 
+/** A row as an object keyed by `ws.columns[].key`; values may nest for dotted keys ('a.b'). */
+export interface RowObject {
+  readonly [key: string]: CellValue | RowObject;
+}
+
+/** obj[key], or for a dotted key without an own property the nested path ("address.city"). */
+function keyed(obj: Readonly<Record<string, unknown>>, key: string): CellValue {
+  const v = obj[key];
+  if (v !== undefined || key.indexOf('.') < 0) return v as CellValue;
+  let o: unknown = obj;
+  for (const p of key.split('.')) {
+    if (o === null || typeof o !== 'object') return undefined;
+    o = (o as Record<string, unknown>)[p];
+  }
+  return o as CellValue;
+}
+
 // ---- Column ------------------------------------------------------------------------
 
 export class Column {
@@ -628,12 +645,10 @@ export class Worksheet {
 
   /**
    * Append a row after the last existing row. Arrays map index 0 → column A; objects map
-   * keys through `ws.columns[].key` (unknown keys ignored). Returns the 1-based row number.
+   * keys through `ws.columns[].key` (unknown keys ignored; a dotted key such as 'address.city'
+   * also reads nested objects). Returns the 1-based row number.
    */
-  addRow(
-    values: readonly CellValue[] | Readonly<Record<string, CellValue>>,
-    style?: Style | number,
-  ): number {
+  addRow(values: readonly CellValue[] | RowObject, style?: Style | number): number {
     const r0 = this._rows.length;
     if (r0 >= MAX_ROWS) throw new RangeError('Worksheet row limit reached');
     try {
@@ -647,10 +662,7 @@ export class Worksheet {
   }
 
   /** Append several rows (see addRow). */
-  addRows(
-    rows: Iterable<readonly CellValue[] | Readonly<Record<string, CellValue>>>,
-    style?: Style | number,
-  ): void {
+  addRows(rows: Iterable<readonly CellValue[] | RowObject>, style?: Style | number): void {
     const xf = style === undefined ? undefined : this._xf(style);
     for (const r of rows) this.addRow(r, xf);
   }
@@ -1016,7 +1028,7 @@ export class Worksheet {
 
   private _fillRow(
     r0: number,
-    values: readonly CellValue[] | Readonly<Record<string, CellValue>>,
+    values: readonly CellValue[] | RowObject,
     style: Style | number | undefined,
   ): void {
     const existing = this._rows[r0];
@@ -1026,8 +1038,11 @@ export class Worksheet {
         const arr = values as readonly CellValue[];
         for (let i = 0; i < arr.length; i++) if (arr[i] != null) this._set(r0, i, arr[i], style);
       } else {
-        const obj = values as Readonly<Record<string, CellValue>>;
-        for (const [k, c] of this._keyCols) if (obj[k] != null) this._set(r0, c, obj[k], style);
+        const obj = values as RowObject;
+        for (const [k, c] of this._keyCols) {
+          const v = keyed(obj, k);
+          if (v != null) this._set(r0, c, v, style);
+        }
       }
       return;
     }
@@ -1052,14 +1067,14 @@ export class Worksheet {
         row.n = i + 1;
       }
     } else {
-      const obj = values as Readonly<Record<string, CellValue>>;
+      const obj = values as RowObject;
       const keys = this._keyCols;
       const row = existing ?? this._newRow(r0, 0);
       if (row.col.length < keys.length) row._alloc(keys.length);
       const rowXf = row.xf;
       for (let k = 0; k < keys.length; k++) {
         const [key, c] = keys[k]!;
-        const v = obj[key];
+        const v = keyed(obj, key);
         if (v === null || v === undefined) continue;
         classify(v, d1904, local);
         const i = row.n;

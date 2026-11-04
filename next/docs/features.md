@@ -36,6 +36,12 @@ ws.setCell('C2', { error: '#N/A' });
 
 turbosheet never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
 
+
+Dynamic-array formulas (FILTER, SORT, UNIQUE, SEQUENCE, ... that spill in Excel 365) are written with Excel's dynamic-array metadata, so Excel shows `=SORT(A1:A9)` and spills it instead of turning it into `=@SORT(A1:A9)`. It is automatic for formulas using a spilling function; `{ formula, dynamic: true }` forces it, `dynamic: false` turns it off, and `array: 'C1:C9'` (without `dynamic`) still writes a legacy Ctrl+Shift+Enter array formula. Files read keep the flag.
+
+Copying: `copyWorksheet(ws)` adds a copy to the same workbook ("Data (2)"), `copyWorksheet(ws, otherWb, 'Name')` to another one (styles re-registered, pictures re-added, table names made unique, dates converted between date systems). `copyRange(src, 'A1:D10', dst, 'F2')` copies cells, styles and merges like copy-paste, adjusting relative references.
+
+Column keys may be dotted paths: with `ws.columns = [{ key: 'address.city' }]`, `ws.addRow({ address: { city: 'Oslo' } })` fills that column.
 ## Styles and number formats
 
 ```ts

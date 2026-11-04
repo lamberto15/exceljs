@@ -151,6 +151,8 @@ export class SheetHandler implements XmlHandler {
   private hasV = false;
   private fText: string | undefined;
   private fType: string | undefined;
+  /** The cell has cell metadata (cm): a dynamic-array formula. */
+  private cMeta = false;
   private fRef: string | undefined;
   private fSi: string | undefined;
   private inIs = false;
@@ -467,6 +469,7 @@ export class SheetHandler implements XmlHandler {
     this.cRow = this.row;
     this.col = this.cCol;
     this.cType = a.t;
+    this.cMeta = a.cm !== undefined;
     const s = a.s;
     this.cXf = s !== undefined && s !== '0' ? this.xf(s) : 0;
     this.hasV = false;
@@ -573,6 +576,7 @@ export class SheetHandler implements XmlHandler {
         const f: Mutable<Formula> = { formula };
         if (kind !== CellKind.Empty) f.result = this.resultOf(kind, num, obj);
         if (this.fType === 'array' && this.fRef) f.array = this.fRef;
+        if (this.cMeta) f.dynamic = true;
         kind = CellKind.Formula;
         num = 0;
         obj = f;

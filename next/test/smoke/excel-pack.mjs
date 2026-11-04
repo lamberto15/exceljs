@@ -17,6 +17,8 @@ import {
   addNote,
   addTable,
   addTableRows,
+  copyRange,
+  copyWorksheet,
   createXlsxWriter,
   deleteRows,
   duplicateRow,
@@ -805,6 +807,31 @@ for (const [file, what] of [
     '21-checkboxes-drawings.xlsx',
     writeXlsx(wb),
     `"Drawings": B2:B4 are in-cell checkboxes (B2 checked; Excel 365 2024+, older versions show TRUE/FALSE), C1 = 1 and changes when you tick a box; the red square fills E2:E6's height and is centered horizontally in column E; a small red square starts halfway into column G and row 2. No repair prompt.`,
+  );
+}
+
+// 22: dynamic-array formulas (no stray @), copied sheet and range, nested keys
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Dynamic');
+  ws.columns = [{ key: 'name', width: 12 }, { key: 'score.value' }];
+  for (const [n, v] of [
+    ['cara', 3],
+    ['ann', 1],
+    ['bob', 2],
+    ['ann', 1],
+  ])
+    ws.addRow({ name: n, score: { value: v } });
+  ws.setCell('D1', { formula: 'SORT(B1:B4)' });
+  ws.setCell('E1', { formula: 'UNIQUE(A1:A4)' });
+  ws.setCell('F1', { formula: 'SEQUENCE(3)' });
+  ws.setCell('G1', { formula: 'SUM(B1:B4)' });
+  copyRange(ws, 'A1:B4', ws, 'A8');
+  copyWorksheet(ws, wb, 'Copy');
+  save(
+    '22-dynamic-copy.xlsx',
+    writeXlsx(wb),
+    `"Dynamic": D1:D4 spill 1,1,2,3 (=SORT(B1:B4), no "@" in the formula bar), E1:E3 spill cara, ann, bob (=UNIQUE), F1:F3 spill 1,2,3 (=SEQUENCE(3)), G1 = 7; A8:B11 is a copy of A1:B4; column B values came from nested keys. "Copy" sheet: the same, with working spills. No repair prompt.`,
   );
 }
 

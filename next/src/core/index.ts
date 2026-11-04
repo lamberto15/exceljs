@@ -16,6 +16,7 @@ export {
   type EstimateWidthOptions,
   estimateColumnWidths,
 } from './autofit.js';
+export { copyRange, copyWorksheet } from './copy.js';
 export { dateToSerial, serialToDate } from './dates.js';
 export type { WorkbookFeatureFields, WorksheetFeatureFields } from './features.js';
 export {
@@ -52,6 +53,7 @@ export {
   type ColumnDef,
   type Dimensions,
   RowData,
+  type RowObject,
   type RowProps,
   RowView,
   type SheetState,

@@ -29,6 +29,13 @@ export interface Formula {
   readonly result?: number | string | boolean | CellError | undefined;
   /** Array formula range, e.g. "A1:B3" (written as t="array"). */
   readonly array?: string | undefined;
+  /**
+   * Dynamic-array formula (spills, Excel 365): written with Excel's dynamic-array metadata so
+   * Excel does not turn it into an implicit-intersection `@` formula. Default: on for formulas
+   * using a spilling function (FILTER, SORT, UNIQUE, SEQUENCE, ...) without `array`; `false`
+   * turns it off, `true` forces it. `array` (optional) is the last known spill range.
+   */
+  readonly dynamic?: boolean | undefined;
 }
 
 export interface RichTextRun {

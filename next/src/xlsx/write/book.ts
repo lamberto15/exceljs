@@ -17,6 +17,7 @@ import {
   checkboxBagXml,
   contentTypesXml,
   corePropsXml,
+  dynamicArrayMetadataXml,
   rootRelsXml,
   type SheetEntry,
   sharedStringsXml,
@@ -68,6 +69,15 @@ export function bookParts(
     nextIndex: (f) => pkg.nextIndex(f),
   };
   for (const f of writers) f.book?.write?.(ctx);
+  // a read file's metadata part (dynamic arrays, rich values) is kept as is
+  if (pkg.dynamicArrays && !wb.preserved?.rels.some((r) => r.type.endsWith('/sheetMetadata'))) {
+    ctx.addPart(
+      'xl/metadata.xml',
+      dynamicArrayMetadataXml(),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml',
+    );
+    ctx.addRel('sheetMetadata', 'metadata.xml');
+  }
   if (wb.styles.xfs.some((x) => x.checkbox)) {
     // in-cell checkboxes: the property bag their xf extLst points at
     ctx.addPart(
