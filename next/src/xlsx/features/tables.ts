@@ -21,6 +21,7 @@ import type { StyleRegistry } from '../../core/styles.js';
 import type { CellValue, Style } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { parseXml } from '../../xml/index.js';
+import { addXlfn, stripXlfn } from '../common/xlfn.js';
 import { isValidName } from './defined-names.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot } from './types.js';
 import { addPRel, attrs, bool, escapeText, num, presTable } from './util.js';
@@ -332,10 +333,10 @@ function tableXml(t: Table, id: number, styles: StyleRegistry): string {
     })}${dxfAttrs(styles, header ? c.headerStyle : undefined, c.dataStyle, c.totalsStyle, totals)}`;
     const inner =
       (c.calculatedColumnFormula
-        ? `<calculatedColumnFormula>${escapeText(c.calculatedColumnFormula)}</calculatedColumnFormula>`
+        ? `<calculatedColumnFormula>${escapeText(addXlfn(c.calculatedColumnFormula))}</calculatedColumnFormula>`
         : '') +
       (fn === 'custom' && c.totalsRowFormula
-        ? `<totalsRowFormula>${escapeText(c.totalsRowFormula)}</totalsRowFormula>`
+        ? `<totalsRowFormula>${escapeText(addXlfn(c.totalsRowFormula))}</totalsRowFormula>`
         : '');
     s += inner ? `>${inner}</tableColumn>` : '/>';
   }
@@ -442,8 +443,8 @@ function parseTable(xml: string, dxf: (id: string) => Style | undefined): Table 
       text += s;
     },
     close(name) {
-      if (col && name === 'calculatedColumnFormula') col.calculatedColumnFormula = text;
-      else if (col && name === 'totalsRowFormula') col.totalsRowFormula = text;
+      if (col && name === 'calculatedColumnFormula') col.calculatedColumnFormula = stripXlfn(text);
+      else if (col && name === 'totalsRowFormula') col.totalsRowFormula = stripXlfn(text);
       else if (name === 'tableColumn') col = undefined;
     },
   });

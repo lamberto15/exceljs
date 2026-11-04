@@ -179,7 +179,7 @@
       "name": "lite write + tables + images",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addTable, tablesWriter, addImage, placeImage, imagesWriter }",
-      "limit": "24 KB"
+      "limit": "24.5 KB"
     },
     {
       "name": "lite autofit",
@@ -191,7 +191,7 @@
       "name": "lite write + charts",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addChart, chartsWriter }",
-      "limit": "24 KB"
+      "limit": "24.5 KB"
     },
     {
       "name": "csv",

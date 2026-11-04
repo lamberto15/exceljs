@@ -15,6 +15,7 @@ import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.j
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { runsXml } from '../common/rich-text.js';
+import { addXlfn } from '../common/xlfn.js';
 import {
   type DrawingAnchors,
   type FeatureWriter,
@@ -151,7 +152,7 @@ function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string 
     }
   }
   const fa = f.array ? ` t="array" ref="${escapeAttr(f.array)}"` : '';
-  return `<c r="${ref}"${s}${t}><f${fa}>${escapeText(f.formula)}</f>${v}</c>`;
+  return `<c r="${ref}"${s}${t}><f${fa}>${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
 }
 
 /**

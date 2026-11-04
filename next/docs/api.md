@@ -84,7 +84,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | --- | --- |
 | number, string, boolean | as is |
 | `Date` | stored as a serial using the workbook date system (UTC based, the Excel 1900 leap-year bug is honored). Number cells with a date format read back as `Date`. |
-| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`. `result` is the cached value written to the file; **turbosheet does not evaluate formulas**. For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
+| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`, no `_xlfn.` prefix: writers add it to functions newer than Excel 2007 (`XLOOKUP`, `IFS`, `STDEV.S`, ...; also in defined names, validations, conditional formats and table formulas) and readers remove it. `result` is the cached value written to the file; the core does not evaluate formulas (see [`turbosheet/formula`](#formula)). For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
 | `RichText` | `{ richText: [{ text, font? }, ...] }` |
 | `Hyperlink` | `{ text, hyperlink, tooltip? }` |
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
