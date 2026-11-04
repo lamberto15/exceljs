@@ -26,6 +26,17 @@ export {
   isDateFormatId,
 } from './numfmt.js';
 export { SharedStrings } from './sharedstrings.js';
+export {
+  deleteColumns,
+  deleteRows,
+  duplicateRow,
+  type InsertRowsOptions,
+  insertColumns,
+  insertRow,
+  insertRows,
+  spliceColumns,
+  spliceRows,
+} from './structure.js';
 export { type NumFmt, StyleRegistry, type Xf } from './styles.js';
 export * from './types.js';
 export { Workbook, type WorkbookOptions, type WorksheetOptions } from './workbook.js';

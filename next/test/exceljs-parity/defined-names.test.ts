@@ -10,7 +10,10 @@ import {
   readXlsx,
   removeDefinedName,
   setPrintArea,
+  spliceColumns,
+  spliceRows,
   Workbook,
+  type Worksheet,
 } from '../../src/index.js';
 import { exceljsLoad, fixture, roundtrip, streamWrite } from './helpers.js';
 
@@ -95,7 +98,37 @@ describe('exceljs parity: defined names', () => {
   });
 
   // exceljs: spec/unit/doc/defined-names.spec.js — "splices"
-  it.skip('defined names follow spliced rows/columns — not supported (no splice)', () => {});
+  it('defined names follow spliced rows and columns (➖ like Excel, not cell by cell)', () => {
+    const wb = new Workbook();
+    const sheets = Object.fromEntries(
+      ['vertical', 'horizontal', 'square', 'single'].map((n) => [n, wb.addWorksheet(n)]),
+    ) as Record<string, Worksheet>;
+    // exceljs lists the named cells; turbosheet names a range
+    addDefinedName(wb, 'vertical', 'vertical!A1:A4');
+    addDefinedName(wb, 'horizontal', 'horizontal!A1:D1');
+    addDefinedName(wb, 'square', 'square!A1:D4');
+    for (const a of ['A1', 'D1', 'A4', 'D4']) addDefinedName(wb, `single${a}`, `single!${a}`);
+
+    // exceljs: dn.spliceRows(name, 2, 2, 1) = delete 2 rows at 2, insert 1
+    spliceRows(sheets.vertical!, 2, 2, ['new']);
+    spliceColumns(sheets.horizontal!, 2, 2, ['new']);
+    spliceRows(sheets.square!, 2, 2, ['new']);
+    spliceColumns(sheets.square!, 2, 2, ['new']);
+    spliceRows(sheets.single!, 2, 2, ['new']);
+    spliceColumns(sheets.single!, 2, 2, ['new']);
+
+    // ➖ exceljs: vertical = A1 and A3 (the inserted row 2 is not part of the name). The
+    // replaced row is overwritten in place, so the reference to it stays: A1:A4 loses row 3
+    const v = (n: string) => getDefinedName(wb, n)?.value;
+    expect(v('vertical')).toBe("'vertical'!$A$1:$A$3");
+    expect(v('horizontal')).toBe("'horizontal'!$A$1:$C$1");
+    expect(v('square')).toBe("'square'!$A$1:$C$3");
+    // single cells move exactly as in exceljs
+    expect(v('singleA1')).toBe("'single'!$A$1");
+    expect(v('singleD1')).toBe("'single'!$C$1");
+    expect(v('singleA4')).toBe("'single'!$A$3");
+    expect(v('singleD4')).toBe("'single'!$C$3");
+  });
 
   // exceljs: spec/unit/doc/defined-names.spec.js — "creates matrix from model"
   it.skip('DefinedNames cell matrix — not applicable (exceljs internals)', () => {});

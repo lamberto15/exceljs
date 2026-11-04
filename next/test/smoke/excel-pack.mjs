@@ -17,10 +17,15 @@ import {
   addNote,
   addTable,
   createXlsxWriter,
+  deleteRows,
+  duplicateRow,
+  insertColumns,
+  insertRows,
   placeImage,
   readXlsx,
   setPrintArea,
   setPrintTitles,
+  spliceRows,
   Workbook,
   writeXlsx,
 } from '../../dist/index.js';
@@ -607,6 +612,67 @@ for (const [file, what] of [
     '16-formulas.xlsx',
     writeXlsx(wb),
     `"Formulas" sheet: ${formulas.length} formulas whose cached values were computed by turbosheet/formula. Values shown before Excel recalculates match after pressing Ctrl+Alt+F9: column D is turbosheet's result as a plain value, so after recalculation column C (Excel) must equal D and the Match column must be TRUE on every row (all 38). Future functions (XOR, IFS, SWITCH, IFNA, XLOOKUP, XMATCH, TEXTJOIN, CONCAT, DAYS) must not show #NAME?. The examples avoid currency and thousands/decimal separators; TEXT date codes (yyyy, mmm) assume an English Excel UI.`,
+  );
+}
+
+// 17: row / column structure edits; every reference must still point at the same data
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Data');
+  const sum = wb.addWorksheet('Summary');
+  addTable(ws, {
+    name: 'Sales',
+    ref: 'A1:D6',
+    columns: [
+      'Item',
+      'Qty',
+      'Price',
+      {
+        name: 'Total',
+        calculatedColumnFormula: 'Sales[[#This Row],[Qty]]*Sales[[#This Row],[Price]]',
+      },
+    ],
+    rows: [
+      ['a', 1, 10],
+      ['b', 2, 20],
+      ['c', 3, 30],
+      ['d', 4, 40],
+      ['e', 5, 50],
+    ],
+  });
+  ws.setCell('F1', { formula: 'SUM(B2:B6)' });
+  ws.setCell('F2', { formula: 'B5*C5' });
+  ws.setCell('F7', { formula: 'SUM($C$2:$C$6)' });
+  ws.setCell('H1', 'merged');
+  ws.mergeCells('H1:I2');
+  ws.setCell('A9', 'dup');
+  ws.setCell('B9', 7);
+  ws.setCell('C9', { formula: 'B9*2' });
+  ws.addRow(['tail', 100]);
+  addConditionalFormatting(ws, 'B2:B6', [{ type: 'expression', formulae: ['B2>=3'], style: bold }]);
+  addDataValidation(ws, { sqref: 'C2:C6', type: 'whole', operator: 'greaterThan', formula1: 'B2' });
+  addNote(ws, 'A4', 'note on item c');
+  addDefinedName(wb, 'QtyCol', 'Data!$B$2:$B$6');
+  sum.setCell('A1', { formula: 'SUM(Data!B2:B6)' });
+  sum.setCell('A2', { formula: 'Data!B4' });
+  sum.setCell('A3', { formula: 'SUM(QtyCol)' });
+  sum.setCell('A4', { formula: "'Data'!C6" });
+  addChart(sum, {
+    type: 'column',
+    title: 'Qty',
+    series: [{ categories: 'Data!$A$2:$A$6', values: 'Data!$B$2:$B$6' }],
+    anchor: 'C1:J15',
+  });
+
+  insertRows(ws, 4, [['ins', 6, 60]]); // inside the table: Total filled
+  deleteRows(ws, 3); // item b
+  insertColumns(ws, 'C', 1); // inside the table: new column "Column5"
+  duplicateRow(ws, 9, 2, true); // copies of "dup" in rows 10-11, formula translated
+  spliceRows(ws, 12, 1, ['spliced', 1]); // replaces the moved "tail" row
+  save(
+    '17-structure-edits.xlsx',
+    writeXlsx(wb),
+    `Rows/columns inserted, deleted, duplicated and spliced after building the sheet. "Data": table Sales is A1:E6 with columns Item, Qty, Column5, Price, Total (items a, ins, c, d, e; Total = Qty*Price on every row, also "ins"). G1 = 19 (SUM(B2:B6)), G2 = 160 (B5*D5 → item d), G7 = 190 (prices); merged block I1:J2; bold CF on Qty >= 3; note on A4 (item c); rows 9-11 "dup" 7 with D = 14 (D10 = B10*2, D11 = B11*2); row 12 "spliced". "Summary": A1 = 19, A2 = 3 (item c's Qty), A3 = 19 (defined name QtyCol), A4 = 50; the chart shows a, ins, c, d, e. No repair prompt.`,
   );
 }
 

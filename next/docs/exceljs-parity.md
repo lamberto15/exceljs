@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 72 | 7 | 23 | 45 | 6 | 153 |
-| issues | 23 | 0 | 1 | 3 | 0 | 27 |
-| prs | 9 | 0 | 1 | 3 | 0 | 13 |
-| unit | 35 | 0 | 57 | 21 | 64 | 177 |
-| **all** | 139 | 8 | 82 | 72 | 70 | 371 |
+| integration | 77 | 7 | 16 | 47 | 6 | 153 |
+| issues | 24 | 0 | 0 | 3 | 0 | 27 |
+| prs | 10 | 0 | 0 | 3 | 0 | 13 |
+| unit | 55 | 2 | 22 | 34 | 64 | 177 |
+| **all** | 166 | 10 | 38 | 87 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -32,17 +32,17 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [conditional-formatting](../test/exceljs-parity/conditional-formatting.test.ts) | 1 | 0 | 0 | 1 | 0 | 2 |
 | [csv](../test/exceljs-parity/csv.test.ts) | 0 | 0 | 0 | 2 | 0 | 2 |
 | [data-validation](../test/exceljs-parity/data-validation.test.ts) | 2 | 0 | 0 | 1 | 0 | 3 |
-| [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 1 | 5 | 1 | 9 |
+| [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 0 | 6 | 1 | 9 |
 | [formulas](../test/exceljs-parity/formulas.test.ts) | 7 | 1 | 8 | 0 | 0 | 16 |
 | [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 0 | 1 | 2 | 0 | 0 | 3 |
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
-| [issues](../test/exceljs-parity/issues.test.ts) | 23 | 0 | 1 | 3 | 0 | 27 |
-| [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 1 | 7 | 0 | 15 |
+| [issues](../test/exceljs-parity/issues.test.ts) | 24 | 0 | 0 | 3 | 0 | 27 |
+| [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 0 | 8 | 0 | 15 |
 | [misc](../test/exceljs-parity/misc.test.ts) | 27 | 0 | 5 | 7 | 4 | 43 |
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 3 | 0 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
-| [prs](../test/exceljs-parity/prs.test.ts) | 9 | 0 | 1 | 3 | 0 | 13 |
-| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 21 | 0 | 48 | 21 | 0 | 90 |
+| [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
+| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 46 | 2 | 8 | 34 | 0 | 90 |
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 3 | 0 | 5 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
@@ -61,12 +61,12 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | `Workbook.removeWorksheet` did not update sheet-scoped defined names (`localSheetId` is a tab index): print area / print titles / local names of later sheets moved to a neighbour or vanished, and the removed sheet's names were written against another sheet. | defined-names port (extra check next to `workbook.spec.js` "defined names") | `fix(core)` |
 
 | The hyperlink of a **formula cell** was skipped by the reader (a cell holds one value kind) and lost on a read → write round trip. It is now kept raw in `ws.preserved` (relationship ids remapped) and written back while the cell still holds the formula it was read with; changing or clearing the cell drops it. | `workbook-xlsx-reader.spec.js` "should contain the linked url" (`formulas.xlsx` A1) | `fix(read)` |
+| `spliceColumns` (new) overwrote replaced columns' cells but kept their column definition (width, default style, key), unlike `spliceRows`, which resets replaced rows. Replaced columns now start fresh. | `worksheet.values.spec.js` "handles column keys", "Replace style" (Columns) | `feat(core)` (before release) |
 
 No failure was caused by the `_xlfn.` future-function prefix work happening on another branch: `formulas.xlsx` keeps `_xlfn.CONCAT(...)` exactly as stored, which is what ExcelJS expects.
 
 ## Notable unsupported features
 
-- Row/column structure edits: `insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow`, row splice (≈45 ExcelJS tests).
 - Shared-formula authoring (`fillFormula`, `{ sharedFormula }` values); shared formulas in files are expanded on read.
 - Gradient fills; font `charset`, `outline`, `shadow`, `condense`, `extend` (dropped on read, so a read → write round trip loses them).
 - Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
@@ -158,7 +158,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| issue 2125 - spliceRows remove last row | 🚫 | issues (skip) | `spliceRows` not supported |
+| issue 2125 - spliceRows remove last row | ✅ | issues |  |
 
 ### `integration/issues/issue-219-1904-dates.spec.js`
 
@@ -275,7 +275,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| pull request 1334 - Fix the error that comment does not delete at spliceColumn | 🚫 | prs (skip) | `spliceColumns` not supported |
+| pull request 1334 - Fix the error that comment does not delete at spliceColumn | ✅ | prs |  |
 
 ### `integration/pr/test-pr-1431.spec.js`
 
@@ -411,10 +411,10 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
 | CSV file and its configuration | ➖ | csv | delimiter + `dateFormat` supported; custom read date formats are not (ISO only) |
-| Duplicate rows replacing properly | 🚫 | rows-columns (skip) | `duplicateRow` not supported |
-| Duplicate rows shifting properly | 🚫 | rows-columns (skip) | `duplicateRow` not supported |
-| Duplicate rows with height properly | 🚫 | rows-columns (skip) | `duplicateRow` not supported |
-| Duplicate rows with styles properly | 🚫 | rows-columns (skip) | `duplicateRow` not supported |
+| Duplicate rows replacing properly | ✅ | rows-columns |  |
+| Duplicate rows shifting properly | ✅ | rows-columns |  |
+| Duplicate rows with height properly | ✅ | rows-columns |  |
+| Duplicate rows with styles properly | ✅ | rows-columns |  |
 | a lot of sheets to xlsx file | ✅ | misc |  |
 | auto filter | ✅ | misc |  |
 | company, manager, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
@@ -434,7 +434,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | serialises split panes | ➖ | misc | one view per sheet; `activePane` not modelled |
 | shared formula | 🚫 | formulas | no `fillFormula`; plain formulas round-trip |
 | sheets with correct names | ➖ | misc | default name is `SheetN` (exceljs `sheetN`) |
-| spliced meat and ham | 🚫 | rows-columns (skip) | splice not supported |
+| spliced meat and ham | ✅ | rows-columns |  |
 | styles | ➖ | merges | merging does not copy the master style; set it per cell |
 | throw an error for wrong data type | ✅ | misc | different message |
 | throws an error when csv file not found | ❓ | misc/csv (skip) | no file system API |
@@ -484,10 +484,10 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | assigns cell types properly | ✅ | values |  |
 | does not allow overlapping merges | ✅ | merges |  |
 | does not allow overlapping merges | ✅ | merges |  |
-| inserts rows by contiguous array | ➖ | rows-columns | no `getRows`; `eachCell` gets values |
-| inserts rows by object | ➖ | rows-columns | no `getRows`; `eachCell` gets values |
-| inserts rows by sparse array | ➖ | rows-columns | 0-based arrays; no `getRows` |
-| inserts rows with style option | 🚫 | rows-columns (skip) | `insertRow(s)` / style codes not supported |
+| inserts rows by contiguous array | ➖ | rows-columns | function `insertRow`; no `getRows` |
+| inserts rows by object | ➖ | rows-columns | function `insertRow`; no `getRows`; `eachCell` gets values |
+| inserts rows by sparse array | ➖ | rows-columns | function `insertRow`; 0-based arrays |
+| inserts rows with style option | ➖ | rows-columns | `inheritStyle: 'above' / 'below'` instead of `i` / `o` / `n`; every inserted row is styled |
 | iterates over collumn cells | 🚫 | rows-columns (skip) | `column.eachCell` not supported |
 | iterates over rows | ➖ | rows-columns | no `includeEmpty` |
 | keep first 31 characters | ➖ | rows-columns | throws instead of truncating |
@@ -500,7 +500,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | save the original name | ✅ | rows-columns | messages differ; >31 chars throws instead of truncating (see next) |
 | sets col styles | ➖ | styles | see styles.spec |
 | sets row styles | ➖ | styles | see styles.spec |
-| should style of the inserted row with inherited style be mutable | 🚫 | rows-columns (skip) | `insertRow(s)` / style codes not supported |
+| should style of the inserted row with inherited style be mutable | ➖ | rows-columns | styles are immutable and interned; assigning a new style cannot affect the source row |
 | stores shared string values properly | ✅ | values |  |
 | stores values properly | ➖ | values | a formula `result` cannot be a Date |
 | thrown an error | ✅ | rows-columns | messages differ; >31 chars throws instead of truncating (see next) |
@@ -569,7 +569,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | gets the right ranges for a name | ➖ | defined-names | range-based API |
 | removes names for cells | ➖ | defined-names | range-based API |
 | skips values with invalid range | ✅ | defined-names | bogus names kept as-is |
-| splices | 🚫 | defined-names (skip) |  |
+| splices | ➖ | defined-names | names are ranges adjusted like Excel (shrink / grow), not cell lists; replaced rows stay |
 
 ### `unit/doc/range.spec.js`
 
@@ -590,13 +590,13 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | builds from model | ❓ | — | Row model internals |
 | counts cells | ❓ | — | Row model internals |
 | iterates over cells | ❓ | — | Row model internals |
-| remove almost to end | 🚫 | rows-columns (skip) | row splice |
-| remove and insert fewer | 🚫 | rows-columns (skip) | row splice |
-| remove and insert more | 🚫 | rows-columns (skip) | row splice |
-| remove and insert replacements | 🚫 | rows-columns (skip) | row splice |
-| remove only | 🚫 | rows-columns (skip) | row splice |
-| remove past end | 🚫 | rows-columns (skip) | row splice |
-| remove to end | 🚫 | rows-columns (skip) | row splice |
+| remove almost to end | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove and insert fewer | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove and insert more | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove and insert replacements | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove only | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove past end | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
+| remove to end | ➖ | rows-columns | no `Row.splice`; ported with `spliceColumns` on a one-row sheet |
 | stores cells | ❓ | — | Row model internals |
 | stores values by whole row | ❓ | — | Row model internals |
 
@@ -612,8 +612,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | --- | --- | --- | --- |
 | assigns cell types properly | ✅ | misc / values |  |
 | assigns rich text | ✅ | misc / values |  |
-| inserts duplicates | 🚫 | rows-columns (skip) |  |
-| overwrites with duplicates | 🚫 | rows-columns (skip) |  |
+| inserts duplicates | ✅ | rows-columns |  |
+| overwrites with duplicates | ✅ | rows-columns |  |
 | returns undefined for non-existant sheet | ✅ | misc / values |  |
 | returns undefined for sheet 0 | ✅ | misc / values |  |
 | returns undefined for sheet 0 after accessing wb.worksheets or wb.eachSheet  | ✅ | misc / values |  |
@@ -648,7 +648,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | does not allow overlapping merges | ✅ | merges |  |
 | merges and unmerges | ✅ | merges |  |
 | merges styles | ➖ | merges |  |
-| preserves merges after row inserts | 🚫 | merges (skip) |  |
+| preserves merges after row inserts | ➖ | merges | no Merge value type; the merge range moves with the rows |
 | references the same top-left value | ➖ | merges |  |
 
 ### `unit/doc/worksheet.pagebreak.spec.js`
@@ -679,28 +679,28 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| Insert defined names | 🚫 | rows-columns (skip) | splice |
-| Insert defined names | 🚫 | rows-columns (skip) | splice |
-| Insert style | 🚫 | rows-columns (skip) | splice |
-| Insert style | 🚫 | rows-columns (skip) | splice |
-| Remove and insert fewer | 🚫 | rows-columns (skip) | splice |
-| Remove and insert fewer | 🚫 | rows-columns (skip) | splice |
-| Remove and insert more | 🚫 | rows-columns (skip) | splice |
-| Remove and insert more | 🚫 | rows-columns (skip) | splice |
-| Remove and insert same | 🚫 | rows-columns (skip) | splice |
-| Remove and insert same | 🚫 | rows-columns (skip) | splice |
-| Remove defined names | 🚫 | rows-columns (skip) | splice |
-| Remove defined names | 🚫 | rows-columns (skip) | splice |
-| Remove only | 🚫 | rows-columns (skip) | splice |
-| Remove style | 🚫 | rows-columns (skip) | splice |
-| Remove style | 🚫 | rows-columns (skip) | splice |
-| Replace defined names | 🚫 | rows-columns (skip) | splice |
-| Replace defined names | 🚫 | rows-columns (skip) | splice |
-| Replace style | 🚫 | rows-columns (skip) | splice |
-| Replace style | 🚫 | rows-columns (skip) | splice |
-| Splices almost to end | 🚫 | rows-columns (skip) | splice |
-| Splices past end | 🚫 | rows-columns (skip) | splice |
-| Splices to end | 🚫 | rows-columns (skip) | splice |
+| Insert defined names | ➖ | rows-columns | name ranges grow on insert (exceljs leaves a hole) |
+| Insert defined names | ➖ | rows-columns | name ranges grow on insert (exceljs leaves a hole) |
+| Insert style | ✅ | rows-columns |  |
+| Insert style | ✅ | rows-columns |  |
+| Remove and insert fewer | ✅ | rows-columns |  |
+| Remove and insert fewer | ✅ | rows-columns |  |
+| Remove and insert more | ✅ | rows-columns |  |
+| Remove and insert more | ✅ | rows-columns |  |
+| Remove and insert same | ✅ | rows-columns |  |
+| Remove and insert same | ✅ | rows-columns |  |
+| Remove defined names | ✅ | rows-columns |  |
+| Remove defined names | ✅ | rows-columns |  |
+| Remove only | ✅ | rows-columns |  |
+| Remove style | ✅ | rows-columns |  |
+| Remove style | ✅ | rows-columns |  |
+| Replace defined names | ➖ | rows-columns | name ranges grow on insert; a replaced row / column stays in the name |
+| Replace defined names | ➖ | rows-columns | name ranges grow on insert; a replaced row / column stays in the name |
+| Replace style | ✅ | rows-columns |  |
+| Replace style | 🐛 | rows-columns | `spliceColumns` kept the style of an overwritten column; fixed (`feat(core)` structure edits) |
+| Splices almost to end | ✅ | rows-columns |  |
+| Splices past end | ✅ | rows-columns |  |
+| Splices to end | ✅ | rows-columns |  |
 | adds column headers | ✅ | rows-columns |  |
 | adds column headers by letter | ➖ | rows-columns |  |
 | adds column headers by number | ➖ | rows-columns |  |
@@ -711,11 +711,11 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | assigns cell types properly | ✅ | values |  |
 | calculates columnCount and actualColumnCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
 | calculates rowCount and actualRowCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
-| handles column keys | 🚫 | rows-columns (skip) | splice |
+| handles column keys | 🐛 | rows-columns | `spliceColumns` kept width / style of an overwritten column; fixed (`feat(core)` structure edits) |
 | iterates over collumn cells | 🚫 | rows-columns (skip) |  |
 | iterates over rows | ➖ | rows-columns |  |
 | returns sheet values | ➖ | rows-columns |  |
-| splices columns | 🚫 | rows-columns (skip) | splice |
+| splices columns | ✅ | rows-columns |  |
 | stores shared string values properly | ✅ | values |  |
 | stores values properly | ✅ | values |  |
 

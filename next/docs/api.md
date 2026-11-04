@@ -72,6 +72,19 @@ cell.value = 42;  cell.address;  cell.row;  cell.col;  cell.kind;
 cell.style = { ... };  cell.numFmt = '0.00';  cell.font = {...};  cell.fill;  cell.border;  cell.alignment;  cell.protection;
 ```
 
+Insert, delete, splice and duplicate rows / columns (functions; every reference to the sheet follows, as in Excel — see [features.md](./features.md#inserting-and-deleting-rows-and-columns)):
+
+```ts
+insertRows(ws, pos, rows | count, { inheritStyle?: 'above' | 'below' })   // rows: arrays or keyed objects, like addRow
+insertRow(ws, pos, values?, opts?)
+deleteRows(ws, start, count = 1)
+spliceRows(ws, start, count, ...rows)          // ExcelJS spliceRows: overwrite min(count, rows) in place, delete / insert the rest
+insertColumns(ws, pos, cols | count)           // pos: number or letter; cols: arrays of values from row 1
+deleteColumns(ws, start, count = 1)
+spliceColumns(ws, start, count, ...cols)
+duplicateRow(ws, rowNum, count, insert = false) // copies below rowNum: inserted, or overwriting
+```
+
 `RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
 
 ## CellValue
