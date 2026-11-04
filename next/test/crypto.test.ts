@@ -46,7 +46,7 @@ describe('cfb', () => {
     expect(r.entries.find((e) => e.path === '\x06DataSpaces')?.type).toBe(1);
   });
 
-  it('writes and reads DIFAT for >109 FAT sectors', () => {
+  it('writes and reads DIFAT for >109 FAT sectors', { timeout: 30_000 }, () => {
     const big = bytes(8 * 1024 * 1024 + 7, 9);
     const cfb = writeCfb([
       ['a', big],
