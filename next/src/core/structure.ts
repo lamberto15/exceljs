@@ -509,7 +509,7 @@ function edit(ws: Worksheet, rows: boolean, at: number, n: number): void {
   }
   if (ws.images) for (const p of ws.images) p.anchor = shiftAnchor(e, p.anchor, p.editAs);
   if (ws.charts)
-    for (const c of ws.charts) c.anchor = shiftAnchor(e, toAnchor(c.anchor), undefined);
+    for (const c of ws.charts) c.anchor = shiftAnchor(e, toAnchor(c.anchor, ws), undefined);
   const links = ws.preserved?.links;
   if (links) {
     const kept = [];

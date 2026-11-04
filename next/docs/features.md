@@ -9,6 +9,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
+- [In-cell checkboxes](#in-cell-checkboxes)
 - [Charts](#charts)
 - [Conditional formatting](#conditional-formatting)
 - [Data validation](#data-validation)
@@ -155,7 +156,23 @@ const id = addImage(wb, { data: pngBytes, extension: 'png' }); // or { base64: '
 placeImage(ws, id, 'D2:F6');                                    // stretch over a range
 placeImage(ws, id, { tl: 'H2', ext: { width: 120, height: 80 } }, { description: 'Logo' });
 ws.backgroundImage = id;                                        // sheet background
+fitImage(ws, id, 'B2:C4');                                      // scaled to fit (aspect kept), centered
+placeImage(ws, id, { tl: { col: 1.5, row: 2.25 }, br: 'E8' });  // fractional positions, like ExcelJS
 ```
+
+Fractional `col` / `row` (0-based, as in ExcelJS: `1.5` = halfway into column B) are converted to cell + pixel offset with the sheet's column widths and row heights, as `fitImage` does; set widths and heights first. `fitImage` reads PNG, JPEG and GIF sizes (`imageSize(bytes)`), shrinks pictures larger than the range (`upscale: true` also grows small ones) and keeps `padding` (2 px) free.
+
+## In-cell checkboxes
+
+```ts
+import { setCheckbox } from 'turbosheet';
+
+ws.addRow(['Task', 'Done']);
+ws.addRow(['write tests', true]);
+setCheckbox(ws, 'B2:B10'); // B2 stays checked; empty cells become unchecked (FALSE)
+```
+
+Excel 365's in-cell checkboxes (2024+) are boolean cells with a checkbox format (`style.checkbox`): formulas see TRUE / FALSE, and Excel versions without checkboxes show those values. Written and read back.
 
 ## Charts
 

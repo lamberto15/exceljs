@@ -14,6 +14,7 @@ import { PackageParts, type PartRec, RelList, relElems } from './package.js';
 import {
   appPropsXml,
   type BookInfo,
+  checkboxBagXml,
   contentTypesXml,
   corePropsXml,
   rootRelsXml,
@@ -67,6 +68,18 @@ export function bookParts(
     nextIndex: (f) => pkg.nextIndex(f),
   };
   for (const f of writers) f.book?.write?.(ctx);
+  if (wb.styles.xfs.some((x) => x.checkbox)) {
+    // in-cell checkboxes: the property bag their xf extLst points at
+    ctx.addPart(
+      'xl/featurePropertyBag/featurePropertyBag.xml',
+      checkboxBagXml(),
+      'application/vnd.ms-excel.featurepropertybag+xml',
+    );
+    ctx.addRel(
+      'http://schemas.microsoft.com/office/2022/11/relationships/FeaturePropertyBag',
+      'featurePropertyBag/featurePropertyBag.xml',
+    );
+  }
   const pb = wb.preserved;
   const extra: [number, string, number][] = [];
   for (const f of writers) {

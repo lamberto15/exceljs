@@ -1,6 +1,7 @@
-// Sheet-wide formatting: what selecting all cells (Ctrl+A) and formatting them does in Excel.
+// Sheet-wide formatting (what selecting all cells and formatting them does in Excel) and
+// in-cell checkboxes.
 
-import { MAX_COLS } from './address.js';
+import { decodeRange, MAX_COLS } from './address.js';
 import type { Style } from './types.js';
 import type { Worksheet } from './worksheet.js';
 
@@ -31,5 +32,23 @@ export function setSheetStyle(ws: Worksheet, style: Style): void {
   for (let c = 1; c <= MAX_COLS; c++) {
     const col = ws.getColumn(c);
     col.styleIndex = patch(col.styleIndex);
+  }
+}
+
+/**
+ * Make cells in-cell checkboxes (Excel 365, 2024+): each cell of `range` ("A2:A20") gets the
+ * checkbox format and a boolean value (`checked`, default false; existing booleans are kept).
+ * Excel versions without checkboxes show TRUE / FALSE.
+ */
+export function setCheckbox(ws: Worksheet, range: string, checked = false): void {
+  const r = decodeRange(range);
+  for (let y = r.top; y <= r.bottom; y++) {
+    for (let c = r.left; c <= r.right; c++) {
+      const cur = ws.getValue(y + 1, c + 1);
+      ws.setCell(y + 1, c + 1, typeof cur === 'boolean' ? cur : checked, {
+        ...ws.getStyle(y + 1, c + 1),
+        checkbox: true,
+      });
+    }
   }
 }

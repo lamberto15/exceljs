@@ -26,7 +26,7 @@ export {
   isDateFormatId,
 } from './numfmt.js';
 export { SharedStrings } from './sharedstrings.js';
-export { setSheetStyle } from './sheet-style.js';
+export { setCheckbox, setSheetStyle } from './sheet-style.js';
 export {
   deleteColumns,
   deleteRows,

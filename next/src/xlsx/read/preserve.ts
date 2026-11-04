@@ -181,7 +181,8 @@ function relMap(rels: ReadonlyMap<string, Relationship> | undefined): AttrMap {
 }
 
 const SHEETISH = /\/(worksheet|chartsheet|dialogsheet|macrosheet|xlMacrosheet|xlIntlMacrosheet)$/;
-const BOOK_OWNED = /\/(styles|sharedStrings|calcChain)$/;
+// FeaturePropertyBag: in-cell checkboxes, regenerated from Style.checkbox
+const BOOK_OWNED = /\/(styles|sharedStrings|calcChain|FeaturePropertyBag)$/;
 
 /** `dxfId`-like attributes (cfRule dxfId, table headerRowDxfId / dataDxfId / ..., pivot formats). */
 const DXF_ATTR = /(\s[\w:]*[dD]xfId)="(\d+)"/g;

@@ -64,10 +64,13 @@ export {
 export {
   addImage,
   type CellPosition,
+  type FitImageOptions,
+  fitImage,
   type ImageAnchor,
   type ImageExtension,
   type ImagePlacement,
   type ImageSize,
+  imageSize,
   imagesReader,
   imagesWriter,
   type PlaceImageOptions,
