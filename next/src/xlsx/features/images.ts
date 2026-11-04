@@ -17,12 +17,17 @@
 // this writer appends them after the pictures, renumbering their relationships (until the
 // sheet is renamed).
 
-import { decodeAddr, decodeRange } from '../../core/address.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, parseXml } from '../../xml/index.js';
-import { type FeatureReader, type FeatureWriter, SheetSlot, type SheetWriteCtx } from './types.js';
-import { attrs, escapeAttr, fillRels, num, presDrawing, unbase64 } from './util.js';
+import { type AnchorInput, anchorXml, drawingEmitter, toAnchor } from './drawing.js';
+import {
+  type DrawingWriteCtx,
+  type FeatureReader,
+  type FeatureWriter,
+  SheetSlot,
+} from './types.js';
+import { attrs, num, unbase64 } from './util.js';
 
 export type ImageExtension =
   | 'png'
@@ -129,10 +134,6 @@ export function addImage(
   return intern(wb, data, img.extension.toLowerCase());
 }
 
-function cellPos(v: string | CellPosition): CellPosition {
-  return typeof v === 'string' ? decodeAddr(v) : v;
-}
-
 /**
  * Place a workbook picture on a sheet. `anchor`: a range ("B2:D6" — the picture covers those
  * cells; "B2" covers one cell), `{ tl, ext }` (top-left cell + pixel size), or an
@@ -141,16 +142,10 @@ function cellPos(v: string | CellPosition): CellPosition {
 export function placeImage(
   ws: Worksheet,
   imageId: number,
-  anchor: string | ImageAnchor | { tl: string | CellPosition; ext: ImageSize },
+  anchor: AnchorInput,
   opts: PlaceImageOptions = {},
 ): ImagePlacement {
-  let a: ImageAnchor;
-  if (typeof anchor === 'string') {
-    const r = decodeRange(anchor);
-    a = { from: { col: r.left, row: r.top }, to: { col: r.right + 1, row: r.bottom + 1 } };
-  } else if ('tl' in anchor) a = { from: cellPos(anchor.tl), ext: anchor.ext };
-  else a = anchor;
-  const p: ImagePlacement = { imageId, anchor: a };
+  const p: ImagePlacement = { imageId, anchor: toAnchor(anchor) };
   for (const k of ['editAs', 'hyperlink', 'tooltip', 'description', 'name'] as const) {
     if (opts[k] !== undefined) (p as unknown as Record<string, unknown>)[k] = opts[k];
   }
@@ -161,17 +156,12 @@ export function placeImage(
 
 // ---------------------------------------------------------------- writing
 
-const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-const CT_DRAWING = 'application/vnd.openxmlformats-officedocument.drawing+xml';
 const MIME: Record<string, string> = {
   jpg: 'image/jpeg',
   svg: 'image/svg+xml',
   emf: 'image/x-emf',
   wmf: 'image/x-wmf',
 };
-const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
-
-const emu = (px: number | undefined): number => Math.round((px ?? 0) * 9525);
 
 /** Media part name of a workbook image (by position in wb.images), relative to xl/. */
 function mediaOf(wb: Workbook, id: number): string {
@@ -182,66 +172,31 @@ function mediaOf(wb: Workbook, id: number): string {
   throw new Error(`Image ${id} not found in workbook.images`);
 }
 
-function cellXml(tag: string, p: CellPosition): string {
-  return `<xdr:${tag}><xdr:col>${p.col}</xdr:col><xdr:colOff>${emu(p.colOff)}</xdr:colOff><xdr:row>${p.row}</xdr:row><xdr:rowOff>${emu(p.rowOff)}</xdr:rowOff></xdr:${tag}>`;
-}
-
-/**
- * The sheet's drawing part: its pictures, then the anchors kept from the file it was read from
- * (charts, shapes, ...: see read/preserve.ts) with their relationships renumbered.
- */
-function drawing(c: SheetWriteCtx, list: readonly ImagePlacement[]): string {
+/** The sheet's pictures, as anchors of its drawing part (features/drawing.ts). */
+function pictures(c: DrawingWriteCtx): string {
   const wb = c.workbook;
-  const n = c.nextIndex('drawing');
-  const kept = presDrawing(c.ws);
-  const base = kept?.maxId ?? 0;
-  let rels = '';
-  let rid = 0;
+  const list = c.ws.images ?? [];
   const media = new Map<number, string>();
-  const rel = (type: string, target: string, ext?: boolean): string => {
-    const id = `rId${++rid}`;
-    rels += `<Relationship Id="${id}" Type="${type.includes(':') ? '' : `${NS_R}/`}${escapeAttr(type)}" Target="${escapeAttr(target)}"${ext ? ' TargetMode="External"' : ''}/>`;
-    return id;
-  };
   let body = '';
   for (let i = 0; i < list.length; i++) {
     const p = list[i]!;
     let embed = media.get(p.imageId);
     if (embed === undefined) {
-      embed = rel('image', `../${mediaOf(wb, p.imageId)}`, false);
+      embed = c.drawingRel('image', `../${mediaOf(wb, p.imageId)}`, false);
       media.set(p.imageId, embed);
     }
-    const a = p.anchor;
-    let tag: string;
-    let pos: string;
-    if ('pos' in a) {
-      tag = 'absoluteAnchor';
-      pos = `<xdr:pos x="${emu(a.pos.x)}" y="${emu(a.pos.y)}"/>`;
-    } else {
-      tag = 'to' in a ? 'twoCellAnchor' : 'oneCellAnchor';
-      pos = cellXml('from', a.from);
-    }
-    if ('to' in a) pos += cellXml('to', a.to);
-    else pos += `<xdr:ext cx="${emu(a.ext.width)}" cy="${emu(a.ext.height)}"/>`;
     let link = '';
     if (p.hyperlink) {
       const internal = p.hyperlink.charCodeAt(0) === 35;
-      link = `<a:hlinkClick r:id="${rel('hyperlink', p.hyperlink, !internal)}"${attrs({ tooltip: p.tooltip })}/>`;
+      link = `<a:hlinkClick r:id="${c.drawingRel('hyperlink', p.hyperlink, !internal)}"${attrs({ tooltip: p.tooltip })}/>`;
     }
-    body += `<xdr:${tag}${tag === 'twoCellAnchor' ? attrs({ editAs: p.editAs }) : ''}>${pos}<xdr:pic><xdr:nvPicPr><xdr:cNvPr${attrs({ id: base + i + 2, name: p.name ?? `Picture ${i + 1}`, descr: p.description })}>${link}</xdr:cNvPr><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${embed}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:${tag}>`;
+    body += anchorXml(
+      p.anchor,
+      p.editAs,
+      `<xdr:pic><xdr:nvPicPr><xdr:cNvPr${attrs({ id: c.shapeId(), name: p.name ?? `Picture ${i + 1}`, descr: p.description })}>${link}</xdr:cNvPr><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${embed}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`,
+    );
   }
-  const path = `xl/drawings/drawing${n}.xml`;
-  if (kept) body += fillRels(kept.xml, kept.rels, path, rel);
-  c.addPart(
-    path,
-    `${XML_DECL}<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${body}</xdr:wsDr>`,
-    CT_DRAWING,
-  );
-  c.addPart(
-    `xl/drawings/_rels/drawing${n}.xml.rels`,
-    `${XML_DECL}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`,
-  );
-  return `<drawing r:id="${c.addRel('drawing', `../drawings/drawing${n}.xml`)}"/>`;
+  return body;
 }
 
 /**
@@ -251,12 +206,9 @@ function drawing(c: SheetWriteCtx, list: readonly ImagePlacement[]): string {
 export const imagesWriter: FeatureWriter = {
   name: 'images',
   sheet: {
+    anchors: [{ has: (ws) => !!ws.images?.length, emit: pictures }],
     emitters: [
-      {
-        slot: SheetSlot.drawing,
-        emit: (c) =>
-          c.ws.images?.length || presDrawing(c.ws) ? drawing(c, c.ws.images ?? []) : '',
-      },
+      drawingEmitter,
       {
         slot: SheetSlot.picture,
         emit: (c) =>

@@ -116,6 +116,14 @@ export const dataValidationWriter: FeatureWriter = {
   - `c.nextIndex(family)` — 1, 2, ... unique per package (`comments${n}.xml`, `table${n}.xml`).
   - A part that itself has relationships (a drawing → images) writes its own rels part with
     `addPart('xl/drawings/_rels/drawing1.xml.rels', ...)`.
+- **Drawing anchors** (pictures, charts, shapes): a sheet has ONE drawing part, so no feature
+  owns the `drawing` slot. List the shared `drawingEmitter` (`./drawing.ts`) in `emitters` and
+  your anchors in `sheet.anchors: [{ order, has(ws), emit(d) }]`: the writer runs the emitter
+  once per sheet (shared emitter objects are deduplicated) and it merges every enabled
+  feature's anchors (by `order`: images 0, charts 1) plus the anchors kept from a read file
+  into `xl/drawings/drawingN.xml`. `emit` gets a `DrawingWriteCtx`: `d.drawingRel(type,
+  target)` (relationships of the drawing part), `d.shapeId()` (unique `cNvPr` ids, above the
+  kept anchors'), `d.drawingPath`; `anchorXml` / `toAnchor` build and normalize anchors.
 - **Styles**: cell styles via `c.styles.intern(style)`; differential formats (conditional
   formatting, tables) via `c.styles.internDxf(style)` → `dxfId` (written to `<dxfs>`). Intern
   dxfs before `styles.xml` is written: emitters run before it in every writer.
@@ -207,8 +215,8 @@ that. What that means for a feature:
   produced model data (see the `comments` exclusion in `Preserver.finishSheet`: raw when
   `ws.comments` is unset, so a lite read keeps the notes).
 - **Mixed parts** are decided in `read/preserve.ts`: drawings keep their non-picture anchors
-  (`ws.preserved.drawing`, merged by the images writer via `presDrawing` / `fillRels` from
-  `./util.ts`); a legacy VML with only note shapes is dropped (comments regenerate it).
+  (`ws.preserved.drawing`, merged by the shared `drawingEmitter` of `./drawing.ts`, which any
+  feature contributing drawing anchors enables); a legacy VML with only note shapes is dropped (comments regenerate it).
 - Part names: kept parts keep their path unless the writer generates it; `nextIndex(family)`
   skips numbers taken by kept parts (by basename: `drawing1` reserves drawing 1).
 - Invalidation: kept content is not updated when cells change (Excel recalculates charts /

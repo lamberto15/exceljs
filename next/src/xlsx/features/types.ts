@@ -130,6 +130,39 @@ export interface SheetWriteCtx extends PackageWriteCtx {
    * or an absolute URL with `external = true`.
    */
   addRel(type: string, target: string, external?: boolean): string;
+  /**
+   * Drawing anchor contributions of every enabled feature (`FeatureWriter.sheet.anchors`),
+   * sorted by `order`: merged into the sheet's single drawing part by `drawingEmitter`.
+   */
+  readonly anchors: readonly DrawingAnchors[];
+}
+
+/** Services of the sheet's shared drawing part (xl/drawings/drawingN.xml), for DrawingAnchors. */
+export interface DrawingWriteCtx extends SheetWriteCtx {
+  /** Zip path of the drawing part, e.g. "xl/drawings/drawing1.xml". */
+  readonly drawingPath: string;
+  /**
+   * Add a relationship from the drawing part; returns its id. Same conventions as `addRel`,
+   * targets relative to the drawing (`'../charts/chart1.xml'`).
+   */
+  drawingRel(type: string, target: string, external?: boolean): string;
+  /** Next shape id (`<xdr:cNvPr id>`), unique within the drawing (kept anchors' ids are skipped). */
+  shapeId(): number;
+}
+
+/**
+ * Anchors a feature contributes to the sheet's drawing part. Pictures, charts and the anchors
+ * kept from a read file (ws.preserved) all land in ONE drawing per sheet (Excel allows one
+ * `<drawing>` element): features list a `DrawingAnchors` in `sheet.anchors` and the shared
+ * `drawingEmitter` (features/drawing.ts) in `sheet.emitters`.
+ */
+export interface DrawingAnchors {
+  /** Order of this feature's anchors in the drawing (images 0, charts 1). Default 0. */
+  readonly order?: number;
+  /** Whether the sheet has anything to draw (decides whether a drawing part is written). */
+  has(ws: Worksheet): boolean;
+  /** The anchor elements (`<xdr:twoCellAnchor>…`), '' when none. */
+  emit(ctx: DrawingWriteCtx): string;
 }
 
 /**
@@ -144,6 +177,7 @@ export interface SheetEmitter {
   readonly order?: number;
   emit(ctx: SheetWriteCtx): string;
 }
+// The same emitter object may be listed by several features (drawingEmitter): it runs once.
 
 export interface BookWriteCtx extends PackageWriteCtx {
   readonly workbook: Workbook;
@@ -222,6 +256,8 @@ export interface FeatureWriter {
     readonly emitters?: readonly SheetEmitter[];
     /** Extra namespace declarations for `<worksheet>`, e.g. ['xmlns:x14ac="..."']. */
     readonly namespaces?: readonly string[];
+    /** Anchors merged into the sheet's shared drawing part (see DrawingAnchors). */
+    readonly anchors?: readonly DrawingAnchors[];
   };
   readonly book?: {
     readonly emitters?: readonly BookEmitter[];

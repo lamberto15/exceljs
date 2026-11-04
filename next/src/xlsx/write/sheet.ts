@@ -16,8 +16,8 @@ import type { Column, RowData, Worksheet, WorksheetView } from '../../core/works
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { runsXml } from '../common/rich-text.js';
 import {
+  type DrawingAnchors,
   type FeatureWriter,
-  type SheetEmitter,
   SheetPrOrder,
   SheetSlot,
   type SheetWriteCtx,
@@ -81,6 +81,7 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
     path: sheetPath(o.index),
     streaming: o.streaming,
     plan: o.plan,
+    anchors: o.plan.anchors,
     addRel: (type, target, external) => rels.add(type, target, external),
     addPart: (path, data, ct) => pkg.addPart(path, data, ct),
     addDefault: (ext, ct) => pkg.addDefault(ext, ct),
@@ -363,13 +364,14 @@ const OWNED: readonly string[] = [
   'headerFooter:print-setup',
 ];
 
-function checkFeatures(ws: Worksheet, names: ReadonlySet<string>): void {
-  // drawing anchors (charts, shapes) kept by a read WITH the images feature: only it merges them
-  const drawing = ws.preserved?.drawing && ws.preserved.name === ws.name;
+function checkFeatures(ws: Worksheet, plan: SheetPlan): void {
+  // drawing anchors (charts, shapes) kept by a read WITH the images feature: merged by the shared
+  // drawing emitter (images, charts)
+  const drawing = ws.preserved?.drawing && ws.preserved.name === ws.name && !plan.anchors.length;
   for (const o of drawing ? [...OWNED, 'preserved:images'] : OWNED) {
     const [field, name] = o.split(':') as [keyof Worksheet, string];
     const v = ws[field];
-    if (v == null || (Array.isArray(v) && v.length === 0) || names.has(name)) continue;
+    if (v == null || (Array.isArray(v) && v.length === 0) || plan.names.has(name)) continue;
     throw new Error(
       `Worksheet '${ws.name}': ws.${field} is set but the '${name}' feature is not enabled; pass features: [${name.replace(/-(.)/g, (_, c: string) => c.toUpperCase())}Writer]`,
     );
@@ -382,22 +384,30 @@ export interface SheetPlan {
   /** FeatureWriter names of `writers`. */
   readonly names: ReadonlySet<string>;
   readonly emitters: readonly Emitter[];
+  /** Drawing anchor contributions, sorted by order. */
+  readonly anchors: readonly DrawingAnchors[];
   readonly open: string;
 }
 
 /** Built-in + feature emitters sorted by (slot, order); once per write (never per sheet/cell). */
 export function sheetPlan(writers: readonly FeatureWriter[]): SheetPlan {
   const all: Emitter[] = [...BUILTIN];
+  const anchors: DrawingAnchors[] = [];
   let ns = '';
   for (const f of writers) {
-    for (const e of f.sheet?.emitters ?? []) all.push(e as SheetEmitter as Emitter);
+    // shared emitters (the drawing) are listed by several features: run once
+    for (const e of f.sheet?.emitters ?? []) if (!all.includes(e)) all.push(e as Emitter);
     for (const n of f.sheet?.namespaces ?? []) if (!ns.includes(n)) ns += ` ${n}`;
+    anchors.push(...(f.sheet?.anchors ?? []));
   }
-  all.sort((a, b) => a.slot - b.slot || (a.order ?? 0) - (b.order ?? 0));
+  const by = (a: { order?: number | undefined }, b: { order?: number | undefined }): number =>
+    (a.order ?? 0) - (b.order ?? 0);
+  all.sort((a, b) => a.slot - b.slot || by(a, b));
   return {
     writers,
     names: new Set(writers.map((w) => w.name)),
     emitters: all,
+    anchors: anchors.sort(by),
     open: `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"${ns}>`,
   };
 }
@@ -408,7 +418,7 @@ export function sheetPlan(writers: readonly FeatureWriter[]): SheetPlan {
  * wrapped once.
  */
 function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
-  checkFeatures(ctx.ws, ctx.plan.names);
+  checkFeatures(ctx.ws, ctx.plan);
   const out: string[] = [];
   const pr: [number, string][] = [];
   for (const e of ctx.plan.emitters) {
