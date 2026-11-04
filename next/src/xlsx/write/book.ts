@@ -20,6 +20,9 @@ import {
   type SheetEntry,
   sharedStringsXml,
   stylesXml,
+  THEME_CT,
+  THEME_PATH,
+  themeXml,
   workbookRelsXml,
   workbookXml,
 } from './parts.js';
@@ -58,6 +61,10 @@ export function bookParts(
     nextIndex: (f) => pkg.nextIndex(f),
   };
   for (const f of WRITERS) f.book?.write?.(ctx);
+  if (book.theme !== false) {
+    pkg.addPart(THEME_PATH, themeXml(), THEME_CT);
+    rels.add('theme', 'theme/theme1.xml');
+  }
   const extra: [number, string, number][] = [];
   for (const f of WRITERS) {
     for (const e of f.book?.emitters ?? []) {
@@ -158,6 +165,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     created: wb.created,
     modified: wb.modified,
     definedNames: wb.definedNames,
+    theme: o.theme,
   };
   for (const p of bookParts(wb, book, pkg, sst)) yield { path: p.path, data: p.data, last: true };
 }

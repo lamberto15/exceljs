@@ -9,6 +9,7 @@ export interface ResolvedWriteOptions {
   readonly strings: 'shared' | 'inline';
   /** Only set when given explicitly (writeXlsx uses the workbook's own date system). */
   readonly date1904: boolean | undefined;
+  readonly theme: boolean;
 }
 
 const PROFILES: Record<Profile, { compression: number; strings: 'shared' | 'inline' }> = {
@@ -34,5 +35,5 @@ export function resolveWriteOptions(opts: WriteOptions = {}): ResolvedWriteOptio
   if (strings !== 'shared' && strings !== 'inline') {
     throw new TypeError(`strings must be 'shared' or 'inline', got ${String(strings)}`);
   }
-  return { profile, compression, strings, date1904: opts.date1904 };
+  return { profile, compression, strings, date1904: opts.date1904, theme: opts.theme !== false };
 }

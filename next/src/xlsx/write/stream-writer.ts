@@ -352,6 +352,7 @@ export class XlsxWriter {
       created: wb.created,
       modified: wb.modified,
       definedNames: wb.definedNames,
+      theme: this._o.theme,
     };
     const z = this._zip;
     for (const p of bookParts(wb, book, this._pkg, this._sst)) z.add(p.path, p.data);

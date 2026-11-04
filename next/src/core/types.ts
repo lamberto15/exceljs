@@ -175,6 +175,8 @@ export interface WriteOptions {
   strings?: 'shared' | 'inline';
   /** Use 1904 date system. */
   date1904?: boolean;
+  /** Write the default Office theme part (`xl/theme/theme1.xml`, ~0.5 KB compressed). Default true. */
+  theme?: boolean;
 }
 
 export interface ReadOptions {
