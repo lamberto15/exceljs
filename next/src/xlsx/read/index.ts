@@ -19,11 +19,11 @@ import { type SheetContext, SheetHandler } from './sheet-part.js';
 import { SharedStringsHandler, type StringItem } from './strings-part.js';
 import { StylesHandler } from './styles-part.js';
 import { WorkbookHandler } from './workbook-part.js';
-import { parseStrict, StrictXml, XlsxParseError } from './xml-util.js';
+import { EncryptedFileError, parseStrict, StrictXml, XlsxParseError } from './xml-util.js';
 
 export { translateFormula } from './formula.js';
 export type { SheetEntry } from './workbook-part.js';
-export { XlsxParseError } from './xml-util.js';
+export { EncryptedFileError, XlsxParseError } from './xml-util.js';
 
 /** One streamed row. */
 export interface XlsxRow {
@@ -168,12 +168,17 @@ function fanOut(list: SheetReader[]): SheetReader {
  * - `opts.sheets`: only load these sheet names (case-insensitive); others are not created.
  * - `opts.limits`: zip-bomb limits (entry count, sizes, compression ratio).
  * `profile` / `preserveUnknown` are currently ignored (unknown parts are not preserved).
- * Throws ZipLimitError / ZipPathError for hostile archives and XlsxParseError for broken XML.
+ * Throws ZipLimitError / ZipPathError for hostile archives, XlsxParseError for broken XML and
+ * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`).
  */
 export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {}): Workbook {
+  const bytes = toBytes(data);
+  // OLE compound file signature D0 CF 11 E0: encrypted OOXML container.
+  if (bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0)
+    throw new EncryptedFileError();
   // Lazy: only the parts we need are inflated, one at a time; big parts (sheets, shared
   // strings) are inflated and decoded incrementally, so their full XML never exists in memory.
-  const files = unzipLazy(toBytes(data), opts.limits);
+  const files = unzipLazy(bytes, opts.limits);
   if (files.size === 0)
     throw new XlsxParseError('Not an XLSX file: empty or unreadable zip archive');
   const pkg = new XlsxPackage();

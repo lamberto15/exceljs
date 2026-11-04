@@ -24,6 +24,11 @@
       "import": "./dist/json.js",
       "require": "./dist/json.cjs"
     },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "import": "./dist/crypto.js",
+      "require": "./dist/crypto.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -71,6 +76,12 @@
       "path": "dist/csv.js",
       "import": "*",
       "limit": "5 KB"
+    },
+    {
+      "name": "crypto",
+      "path": "dist/crypto.js",
+      "import": "*",
+      "limit": "8 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"

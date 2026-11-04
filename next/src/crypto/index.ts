@@ -16,7 +16,8 @@ export { CfbError } from './cfb.js';
 export { IntegrityError, UnsupportedEncryptionError, WrongPasswordError } from './util.js';
 
 export interface DecryptOptions {
-  /** Verify the agile dataIntegrity HMAC and reject tampered files (default true). */
+  /** Verify the agile dataIntegrity HMAC and reject tampered files (default true; files without
+   * a dataIntegrity element are accepted). */
   verifyIntegrity?: boolean;
   /** Size limits for the container streams and the decrypted package. */
   limits?: Partial<Limits>;

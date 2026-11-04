@@ -13,6 +13,7 @@ import {
   WrongPasswordError,
 } from '../src/crypto/index.js';
 import { aesKey, cbcDecrypt, cbcEncrypt } from '../src/crypto/util.js';
+import { EncryptedFileError, readXlsx, Workbook, writeXlsx, XlsxParseError } from '../src/index.js';
 
 function bytes(n: number, seed = 1): Uint8Array {
   const out = new Uint8Array(n);
@@ -502,5 +503,21 @@ describe('isEncrypted', () => {
     expect(isEncrypted(new Uint8Array([0x50, 0x4b, 3, 4]))).toBe(false);
     expect(isEncrypted(bytes(2000))).toBe(false);
     expect(isEncrypted(writeCfb([['Workbook', bytes(100)]]))).toBe(false);
+  });
+});
+
+describe('xlsx integration', () => {
+  it('encryptXlsx(writeXlsx(wb)), decryptXlsx, readXlsx', async () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Secret');
+    ws.addRow(['name', 'amount']);
+    ws.addRow(['alpha', 12.5]);
+    const enc = await encryptXlsx(writeXlsx(wb), 'hunter2', { spinCount: 1000 });
+    expect(() => readXlsx(enc)).toThrow(EncryptedFileError);
+    expect(() => readXlsx(enc)).toThrow(XlsxParseError);
+    expect(() => readXlsx(enc)).toThrow(/decryptXlsx/);
+    const back = readXlsx(await decryptXlsx(enc, 'hunter2'));
+    expect(back.getWorksheet('Secret')!.getValue('A2')).toBe('alpha');
+    expect(back.getWorksheet('Secret')!.getValue('B2')).toBe(12.5);
   });
 });

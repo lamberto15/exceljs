@@ -1,6 +1,6 @@
 # Architecture & module contracts
 
-Single published package, subpath exports for tree-shaking (`.`, `./csv`, `./json`).
+Single published package, subpath exports for tree-shaking (`.`, `./csv`, `./json`, `./crypto`).
 Shared value/style types live in `src/core/types.ts` — import from there, never redefine.
 
 Rules for every module:
@@ -101,8 +101,43 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
   each sheet part, then its feature parts and rels; workbook-level parts (workbook.xml, styles, sst,
   rels, `[Content_Types].xml`, docProps) last, from `bookParts()` shared by all writers.
 - `read/`: `readXlsx` (DOM; lazy unzip, one part inflated at a time) and `xlsxRows` (streaming rows).
+  `readXlsx` throws `EncryptedFileError` (a `XlsxParseError`) for OLE/CFB input, pointing at `./crypto`.
 - `features/`: extension points (`types.ts`) and the static registry (`registry.ts`: `WRITERS`,
   `READERS`). Every worksheet element is produced by a `SheetEmitter` bound to a CT_Worksheet slot
   (`SheetSlot`), built-ins included, so element order is global. Features also add package parts,
   relationships and content types, and consume worksheet subtrees when reading (never inside
   `sheetData`). How to add a feature: `src/xlsx/features/README.md`.
+
+## src/crypto — password-protected files (`./crypto`, MS-OFFCRYPTO)
+```ts
+export function isEncrypted(data: Uint8Array): boolean;  // CFB signature + EncryptionInfo stream
+export function decryptXlsx(data: Uint8Array, password: string,
+  opts?: { verifyIntegrity?: boolean /* default true */; limits?: Partial<Limits>; maxSpinCount?: number }
+): Promise<Uint8Array>;                                   // inner zip bytes
+export function encryptXlsx(zipBytes: Uint8Array, password: string,
+  opts?: { cipher?: 'AES-128' | 'AES-192' | 'AES-256'; hash?: 'SHA1' | 'SHA256' | 'SHA384' | 'SHA512'; spinCount?: number }
+): Promise<Uint8Array>;                                   // CFB container
+export class WrongPasswordError, IntegrityError, UnsupportedEncryptionError, CfbError;
+
+const wb = readXlsx(await decryptXlsx(bytes, pw));
+const out = await encryptXlsx(writeXlsx(wb), pw);
+```
+- `cfb.ts`: minimal MS-CFB. Reads v3/v4; every sector id range-checked, chains walked at most
+  once per sector (cycle detection), directory tree walk tracks visited entries, stream sizes
+  capped by `Limits.maxEntryBytes`; errors are `CfbError`. Writes v3 (mini stream below 4096
+  bytes, DIFAT when the FAT exceeds 109 sectors, balanced all-black directory trees).
+- `agile.ts`: agile encryption 4.4 (read + write). Write defaults match Excel 2010+: AES-256-CBC,
+  SHA-512, spinCount 100000, HMAC `dataIntegrity`, Excel's exact XML (namespaces, `\r\n` after
+  the declaration). The `\x06DataSpaces` storage (Version, DataSpaceMap, StrongEncryptionDataSpace,
+  StrongEncryptionTransform/\x06Primary) is written too: it is constant (~500 bytes) and Office
+  always writes it, so we don't depend on Excel tolerating its absence.
+- `standard.ts`: standard encryption 2.2/3.2/4.2 (Excel 2007; AES-ECB + SHA-1), read only.
+  RC4 CryptoAPI and extensible encryption throw `UnsupportedEncryptionError`.
+- Hashing: the password spin loop (100k tiny digests) uses synchronous hashes (`core/sha512.ts`,
+  shared with sheet protection, plus SHA-1/256 in `crypto/hash.ts`): ~120 ms per derivation vs
+  ~900 ms with one awaited `crypto.subtle.digest` per iteration. AES and the package HMAC use
+  WebCrypto. WebCrypto AES-CBC always applies PKCS#7 while Office segments are unpadded: encrypt
+  drops the trailing all-padding block; decrypt appends a crafted block `AES(C_last ^ 0x10*16)`
+  that decrypts to a full padding block. The package is decrypted with one call, then the first
+  block of every 4096-byte segment is corrected for its own IV. AES-ECB (standard) = CBC with a
+  zero IV, then XOR each block with the previous ciphertext block.

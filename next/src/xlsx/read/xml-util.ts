@@ -10,6 +10,14 @@ export class XlsxParseError extends Error {
   }
 }
 
+/** The input is an OLE compound file: a password-protected workbook (or a legacy .xls). */
+export class EncryptedFileError extends XlsxParseError {
+  constructor() {
+    super("File is password-protected: use decryptXlsx from '@sheetkit/xlsx/crypto'");
+    this.name = 'EncryptedFileError';
+  }
+}
+
 /**
  * Well-formedness guard around a handler: balanced/matching tags, a single root element and
  * no non-whitespace text outside it. The tokenizer itself is lenient; this turns garbage into a
