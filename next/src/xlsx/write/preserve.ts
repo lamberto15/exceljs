@@ -42,6 +42,8 @@ const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
   [SheetSlot.pageSetup]: (ws) => ws.pageSetup,
 };
 
+const OUTLINE = / outlineLevel(Row|Col)="\d+"/g;
+
 /** First `uri` attribute of a kept `<ext>` element. */
 const EXT_URI = /^<[^>]*?\suri="([^"]*)"/;
 
@@ -63,6 +65,13 @@ function sheetFrags(
   for (const f of ps.frags) {
     const k = f.slot;
     if (k < lo || k > hi || !fragLive(f, ws)) continue;
+    if (k === SheetSlot.sheetFormatPr) {
+      // kept attributes (default widths / heights, zeroHeight, ...); the outline levels are the
+      // model's (recomputed by the built-in emitter)
+      const lv = out[k]?.match(OUTLINE)?.join('') ?? '';
+      out[k] = f.xml.replace(OUTLINE, '').replace(/\/>$/, `${lv}/>`);
+      continue;
+    }
     if (k === SheetSlot.sheetPr) {
       if (f.order !== 9 && pr.some((p) => p[0] === f.order)) continue;
     } else if (k === SheetSlot.extLst) {

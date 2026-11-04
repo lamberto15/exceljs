@@ -52,6 +52,8 @@ export interface RawHandler {
 export interface SheetCapture {
   root(a: XmlAttrs): void;
   sheetPr(a: XmlAttrs): void;
+  /** `<sheetFormatPr>` attributes (kept when they say more than the writer's defaults). */
+  formatPr(name: string, a: XmlAttrs): void;
   ref(a: XmlAttrs): void;
   start(path: string, name: string, a: XmlAttrs, selfClosing: boolean): RawHandler;
 }
@@ -242,6 +244,7 @@ export class SheetHandler implements XmlHandler {
         return;
       } else {
         if (d === 2 && ln === 'sheetPr') cap.sheetPr(a);
+        else if (d === 2 && ln === 'sheetFormatPr') cap.formatPr(name, a);
         cap.ref(a);
       }
     }
