@@ -3,8 +3,11 @@
 import type { Builtin } from '../evaluator.js';
 import { S } from '../helpers.js';
 import { isError, NA } from '../values.js';
+import { date } from './date.js';
 import { logical } from './logical.js';
+import { lookup } from './lookup.js';
 import { math } from './math.js';
+import { text } from './text.js';
 
 const info: Record<string, Builtin> = {
   ISBLANK: S((v) => v === null),
@@ -23,5 +26,8 @@ const info: Record<string, Builtin> = {
 export const BUILTINS: Record<string, Builtin> = {
   ...math,
   ...logical,
+  ...lookup,
+  ...text,
+  ...date,
   ...info,
 };

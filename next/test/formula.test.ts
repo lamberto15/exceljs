@@ -1,14 +1,16 @@
 /// <reference types="node" />
 // Formula parser + evaluation engine (turbosheet/formula).
 
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { type Formula, Workbook } from '../src/core/index.js';
+import { CellKind, encodeAddr, type Formula, Workbook } from '../src/core/index.js';
 import {
   createEvaluator,
   evaluate,
   evaluateCell,
   evaluateFormula,
   FormulaParseError,
+  type FormulaResult,
   parseFormula,
   supportedFunctions,
   toNumber,
@@ -16,6 +18,8 @@ import {
 import { addDefinedName } from '../src/xlsx/features/index.js';
 import { readXlsx } from '../src/xlsx/read/index.js';
 import { writeXlsx } from '../src/xlsx/write/index.js';
+
+const SPEC = new URL('../../spec/integration/data/', import.meta.url).pathname;
 
 function book(): Workbook {
   const wb = new Workbook();
@@ -299,6 +303,7 @@ describe('evaluate', () => {
     s1.setCell('B2', { formula: 'S2!Local' });
     s1.setCell('B3', { formula: 'Nope+1' });
     s1.setCell('B4', { formula: 'Broken' });
+    s1.setCell('B5', { formula: 'INDEX(Data,2)' });
     const rep = evaluate(wb);
     expect(rep.errors).toEqual([]);
     expect(result(wb, 'S2', 'A1')).toBe(13);
@@ -308,6 +313,7 @@ describe('evaluate', () => {
     expect(result(wb, 'S1', 'B2')).toBe(100);
     expect(result(wb, 'S1', 'B3')).toEqual({ error: '#NAME?' });
     expect(result(wb, 'S1', 'B4')).toEqual({ error: '#REF!' });
+    expect(result(wb, 'S1', 'B5')).toBe(2);
   });
 
   it('unsupported functions → #NAME? and reported once', () => {
@@ -429,6 +435,28 @@ describe('evaluate', () => {
     expect([ws.getValue('H1'), ws.getValue('I1')]).toEqual([4, 6]);
   });
 
+  it('dates respect wb.date1904', () => {
+    for (const d1904 of [false, true]) {
+      const wb = new Workbook({ date1904: d1904 });
+      const ws = wb.addWorksheet('S');
+      ws.setCell('A1', new Date(Date.UTC(2024, 0, 15)));
+      ws.setCell('B1', { formula: 'YEAR(A1)*10000+MONTH(A1)*100+DAY(A1)' });
+      ws.setCell('B2', { formula: 'DATE(2024,1,15)-A1' });
+      ws.setCell('B3', { formula: 'TEXT(A1,"yyyy-mm-dd")' });
+      ws.setCell('B4', { formula: 'WEEKDAY(A1)' });
+      ws.setCell('B6', { formula: '"2024-01-15"-A1' });
+      evaluate(wb);
+      expect(result(wb, 'S', 'B1')).toBe(20240115);
+      expect(result(wb, 'S', 'B2')).toBe(0);
+      expect(result(wb, 'S', 'B3')).toBe('2024-01-15');
+      expect(result(wb, 'S', 'B4')).toBe(2); // Monday
+      expect(result(wb, 'S', 'B6')).toBe(0);
+    }
+    const w1904 = new Workbook({ date1904: true });
+    w1904.addWorksheet('S');
+    expect(evaluateFormula(w1904, 'DATE(1904,1,2)')).toBe(1);
+  });
+
   it('evaluateCell evaluates one cell and its dependencies only', () => {
     const wb = book();
     const ws = wb.getWorksheet()!;
@@ -460,7 +488,21 @@ describe('evaluate', () => {
       [10, 20],
       [30, 40],
     ]);
+    expect(evaluateFormula(wb, 'ROW()+COLUMN()', { address: 'C5' })).toBe(8);
+    expect(evaluateFormula(wb, 'ROW()')).toEqual({ error: '#VALUE!' });
     expect(() => evaluateFormula(wb, 'SUM(')).toThrow(FormulaParseError);
+  });
+
+  it('TODAY/NOW use the injectable clock', () => {
+    const wb = book();
+    const at = new Date(2024, 0, 15, 18, 0, 0); // local wall-clock time
+    expect(evaluateFormula(wb, 'TODAY()', { now: () => at })).toBe(45306);
+    expect(evaluateFormula(wb, 'NOW()', { now: () => at })).toBe(45306.75);
+    const ev = createEvaluator({ now: () => at });
+    const ws = wb.getWorksheet()!;
+    ws.setCell('A1', { formula: 'NOW()-TODAY()' });
+    ev.evaluate(wb);
+    expect(result(wb, 'Sheet1', 'A1')).toBe(0.75);
   });
 
   it('createEvaluator: custom functions per instance, no global mutation', () => {
@@ -525,6 +567,51 @@ describe('evaluate', () => {
     expect(back.getValue('E1')).toEqual({ formula: 'IF(D4>5,"big","small")', result: 'big' });
     expect(back.getValue('E2')).toEqual({ formula: 'D4>5', result: true });
     expect(back.getValue('E3')).toEqual({ formula: '1/0', result: { error: '#DIV/0!' } });
+  });
+
+  it('matches the cached values Excel stored in real files', () => {
+    let total = 0;
+    let match = 0;
+    const mismatches: string[] = [];
+    for (const f of readdirSync(SPEC).filter((n) => n.endsWith('.xlsx'))) {
+      let wb: Workbook;
+      try {
+        wb = readXlsx(new Uint8Array(readFileSync(SPEC + f)));
+      } catch {
+        continue; // invalid fixtures
+      }
+      const cached = new Map<string, FormulaResult>();
+      for (const ws of wb.worksheets) {
+        ws.rowData.forEach((row) => {
+          if (!row) return;
+          for (let i = 0; i < row.n; i++) {
+            if (row.kind[i] !== CellKind.Formula) continue;
+            const r = (row.obj![i] as Formula).result;
+            if (r === undefined) continue;
+            const a = `${/^\w+$/.test(ws.name) ? ws.name : `'${ws.name}'`}!${encodeAddr(row.index, row.col[i]!)}`;
+            cached.set(a, r);
+          }
+        });
+      }
+      if (cached.size === 0) continue;
+      const rep = evaluate(wb, { writeResults: false });
+      for (const [addr, want] of cached) {
+        const got = rep.results!.get(addr);
+        total++;
+        const ok =
+          typeof want === 'number' && typeof got === 'number'
+            ? Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want))
+            : JSON.stringify(got) === JSON.stringify(want);
+        if (ok) match++;
+        else
+          mismatches.push(
+            `${f} ${addr}: got ${JSON.stringify(got)}, Excel ${JSON.stringify(want)}`,
+          );
+      }
+    }
+    console.log(`fixture formulas: ${match}/${total} match Excel's cached values`, mismatches);
+    expect(total).toBeGreaterThan(200);
+    expect(match).toBe(total);
   });
 
   it('evaluates 100k simple formulas quickly', () => {
