@@ -1,0 +1,212 @@
+# xlsxkit
+
+Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript runtime.
+
+> Status: **0.x**. The API may change between minor versions. See [Status](#status).
+
+## Why
+
+- **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.3 s vs 3.5 s for `xlsx.load`.
+- **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
+- **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `xlsxkit/lite`. Tree-shakable, `sideEffects: false`.
+- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/`.
+- **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
+
+Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data.
+
+| 100k rows x 20 cols     | xlsxkit                               | ExcelJS 4.4.0           |
+| ----------------------- | ------------------------------------- | ----------------------- |
+| write, in memory        | 2.2 s `writeXlsx` (balanced)          | 7.6 s `writeBuffer`     |
+| write, in memory, fast  | 1.4 s `writeXlsx` (`max-speed`)       |                         |
+| write, streaming        | 1.0-1.5 s `xlsxStream` / `createXlsxWriter` | 3.5 s `WorkbookWriter` |
+| read into a workbook    | 1.3 s `readXlsx`                      | 3.5 s `xlsx.load`       |
+| read, streaming rows    | 1.3 s `xlsxRows`                      | 1.8 s `WorkbookReader`  |
+| peak JS heap, in-memory write | ~145 MB (cells are partly off-heap) | 2.1 GB              |
+| peak JS heap, streaming write | 30-80 MB                        | 42-92 MB                |
+
+## Install
+
+```sh
+npm install xlsxkit     # or pnpm add / yarn add / bun add
+```
+
+ESM and CommonJS builds, TypeScript types included. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
+
+## Quick start
+
+### Write
+
+```ts
+import { Workbook, writeXlsx } from 'xlsxkit';
+
+const wb = new Workbook();
+const ws = wb.addWorksheet('Sales');
+ws.columns = [
+  { header: 'Region', key: 'region', width: 14 },
+  { header: 'Units', key: 'units', width: 10 },
+  { header: 'Shipped', key: 'shipped', width: 12 },
+];
+ws.addRow({ region: 'North', units: 120, shipped: new Date(Date.UTC(2025, 0, 15)) });
+ws.addRow(['South', 80, new Date(Date.UTC(2025, 1, 3))]);
+ws.setCell('B4', { formula: 'SUM(B2:B3)', result: 200 });
+ws.setStyle('A1', { font: { bold: true } });
+ws.getCell('C2').numFmt = 'yyyy-mm-dd';
+ws.freeze(1);
+
+const bytes: Uint8Array = writeXlsx(wb); // synchronous
+```
+
+### Read
+
+```ts
+import { readXlsx } from 'xlsxkit';
+
+const back = readXlsx(bytes); // Uint8Array | ArrayBuffer, synchronous
+const sheet = back.getWorksheet('Sales')!;
+sheet.getValue('A2'); // 'North'
+sheet.getValue(3, 2); // 80   (row, column), 1-based like Excel
+sheet.eachRow((row, n) => console.log(n, row.values));
+```
+
+### Stream write (constant memory)
+
+```ts
+import { createWriteStream } from 'node:fs';
+import { createXlsxWriter } from 'xlsxkit';
+
+const file = createWriteStream('big.xlsx');
+const w = createXlsxWriter({
+  sink: (chunk) => new Promise((resolve) => file.write(chunk, () => resolve())),
+});
+const sheet = w.addWorksheet('Data', {
+  columns: [
+    { header: 'Id', key: 'id', width: 10 },
+    { header: 'Name', key: 'name', width: 24 },
+  ],
+  freeze: 1,
+});
+for (let i = 1; i <= 5000; i++) sheet.addRow({ id: i, name: `row ${i}` });
+await sheet.commit();
+await w.end();
+file.end();
+```
+
+`xlsxStream(wb)` returns a web `ReadableStream<Uint8Array>` for an existing workbook (handy for `new Response(stream)`).
+
+### Stream read
+
+```ts
+import { createReadStream } from 'node:fs';
+import { xlsxRows } from 'xlsxkit';
+
+// Accepts bytes, an AsyncIterable<Uint8Array> (Node streams) or a web ReadableStream.
+for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
+  // row.sheet, row.row (1-based), row.values (0-based by column: values[0] is column A)
+}
+```
+
+### CSV
+
+```ts
+import { csvRows, csvStream, parseCsv, writeCsv } from 'xlsxkit/csv';
+
+const text = writeCsv(
+  [
+    ['name', 'note'],
+    ['Ann', 'said "hi", left'],
+    ['Bob', '=HYPERLINK("http://evil")'],
+  ],
+  { escapeFormulas: true }, // prefixes ' to values starting with = + - @ TAB CR
+);
+parseCsv(text); // string[][]
+parseCsv('a,1\r\nb,2', { parseNumbers: true }); // [['a', 1], ['b', 2]]
+
+// Streaming: csvStream(rows) -> ReadableStream<Uint8Array>; csvRows(source) -> AsyncIterable<string[]>
+```
+
+### JSON helpers
+
+```ts
+import { objectsToSheet, sheetToNdjson, sheetToObjects } from 'xlsxkit/json';
+
+objectsToSheet(ws, [{ name: 'Ann', age: 31 }, { name: 'Bob', age: 42 }]); // header from keys
+sheetToObjects(ws); // [{ name: 'Ann', age: 31 }, { name: 'Bob', age: 42 }]
+for await (const line of sheetToNdjson(ws)) process.stdout.write(line); // one JSON object per row
+```
+
+### Password-protected files
+
+```ts
+import { decryptXlsx, encryptXlsx, isEncrypted } from 'xlsxkit/crypto';
+
+const encrypted = await encryptXlsx(writeXlsx(wb), 'hunter2'); // AES-256, like Excel 2010+
+isEncrypted(encrypted); // true; readXlsx(encrypted) throws EncryptedFileError
+const back = readXlsx(await decryptXlsx(encrypted, 'hunter2')); // WrongPasswordError otherwise
+```
+
+Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are read only.
+
+## Features
+
+Tables, notes, pictures, conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+
+```ts
+import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'xlsxkit';
+
+addTable(ws, {
+  name: 'Sales',
+  columns: ['Region', { name: 'Units', totalsRowFunction: 'sum' }],
+  rows: [['North', 120], ['South', 80]],
+  totalsRow: true,
+});
+addNote(ws, 'A1', { text: 'Region name', author: 'me' });
+addDataValidation(ws, { sqref: 'A2:A3', type: 'list', values: ['North', 'South'] });
+addConditionalFormatting(ws, 'B2:B3', [
+  { type: 'cellIs', operator: 'greaterThan', formulae: [100], style: { font: { bold: true } } },
+]);
+```
+
+## Documentation
+
+- [docs/api.md](./docs/api.md): API reference
+- [docs/features.md](./docs/features.md): one section per feature
+- [docs/migrating-from-exceljs.md](./docs/migrating-from-exceljs.md): ExcelJS to xlsxkit
+- [docs/bundle-size.md](./docs/bundle-size.md): `xlsxkit/lite` and size budgets
+- [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
+
+## Entry points
+
+| Import             | What                                                        | Size (min + brotli, with deps) |
+| ------------------ | ----------------------------------------------------------- | ------------------------------ |
+| `xlsxkit`          | read + write, every feature on                              | 28 KB write-only, 55 KB read + write |
+| `xlsxkit/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
+| `xlsxkit/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
+| `xlsxkit/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
+| `xlsxkit/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
+
+Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook, writeXlsx }` and `*`). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
+
+## Runtime support
+
+- **Tested in CI:** Node 22 and 24 on Linux, macOS and Windows.
+- **Expected to work, not yet CI-tested:** Bun, Deno, browsers, Cloudflare Workers and other edge runtimes. The code only uses web-standard APIs (`Uint8Array`, Web Streams, `TextEncoder`, WebCrypto; `CompressionStream` is used when present and fflate otherwise). Bug reports from these runtimes are welcome.
+
+## Security
+
+- **Zip bombs:** reading enforces limits on entry count, per-entry and total uncompressed size (checked while inflating, not only from headers) and compression ratio; override with `ReadOptions.limits`. Paths with `..`, absolute paths, backslashes and NUL are rejected.
+- **XML:** the tokenizer never expands DTDs or custom entities (no XXE, no billion laughs); only the five predefined entities and numeric character references are decoded.
+- **CSV injection:** `writeCsv(rows, { escapeFormulas: true })` prefixes `'` to text starting with `=`, `+`, `-`, `@`, TAB or CR. It is off by default; turn it on when exporting untrusted data for spreadsheet users.
+- **Encryption:** reads reject tampered files (HMAC check) and absurd password-hash iteration counts.
+- Fuzz tests mutate real files against the reader, CSV parser and XML tokenizer.
+
+## Status
+
+This is a **0.x** release: the API may still change in minor versions, with changes listed in [CHANGELOG.md](./CHANGELOG.md).
+
+Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. **Manual verification in Microsoft Excel is in progress**; until it is done, treat Excel behavior as unconfirmed and please report any "We found a problem with some content" dialog with the file attached.
+
+Not supported yet: writing charts (existing charts are preserved on round trip), evaluating formulas (cached results are written and read as given), pivot table authoring (existing ones are preserved), `.xls` and `.xlsb`.
+
+## Credits and license
+
+Inspired by and partly derived from [ExcelJS](https://github.com/exceljs/exceljs) by Guyon Roche (MIT). Released under the [MIT license](./LICENSE).
