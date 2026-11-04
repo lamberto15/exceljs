@@ -37,6 +37,7 @@ import type {
   PDrawing,
   PForeignSheet,
   PFrag,
+  PLink,
   POwnRel,
   PPart,
   PRel,
@@ -48,7 +49,7 @@ import { decodePart, type Relationship, relTypeIs } from '../common/r-opc.js';
 import { BookSlot, SheetPrOrder, SheetSlot } from '../features/types.js';
 import { presWrite } from '../write/preserve.js';
 import type { XlsxPackage } from './package.js';
-import type { RawHandler, SheetCapture } from './sheet-part.js';
+import type { HyperlinkAttrs, RawHandler, SheetCapture } from './sheet-part.js';
 import type { SheetEntry } from './workbook-part.js';
 
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -326,6 +327,13 @@ export class Preserver {
       out,
       index,
     );
+    const lx = this.compact(
+      c.links.map((l) => l[2]),
+      rels,
+      out,
+      index,
+    );
+    const links: PLink[] = c.links.map((l, i) => ({ ref: l[0], formula: l[1], xml: lx[i]! }));
     const implicit: number[] = [];
     for (const r of rels?.values() ?? []) {
       if (c.refs.has(r.id) || c.seen.has(r.id)) continue;
@@ -366,6 +374,7 @@ export class Preserver {
       !drawing &&
       !vmlKept &&
       tables.length === 0 &&
+      links.length === 0 &&
       c.prAttrs === '';
     if (empty && sheetId === ws.id) return;
     const pf: PFrag[] = frags.map((f, i) => ({
@@ -384,6 +393,7 @@ export class Preserver {
       drawing,
       vml: vmlKept,
       tables: tables.length ? tables : undefined,
+      links: links.length ? links : undefined,
       w: presWrite,
     };
     ws.preserved = ps;
@@ -793,6 +803,18 @@ export class SheetCap implements SheetCapture {
 
   ref(a: XmlAttrs): void {
     for (const k in a) if (k.endsWith(':id')) this.refs.add(a[k]!);
+  }
+
+  /** Formula-cell hyperlinks: [ref, formula, xml with placeholders]. */
+  readonly links: [string, unknown, string][] = [];
+
+  formulaLink(ref: string, formula: unknown, h: HyperlinkAttrs): void {
+    const id = h.rId !== undefined && this.rels?.has(h.rId) ? ` r:id="${ph(h.rId)}"` : '';
+    let x = `<hyperlink ref="${ref}"${id}`;
+    if (h.location !== undefined) x += ` location="${escapeAttr(h.location)}"`;
+    if (h.tooltip !== undefined) x += ` tooltip="${escapeAttr(h.tooltip)}"`;
+    if (h.display !== undefined) x += ` display="${escapeAttr(h.display)}"`;
+    if (id || h.location !== undefined) this.links.push([ref, formula, `${x}/>`]);
   }
 
   start(path: string, name: string, _a: XmlAttrs, _sc: boolean): RawHandler {

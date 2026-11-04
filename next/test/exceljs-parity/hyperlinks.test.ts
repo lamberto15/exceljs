@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { CellKind, readXlsx, Workbook, writeXlsx } from '../../src/index.js';
-import { exceljsLoad, fixture, roundtrip } from './helpers.js';
+import { exceljsLoad, fixture, partText, roundtrip } from './helpers.js';
 
 describe('exceljs parity: hyperlinks', () => {
   describe('with a cell that contains a hyperlinked formula (formulas.xlsx A1)', () => {
@@ -29,12 +29,58 @@ describe('exceljs parity: hyperlinks', () => {
     });
 
     // exceljs: spec/integration/workbook-xlsx-reader.spec.js — "should contain the linked url"
-    // 🐛 (open, needs a design decision): the hyperlink of a formula cell is not modelled and
-    // not preserved, so it is dropped on read and lost on a read → write round trip.
-    it.skip('contains the linked url (mailto:) — hyperlink on a formula cell is dropped', () => {
+    // 🐛 fixed: the hyperlink of a formula cell used to be dropped (lost on round trip). It is
+    // not modelled (a cell holds one kind) but kept raw in ws.preserved and written back while
+    // the cell still holds the formula it was read with.
+    it('keeps the linked url (mailto:) of a formula cell on round trip', async () => {
       const wb = readXlsx(fixture('formulas.xlsx'));
+      wb.worksheets[0]!.setCell('C5', 'unrelated edit');
       const out = writeXlsx(wb);
-      expect(new TextDecoder().decode(out)).toContain('mailto:someone@example.com');
+      const sheet = partText(out, 'xl/worksheets/sheet1.xml')!;
+      const id = /<hyperlink ref="A1" r:id="(rId\d+)"[^>]*\/>/.exec(sheet)?.[1];
+      expect(id).toBeDefined();
+      expect(sheet).toContain('display="mailto:someone@example.com"');
+      const rels = partText(out, 'xl/worksheets/_rels/sheet1.xml.rels')!;
+      expect(rels).toMatch(
+        new RegExp(`Id="${id}"[^>]*Target="mailto:someone@example.com"[^>]*TargetMode="External"`),
+      );
+      // still a formula for turbosheet; exceljs sees the hyperlinked formula again
+      expect(readXlsx(out).worksheets[0]!.getValue('A1')).toEqual(a1());
+      const x = (await exceljsLoad(out)).worksheets[0]!;
+      expect(x.getCell('A1').hyperlink).toBe('mailto:someone@example.com');
+      // a second round trip keeps it too
+      expect(partText(writeXlsx(readXlsx(out)), 'xl/worksheets/sheet1.xml')).toContain(
+        '<hyperlink ref="A1"',
+      );
+    });
+
+    it('drops the kept link when the formula cell is changed or cleared', () => {
+      for (const edit of [
+        (wb: ReturnType<typeof readXlsx>) => wb.worksheets[0]!.setCell('A1', 'plain'),
+        (wb: ReturnType<typeof readXlsx>) =>
+          wb.worksheets[0]!.setCell('A1', { formula: '_xlfn.CONCAT("a","b")', result: 'ab' }),
+        (wb: ReturnType<typeof readXlsx>) => wb.worksheets[0]!.clearCell('A1'),
+      ]) {
+        const wb = readXlsx(fixture('formulas.xlsx'));
+        edit(wb);
+        const out = writeXlsx(wb);
+        expect(partText(out, 'xl/worksheets/sheet1.xml')).not.toContain('<hyperlink');
+        expect(partText(out, 'xl/worksheets/_rels/sheet1.xml.rels') ?? '').not.toContain('mailto:');
+      }
+    });
+
+    it('kept formula links merge with modelled hyperlinks', () => {
+      const wb = readXlsx(fixture('formulas.xlsx'));
+      wb.worksheets[0]!.setCell('C1', { text: 'site', hyperlink: 'https://example.com' });
+      const out = writeXlsx(wb);
+      const sheet = partText(out, 'xl/worksheets/sheet1.xml')!;
+      expect(sheet.match(/<hyperlinks>/g)).toHaveLength(1);
+      expect(sheet).toMatch(/<hyperlink ref="C1"[^>]*\/><hyperlink ref="A1"/);
+      const ws2 = readXlsx(out).worksheets[0]!;
+      expect(ws2.getValue('C1')).toEqual({ text: 'site', hyperlink: 'https://example.com' });
+      const rels = partText(out, 'xl/worksheets/_rels/sheet1.xml.rels')!;
+      const ids = [...rels.matchAll(/Id="(rId\d+)"/g)].map((m) => m[1]);
+      expect(new Set(ids).size).toBe(ids.length); // no rId collision
     });
   });
 

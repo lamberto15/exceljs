@@ -18,6 +18,7 @@ import {
   type AddRel,
   addPRel,
   fillRels,
+  liveLinks,
   type PBook,
   type PForeignSheet,
   type PFrag,
@@ -116,6 +117,15 @@ function sheetFrags(
     if (k === SheetSlot.sheetPr) pr.push([f.order, x]);
     else out[k] = (out[k] ?? '') + x;
   }
+  const h = SheetSlot.hyperlinks;
+  const links = h >= lo && h <= hi ? liveLinks(ws) : [];
+  if (links.length) {
+    const x = fillRels(links.map((l) => l.xml).join(''), ps.rels, path, add);
+    const cur = out[h];
+    out[h] = cur
+      ? cur.replace('</hyperlinks>', `${x}</hyperlinks>`)
+      : `<hyperlinks>${x}</hyperlinks>`;
+  }
 }
 
 /** Whether a sheet fragment is written (not after a rename when linked; not when the model owns its slot). */
@@ -202,6 +212,7 @@ function reachable(wb: Workbook, pkg?: PackageParts): PPart[] {
     const p = ws.preserved;
     if (!p) continue;
     for (const f of p.frags) if (fragLive(f, ws)) used(f.xml, p.rels);
+    for (const l of liveLinks(ws)) used(l.xml, p.rels);
     for (const r of implicitRels(ws)) visit(r.target);
     if (p.drawing && p.name === ws.name) used(p.drawing.xml, p.drawing.rels);
     for (const t of ws.tables ?? []) {
