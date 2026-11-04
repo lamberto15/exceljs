@@ -143,6 +143,31 @@ export const dataValidationReader: FeatureReader = {
 - Escape everything user-provided: `escapeAttr` for attributes, `escapeText` for text (or
   `attrs({...})`, which escapes and skips undefined/false).
 
+## Round-trip preservation
+
+`readXlsx` keeps whatever no reader consumes (`preserveUnknown`, default true; code in
+`read/preserve.ts`, model in `common/preserved.ts`, writer in `write/preserve.ts`) and
+`writeXlsx` / `xlsxStream` write it back (`createXlsxWriter` never has any). What that means for
+a feature:
+
+- **Claiming = owning.** A worksheet element listed in `elements` is consumed: it is not kept,
+  and the relationships its `r:id` attributes reference are not kept either. Elements nobody
+  claims (and `extLst/ext` entries every claimant declined by returning `undefined`) are kept
+  raw and re-emitted in their `SheetSlot`. Claim only what you regenerate.
+- **One owner per slot**: a kept element is written only when no emitter produced its slot
+  (container slots `sheetPr` / `extLst` merge). Drop-in support for a new element = claim it.
+- **Relationships no element references** (pivotTable, threadedComments, queryTable, ...) are
+  kept; a feature that models such a part must make the preserve layer skip it (see the
+  `comments` exclusion in `Preserver.finishSheet`).
+- **Mixed parts** are decided in `read/preserve.ts`: drawings keep their non-picture anchors
+  (`ws.preserved.drawing`, merged by the images writer via `presDrawing` / `fillRels` from
+  `./util.ts`); a legacy VML with only note shapes is dropped (comments regenerate it).
+- Part names: kept parts keep their path unless the writer generates it; `nextIndex(family)`
+  skips numbers taken by kept parts (by basename: `drawing1` reserves drawing 1).
+- Invalidation: kept content is not updated when cells change (Excel recalculates charts /
+  pivots). Renaming a sheet drops its kept content that references other parts; removing a
+  sheet drops everything only it referenced. `calcChain.xml` is always dropped.
+
 ## Testing (exceljs oracle)
 
 `exceljs` 4.4 is a devDependency and the reference for semantics and compatibility. For each

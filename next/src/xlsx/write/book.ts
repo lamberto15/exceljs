@@ -7,6 +7,7 @@ import type { WriteOptions } from '../../core/types.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { nativeCompressor } from '../../zip/index.js';
+import type { PPart } from '../common/preserved.js';
 import { WRITERS } from '../features/registry.js';
 import type { BookWriteCtx } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
@@ -26,6 +27,7 @@ import {
   workbookRelsXml,
   workbookXml,
 } from './parts.js';
+import { planPreserved, presBook, sheetIds } from './preserve.js';
 import { afterSheetParts, encodeRow, newSheetCtx, sheetHead, sheetTail } from './sheet.js';
 import { concatChunks, ZipOut } from './zipout.js';
 
@@ -48,6 +50,7 @@ export function bookParts(
   book: BookInfo,
   pkg: PackageParts,
   sst: SharedStrings | undefined,
+  kept?: readonly PPart[],
 ): PartRec[] {
   const n = book.sheets.length;
   // ids after the built-in worksheet / styles / sharedStrings relationships
@@ -61,7 +64,10 @@ export function bookParts(
     nextIndex: (f) => pkg.nextIndex(f),
   };
   for (const f of WRITERS) f.book?.write?.(ctx);
-  if (book.theme !== false) {
+  const pb = wb.preserved;
+  // a theme kept from the source file replaces the default one (never two themes)
+  const keptTheme = kept && pb?.implicit.some((k) => /\/theme$/.test(pb.rels[k]!.type));
+  if (book.theme !== false && !keptTheme) {
     pkg.addPart(THEME_PATH, themeXml(), THEME_CT);
     rels.add('theme', 'theme/theme1.xml');
   }
@@ -72,6 +78,26 @@ export function bookParts(
       if (x) extra.push([e.slot, x, e.order ?? 0]);
     }
   }
+  let info = book;
+  let rootExtra = '';
+  if (kept) {
+    const pres = presBook(
+      wb,
+      pkg,
+      kept,
+      ctx.addRel,
+      book.sheets.map((s) => s.sheetId),
+    );
+    extra.push(...pres.frags);
+    info = { ...book, prAttrs: pb?.prAttrs, calcAttrs: pb?.calcAttrs, extraSheets: pres.sheets };
+    const root = new RelList(4);
+    for (const r of pres.root) {
+      const t = r.target;
+      if (typeof t === 'string') root.add(r.type, t, true);
+      else root.add(r.type, t.out!);
+    }
+    rootExtra = relElems(root.recs);
+  }
   extra.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   const out = pkg.take();
   const shared = sst !== undefined;
@@ -79,11 +105,11 @@ export function bookParts(
     {
       path: 'xl/workbook.xml',
       data: workbookXml(
-        book,
+        info,
         extra.map((e) => [e[0], e[1]]),
       ),
     },
-    { path: 'xl/styles.xml', data: stylesXml(wb.styles) },
+    { path: 'xl/styles.xml', data: stylesXml(wb.styles, pb?.tableStyles, pb?.stylesTail) },
   );
   if (sst) out.push({ path: 'xl/sharedStrings.xml', data: sharedStringsXml(sst) });
   out.push(
@@ -92,7 +118,7 @@ export function bookParts(
       path: '[Content_Types].xml',
       data: contentTypesXml(n, shared, pkg.defaults, pkg.overrides),
     },
-    { path: '_rels/.rels', data: rootRelsXml() },
+    { path: '_rels/.rels', data: rootRelsXml(rootExtra) },
     { path: 'docProps/core.xml', data: corePropsXml(book) },
     { path: 'docProps/app.xml', data: appPropsXml(book) },
   );
@@ -124,6 +150,8 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
   const active = activeTabOf(sheets);
   const sst = o.strings === 'shared' ? new SharedStrings() : undefined;
   const pkg = new PackageParts();
+  const kept = planPreserved(wb, pkg);
+  const ids = sheetIds(wb);
   let formulas = false;
 
   for (let si = 0; si < sheets.length; si++) {
@@ -155,7 +183,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
   }
 
   const book: BookInfo = {
-    sheets: sheets.map(sheetEntry),
+    sheets: sheets.map((ws, i) => ({ ...sheetEntry(ws), sheetId: ids[i]! })),
     date1904: wb.date1904,
     sharedStrings: sst !== undefined,
     formulas,
@@ -167,7 +195,8 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     definedNames: wb.definedNames,
     theme: o.theme,
   };
-  for (const p of bookParts(wb, book, pkg, sst)) yield { path: p.path, data: p.data, last: true };
+  for (const p of bookParts(wb, book, pkg, sst, kept))
+    yield { path: p.path, data: p.data, last: true };
 }
 
 /**

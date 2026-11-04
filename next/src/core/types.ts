@@ -183,7 +183,11 @@ export interface ReadOptions {
   profile?: Profile;
   /** Hard limits against zip bombs / hostile files. */
   limits?: Partial<Limits>;
-  /** Keep unknown parts for round-trip. Default true. */
+  /**
+   * Keep what the model does not represent (charts, shapes, pivot tables, threaded comments,
+   * VBA, themes, custom XML, unknown worksheet / workbook elements, ...) so writeXlsx /
+   * xlsxStream write it back. Default true. See `listPreservedParts`.
+   */
   preserveUnknown?: boolean;
   /** Only load these sheet names. */
   sheets?: readonly string[];

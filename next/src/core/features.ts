@@ -6,8 +6,8 @@
 //
 // Adding a feature field: one `import type` line and one documented optional field.
 
+import type { PBook, PSheet } from '../xlsx/common/preserved.js';
 import type { Note } from '../xlsx/features/comments.js';
-
 import type { ConditionalFormatting } from '../xlsx/features/conditional-formatting.js';
 
 import type { DataValidation } from '../xlsx/features/data-validation.js';
@@ -35,9 +35,20 @@ export interface WorksheetFeatureFields {
   protection?: SheetProtection | undefined;
   /** Tables / ListObjects (features/tables); use `addTable` to create one with its cells. */
   tables?: Table[] | undefined;
+  /**
+   * Round-trip data kept by `readXlsx` (preserveUnknown): XML and parts the model does not
+   * represent. Opaque; written back by `writeXlsx` / `xlsxStream`. Delete it to drop them.
+   */
+  preserved?: PSheet | undefined;
 }
 
 export interface WorkbookFeatureFields {
   /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
   images?: WorkbookImage[] | undefined;
+  /**
+   * Round-trip data kept by `readXlsx` (preserveUnknown): package parts and workbook XML the
+   * model does not represent (inspect with `listPreservedParts`). Opaque; written back by
+   * `writeXlsx` / `xlsxStream` (not by `createXlsxWriter`). Delete it to drop them.
+   */
+  preserved?: PBook | undefined;
 }

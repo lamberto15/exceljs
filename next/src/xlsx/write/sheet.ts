@@ -14,6 +14,7 @@ import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.js';
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
+import { fillRels } from '../common/preserved.js';
 import { runsXml } from '../common/rich-text.js';
 import { WRITERS } from '../features/registry.js';
 import {
@@ -33,6 +34,7 @@ import {
   tElem,
   XML_DECL,
 } from './parts.js';
+import { fragLive, sheetImplicit } from './preserve.js';
 
 /** Mutable per-sheet encoding state (also the features' SheetWriteCtx). */
 export interface SheetCtx extends SheetWriteCtx {
@@ -360,22 +362,43 @@ function sheetEmitters(): Emitter[] {
   return emitters;
 }
 
-/** Run the emitters of slots [lo, hi]; container slots (sheetPr, extLst) are wrapped. */
+/**
+ * Run the emitters of slots [lo, hi] plus the sheet's preserved fragments (a preserved element
+ * is written only when no emitter produced its slot); container slots (sheetPr, extLst) are
+ * wrapped once.
+ */
 function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
-  let pr = '';
-  let s = '';
-  let ext = '';
+  const out: string[] = [];
+  const pr: [number, string][] = [];
   for (const e of sheetEmitters()) {
     if (e.slot < lo || e.slot > hi) continue;
     const x = e.emit(ctx);
     if (x === '') continue;
-    if (e.slot === SheetSlot.sheetPr) pr += x;
-    else if (e.slot === SheetSlot.extLst) ext += x;
-    else s += x;
+    if (e.slot === SheetSlot.sheetPr) pr.push([e.order ?? 0, x]);
+    else out[e.slot] = (out[e.slot] ?? '') + x;
   }
-  if (pr) s = `<sheetPr>${pr}</sheetPr>${s}`;
-  if (ext) s += `<extLst>${ext}</extLst>`;
-  return s;
+  const ws = ctx.ws;
+  const ps = ws.preserved;
+  if (ps) {
+    for (const f of ps.frags) {
+      const k = f.slot;
+      if (k < lo || k > hi || !fragLive(f, ws)) continue;
+      if (k !== SheetSlot.sheetPr && k !== SheetSlot.extLst && out[k]) continue;
+      const x = fillRels(f.xml, ps.rels, ctx.path, ctx.addRel);
+      if (k === SheetSlot.sheetPr) pr.push([f.order, x]);
+      else out[k] = (out[k] ?? '') + x;
+    }
+  }
+  const pa = lo === 0 ? (ps?.prAttrs ?? '') : '';
+  if (pr.length || pa) {
+    pr.sort((a, b) => a[0] - b[0]);
+    out[0] = pr.length
+      ? `<sheetPr${pa}>${pr.map((p) => p[1]).join('')}</sheetPr>`
+      : `<sheetPr${pa}/>`;
+  }
+  const ext = out[SheetSlot.extLst];
+  if (ext) out[SheetSlot.extLst] = `<extLst>${ext}</extLst>`;
+  return out.join('');
 }
 
 /** Everything up to and including `<sheetData>`. Set ctx.dimension/outlineLevelRow/tabSelected first. */
@@ -386,7 +409,9 @@ export function sheetHead(ctx: SheetCtx): string {
 
 /** `</sheetData>` through `</worksheet>`. Allocates the sheet's relationships (see ctx.rels). */
 export function sheetTail(ctx: SheetCtx): string {
-  return `</sheetData>${runEmitters(ctx, SheetSlot.sheetData + 1, SheetSlot.extLst)}</worksheet>`;
+  const s = `</sheetData>${runEmitters(ctx, SheetSlot.sheetData + 1, SheetSlot.extLst)}</worksheet>`;
+  sheetImplicit(ctx.ws, ctx.path, ctx.addRel);
+  return s;
 }
 
 /**

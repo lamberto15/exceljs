@@ -488,7 +488,8 @@ export class XlsxWriter {
 }
 
 /**
- * Create a streaming XLSX writer.
+ * Create a streaming XLSX writer. Its workbook is new and private: content preserved by
+ * `readXlsx` (preserveUnknown) is never carried over — use writeXlsx / xlsxStream for that.
  * ```ts
  * const w = createXlsxWriter({ sink: (chunk) => file.write(chunk) });
  * const s = w.addWorksheet('Data', { columns: [{ header: 'Id', key: 'id', width: 10 }] });

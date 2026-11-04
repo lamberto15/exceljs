@@ -107,6 +107,11 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
   (`SheetSlot`), built-ins included, so element order is global. Features also add package parts,
   relationships and content types, and consume worksheet subtrees when reading (never inside
   `sheetData`). How to add a feature: `src/xlsx/features/README.md`.
+- Round-trip preservation (`ReadOptions.preserveUnknown`, default true): `read/preserve.ts`
+  captures parts / XML nobody models into `wb.preserved` / `ws.preserved` (model:
+  `common/preserved.ts`: lazy raw parts + their rels, fragments with rId placeholders);
+  `write/preserve.ts` (small: it ships in write-only bundles) names and re-emits them. See
+  "Round-trip preservation" in the features README.
 
 ## src/crypto — password-protected files (`./crypto`, MS-OFFCRYPTO)
 ```ts

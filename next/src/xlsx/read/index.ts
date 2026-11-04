@@ -5,7 +5,7 @@ import { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, type XmlHandler } from '../../xml/index.js';
 import { unzipLazy, unzipStream } from '../../zip/index.js';
-import { decodeChunks, decodePart } from '../common/r-opc.js';
+import { decodeChunks, decodePart, relTypeIs } from '../common/r-opc.js';
 import { READERS } from '../features/registry.js';
 import type {
   PackageReadCtx,
@@ -15,6 +15,7 @@ import type {
 } from '../features/types.js';
 import { CT_PATH, maybeRelevant, type ResolvedSheet, XlsxPackage } from './package.js';
 import { PartBuffer } from './part-buffer.js';
+import { Preserver } from './preserve.js';
 import { type SheetContext, SheetHandler } from './sheet-part.js';
 import { SharedStringsHandler, type StringItem } from './strings-part.js';
 import { StylesHandler } from './styles-part.js';
@@ -173,7 +174,12 @@ function fanOut(list: SheetReader[]): SheetReader {
  * Read a whole XLSX file into a {@link Workbook} (synchronous).
  * - `opts.sheets`: only load these sheet names (case-insensitive); others are not created.
  * - `opts.limits`: zip-bomb limits (entry count, sizes, compression ratio).
- * `profile` / `preserveUnknown` are currently ignored (unknown parts are not preserved).
+ * - `opts.preserveUnknown` (default true): keep what the model does not represent (charts,
+ *   shapes, pivot tables, threaded comments, VBA, custom XML, unknown worksheet elements, ...)
+ *   so `writeXlsx` / `xlsxStream` write it back (see `listPreservedParts`). Kept parts stay
+ *   compressed in the input buffer (inflated when written): do not mutate `data` afterwards.
+ *   `false` drops all of it (and does not retain the input buffer).
+ * `profile` is ignored.
  * Throws ZipLimitError / ZipPathError for hostile archives, XlsxParseError for broken XML and
  * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`).
  */
@@ -245,6 +251,18 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     relsOf: (path) => pkg.relsOf(path),
   };
   const features = sheetFeatures();
+  let pres: Preserver | undefined;
+  if (opts.preserveUnknown !== false) {
+    const owned = ['docProps/core.xml', 'docProps/app.xml', wbPath];
+    if (stylesPath) owned.push(stylesPath);
+    const sp = pkg.sstPath();
+    if (sp) owned.push(sp);
+    for (const s of pkg.sheets() ?? []) owned.push(s.path);
+    for (const r of pkg.relsOf(wbPath)?.values() ?? []) {
+      if (!r.external && relTypeIs(r.type, 'calcChain')) owned.push(r.path);
+    }
+    pres = new Preserver(files, pkg, owned);
+  }
 
   let strings: StringItem[] = [];
   const sstPath = pkg.sstPath();
@@ -276,6 +294,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
       dxf: (v) => (dxfMap ? (dxfMap[+v] ?? 0) : 0),
       scratch: new Map(),
     };
+    const cap = pres?.sheet(rels);
     const ctx: SheetContext = {
       strings,
       xfMap,
@@ -284,6 +303,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
       rels,
       features,
       featureCtx: fctx,
+      capture: cap,
     };
     const h = new SheetHandler(ctx, ws);
     const p = new StrictXml(h, s.path);
@@ -291,6 +311,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     p.end();
     h.finish();
     for (const r of featureReaders!) r.finish?.(fctx);
+    if (cap) pres!.finishSheet(cap, ws, s.sheetId);
     if (ws.autoFilter === undefined) {
       const af = filterDatabase(wbh.definedNames, s.index);
       if (af) ws.autoFilter = af;
@@ -298,6 +319,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   wb.definedNames = modelNames(wbh.definedNames, sheetMap);
   for (const f of READERS) f.book?.(pctx);
+  pres?.book(wb, wbPath, wbXml, wbh.sheets, filter, stylesXml, dxfMap);
   return wb;
 }
 
