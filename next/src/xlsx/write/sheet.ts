@@ -11,6 +11,7 @@
 
 import { encodeAddr, encodeCol, encodeRange } from '../../core/address.js';
 import type { SharedStrings } from '../../core/sharedstrings.js';
+import { fontMetrics } from '../../core/styles.js';
 import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.js';
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
@@ -329,7 +330,7 @@ const BUILTIN: readonly Emitter[] = [
   {
     slot: SheetSlot.sheetFormatPr,
     emit: (c) => {
-      let s = '<sheetFormatPr defaultRowHeight="15"';
+      let s = `<sheetFormatPr defaultRowHeight="${fontMetrics(c.styles.defaultFont).rowPt}"`;
       if (c.outlineLevelRow) s += ` outlineLevelRow="${c.outlineLevelRow}"`;
       const oc = colOutline(c.ws.columnData);
       if (oc) s += ` outlineLevelCol="${oc}"`;

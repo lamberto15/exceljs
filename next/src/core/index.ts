@@ -28,7 +28,13 @@ export {
   isDateFormatId,
 } from './numfmt.js';
 export { SharedStrings } from './sharedstrings.js';
-export { setCheckbox, setSheetStyle } from './sheet-style.js';
+export {
+  type ProtectAllow,
+  type ProtectSheetOptions,
+  protectSheet,
+  setCheckbox,
+  setSheetStyle,
+} from './sheet-style.js';
 export { type SortKey, type SortOptions, sortRange } from './sort.js';
 export {
   deleteColumns,
@@ -44,7 +50,7 @@ export {
   spliceColumns,
   spliceRows,
 } from './structure.js';
-export { type NumFmt, StyleRegistry, type Xf } from './styles.js';
+export { fontMetrics, type NumFmt, StyleRegistry, type Xf } from './styles.js';
 export { type FillTemplateOptions, fillTemplate } from './template.js';
 export * from './types.js';
 export { Workbook, type WorkbookOptions, type WorksheetOptions } from './workbook.js';

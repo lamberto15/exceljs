@@ -17,6 +17,7 @@ import {
   checkboxBagXml,
   contentTypesXml,
   corePropsXml,
+  docProps,
   dynamicArrayMetadataXml,
   rootRelsXml,
   type SheetEntry,
@@ -224,6 +225,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     created: wb.created,
     modified: wb.modified,
     definedNames: wb.definedNames,
+    props: docProps(wb),
   };
   for (const p of bookParts(o.writers, wb, book, pkg, sst, kept))
     yield { path: p.path, data: p.data, last: true };

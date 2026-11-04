@@ -3,6 +3,7 @@
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { StyleRegistry, Xf } from '../../core/styles.js';
 import type { Alignment, Border, BorderEdge, DefinedName, Fill, Style } from '../../core/types.js';
+import type { Workbook } from '../../core/workbook.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { colorAttrs, fontBody, tElem } from '../common/rich-text.js';
@@ -35,6 +36,8 @@ export interface BookInfo {
   readonly lastModifiedBy: string | undefined;
   readonly created: Date | undefined;
   readonly modified: Date | undefined;
+  /** Document properties (title, subject, ...); see WorkbookFeatureFields. */
+  readonly props?: Readonly<Record<string, string | undefined>> | undefined;
   /** User defined names (wb.definedNames); autoFilter names are added by workbookXml. */
   readonly definedNames?: readonly DefinedName[] | undefined;
   /** Preserved (round-trip) pieces: raw workbookPr / calcPr attributes, extra `<sheet>`s. */
@@ -90,8 +93,40 @@ function isoDate(d: Date | undefined): string | undefined {
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+/** The workbook's document properties for BookInfo.props (undefined when none is set). */
+export function docProps(wb: Workbook): Record<string, string | undefined> | undefined {
+  const o = {
+    title: wb.title,
+    subject: wb.subject,
+    keywords: wb.keywords,
+    description: wb.description,
+    category: wb.category,
+    contentStatus: wb.contentStatus,
+    company: wb.company,
+    manager: wb.manager,
+  };
+  return Object.values(o).some((v) => v) ? o : undefined;
+}
+
+/** Workbook property → docProps/core.xml element. */
+const CORE_PROPS = [
+  ['title', 'dc:title'],
+  ['subject', 'dc:subject'],
+  ['keywords', 'cp:keywords'],
+  ['description', 'dc:description'],
+  ['category', 'cp:category'],
+  ['contentStatus', 'cp:contentStatus'],
+] as const;
+
 export function corePropsXml(b: BookInfo): string {
   let s = `${XML_DECL}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`;
+  const p = b.props;
+  if (p) {
+    for (const [k, tag] of CORE_PROPS) {
+      const v = p[k];
+      if (v) s += `<${tag}>${escapeText(v)}</${tag}>`;
+    }
+  }
   if (b.creator !== undefined) s += `<dc:creator>${escapeText(b.creator)}</dc:creator>`;
   if (b.lastModifiedBy !== undefined) {
     s += `<cp:lastModifiedBy>${escapeText(b.lastModifiedBy)}</cp:lastModifiedBy>`;
@@ -107,7 +142,7 @@ export function appPropsXml(b: BookInfo): string {
   const n = b.sheets.length;
   let titles = '';
   for (const sh of b.sheets) titles += `<vt:lpstr>${escapeText(sh.name)}</vt:lpstr>`;
-  return `${XML_DECL}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Excel</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop><HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>${n}</vt:i4></vt:variant></vt:vector></HeadingPairs><TitlesOfParts><vt:vector size="${n}" baseType="lpstr">${titles}</vt:vector></TitlesOfParts><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0300</AppVersion></Properties>`;
+  return `${XML_DECL}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Excel</Application>${b.props?.manager ? `<Manager>${escapeText(b.props.manager)}</Manager>` : ''}${b.props?.company ? `<Company>${escapeText(b.props.company)}</Company>` : ''}<DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop><HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>${n}</vt:i4></vt:variant></vt:vector></HeadingPairs><TitlesOfParts><vt:vector size="${n}" baseType="lpstr">${titles}</vt:vector></TitlesOfParts><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0300</AppVersion></Properties>`;
 }
 
 /** 'My Sheet' → "'My Sheet'" (always quoted, inner apostrophes doubled). */

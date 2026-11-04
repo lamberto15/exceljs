@@ -37,7 +37,7 @@ import { nativeCompressor } from '../../zip/index.js';
 import { activeTabOf, bookParts, CHUNK, sheetEntry } from './book.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts } from './package.js';
-import type { BookInfo } from './parts.js';
+import { type BookInfo, docProps } from './parts.js';
 import {
   afterSheetParts,
   encodeRow,
@@ -364,6 +364,7 @@ export class XlsxWriter {
       created: wb.created,
       modified: wb.modified,
       definedNames: wb.definedNames,
+      props: docProps(wb),
     };
     const z = this._zip;
     for (const p of bookParts(this._o.writers, wb, book, this._pkg, this._sst))

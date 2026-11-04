@@ -87,6 +87,37 @@ function addSheet(wb: Workbook, s: ResolvedSheet): Worksheet {
   }
 }
 
+const CORE_FIELDS = ['title', 'subject', 'keywords', 'description', 'category', 'contentStatus'];
+
+/** Company / Manager of docProps/app.xml (the rest of it is regenerated). */
+function parseApp(xml: string, wb: Workbook): void {
+  let field = '';
+  let text = '';
+  try {
+    parseStrict(
+      xml,
+      {
+        open(name) {
+          field = localName(name);
+          text = '';
+        },
+        text(t) {
+          text += t;
+        },
+        close() {
+          if (text && (field === 'Company' || field === 'Manager')) {
+            wb[field === 'Company' ? 'company' : 'manager'] = text;
+          }
+          text = '';
+        },
+      },
+      'docProps/app.xml',
+    );
+  } catch {
+    // metadata only; ignore a broken app.xml
+  }
+}
+
 function parseCore(xml: string, wb: Workbook): void {
   let field = '';
   let text = '';
@@ -103,6 +134,8 @@ function parseCore(xml: string, wb: Workbook): void {
       close() {
         if (text === '') return;
         if (field === 'creator') wb.creator = text;
+        else if (CORE_FIELDS.includes(field))
+          (wb as unknown as Record<string, string>)[field] = text;
         else if (field === 'lastModifiedBy') wb.lastModifiedBy = text;
         else if (field === 'created' || field === 'modified') {
           const d = new Date(text);
@@ -226,6 +259,8 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   const wb = new Workbook({ date1904: wbh.date1904, localDates: opts.localDates });
 
+  const app = text('docProps/app.xml');
+  if (app !== undefined) parseApp(app, wb);
   const core = text('docProps/core.xml');
   if (core !== undefined) {
     try {

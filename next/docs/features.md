@@ -4,6 +4,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 
 - [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
 - [Styles and number formats](#styles-and-number-formats)
+- [Document properties](#document-properties)
 - [Column auto-fit](#column-auto-fit)
 - [Inserting and deleting rows and columns](#inserting-and-deleting-rows-and-columns)
 - [Sorting and templates](#sorting-and-templates)
@@ -43,6 +44,22 @@ Dynamic-array formulas (FILTER, SORT, UNIQUE, SEQUENCE, ... that spill in Excel 
 Copying: `copyWorksheet(ws)` adds a copy to the same workbook ("Data (2)"), `copyWorksheet(ws, otherWb, 'Name')` to another one (styles re-registered, pictures re-added, table names made unique, dates converted between date systems). `copyRange(src, 'A1:D10', dst, 'F2')` copies cells, styles and merges like copy-paste, adjusting relative references.
 
 Column keys may be dotted paths: with `ws.columns = [{ key: 'address.city' }]`, `ws.addRow({ address: { city: 'Oslo' } })` fills that column.
+## Document properties
+
+```ts
+wb.title = 'Q3 report';
+wb.subject = 'Sales';
+wb.keywords = 'sales, q3';
+wb.description = 'Quarterly numbers';
+wb.category = 'Finance';
+wb.contentStatus = 'Draft';
+wb.company = 'ACME';
+wb.manager = 'Jane';
+// also wb.creator, wb.lastModifiedBy, wb.created, wb.modified
+```
+
+Written to `docProps/core.xml` / `docProps/app.xml` (File > Info in Excel) and read back.
+
 ## Styles and number formats
 
 ```ts
@@ -60,7 +77,7 @@ Styles are values: assign a new object to change one, do not mutate `getStyle()`
 
 Excel-like defaults:
 
-- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
+- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. Column widths are in units of that font's digit width, so pixel conversions (pictures, `fitImage`) and the default row height follow it (`fontMetrics(font)`; approximations for fonts other than Calibri). `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
 - **Line breaks**: text containing `\n` gets `alignment.wrapText` merged into its style, as when typing Alt+Enter in Excel (line breaks only show in wrapped cells).
 - **Hyperlinks**: a hyperlink cell stored without a style gets Excel's hyperlink look (underlined, theme hyperlink color); pass a style to choose your own.
 - **Whole sheet**: `setSheetStyle(ws, style)` formats every cell, like selecting all and formatting: existing cells, row styles and all columns get the style's properties merged over theirs, and cells created later inherit it. See [sheet protection](#sheet-protection) for unlocking all cells.
@@ -280,7 +297,7 @@ ws.colBreaks = [6];      // and after column F
 ws.protection = { password: 's3cret', formatCells: false, insertRows: false };
 ```
 
-`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). To protect a sheet but keep most cells editable, unlock everything and lock the few cells that matter: `setSheetStyle(ws, { protection: { locked: false } })`, then `ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } })`. Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
+`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). One call: `protectSheet(ws, { password: 's3cret', editable: ['B2:D20', 'F:F'], allow: { sort: true, autoFilter: true } })` unlocks the editable ranges (whole columns / rows through their default style), keeps everything else locked and sets the allowed actions (sorting and filtering only work on unlocked cells, filtering needs an `autoFilter`). By hand: to protect a sheet but keep most cells editable, unlock everything and lock the few cells that matter: `setSheetStyle(ws, { protection: { locked: false } })`, then `ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } })`. Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
 
 ## Round-trip preservation
 
