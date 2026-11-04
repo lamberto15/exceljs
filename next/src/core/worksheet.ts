@@ -134,6 +134,8 @@ export interface RowProps {
   hidden?: boolean | undefined;
   outlineLevel?: number | undefined;
   style?: Style | undefined;
+  /** Row style as an xf index of `workbook.styles` (wins over `style`; 0 = none). */
+  styleIndex?: number | undefined;
 }
 
 /** Used range, 1-based inclusive. */
@@ -348,6 +350,17 @@ function overlaps(a: CellRange, b: CellRange): boolean {
   return a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom;
 }
 
+/** log2 of the rows per merge-index bucket. */
+const MERGE_BUCKET = 4;
+
+function indexMerge(idx: Map<number, CellRange[]>, m: CellRange): void {
+  for (let b = m.top >> MERGE_BUCKET; b <= m.bottom >> MERGE_BUCKET; b++) {
+    const list = idx.get(b);
+    if (list) list.push(m);
+    else idx.set(b, [m]);
+  }
+}
+
 type Addr = string | number;
 
 // ---- Column ------------------------------------------------------------------------
@@ -418,6 +431,8 @@ export class Worksheet {
   private _keyCols: [string, number][] = [];
   private _keyMap = new Map<string, number>();
   private readonly _merges: CellRange[] = [];
+  /** Lazily built merge index: row bucket (row >> MERGE_BUCKET) → merges touching it. */
+  private _mergeIdx: Map<number, CellRange[]> | undefined = undefined;
 
   /** @internal Use `workbook.addWorksheet()`. */
   constructor(workbook: Workbook, id: number, name: string) {
@@ -471,6 +486,19 @@ export class Worksheet {
       if (row.obj === undefined) row.obj = [];
       row.obj[i] = obj;
     } else if (row.obj !== undefined && i < row.obj.length) row.obj[i] = undefined;
+  }
+
+  /**
+   * Internal-but-public (readers, features): the row record for 0-based row `r0`, created when
+   * missing. `capacity` pre-sizes the cell arrays (grows an existing row's capacity if smaller)
+   * to avoid regrowth when the caller knows roughly how many cells will follow.
+   */
+  _ensureRow(r0: number, capacity = 0): RowData {
+    checkCell(r0, 0);
+    const row = this._rows[r0];
+    if (row === undefined) return this._newRow(r0, capacity);
+    if (capacity > row.capacity) row._alloc(capacity);
+    return row;
   }
 
   // ---- cells ----
@@ -630,7 +658,8 @@ export class Worksheet {
     if ('height' in props) row.height = props.height ?? 0;
     if ('hidden' in props) row.hidden = props.hidden === true;
     if ('outlineLevel' in props) row.outlineLevel = props.outlineLevel ?? 0;
-    if (props.style !== undefined) row.xf = this._styles.intern(props.style);
+    if (props.styleIndex !== undefined) row.xf = props.styleIndex;
+    else if (props.style !== undefined) row.xf = this._styles.intern(props.style);
   }
 
   /** Visit rows that contain cells, ascending. */
@@ -707,18 +736,50 @@ export class Worksheet {
     checkCell(m.top, m.left);
     checkCell(m.bottom, m.right);
     if (m.top === m.bottom && m.left === m.right) throw new Error('Cannot merge a single cell');
-    for (const x of this._merges) {
-      if (overlaps(x, m)) throw new Error(`Merge ${encodeRange(m)} overlaps ${encodeRange(x)}`);
-    }
+    const x = this._mergeOverlap(m);
+    if (x) throw new Error(`Merge ${encodeRange(m)} overlaps ${encodeRange(x)}`);
+    this.addMergeRaw(m);
+  }
+
+  /**
+   * Add a merge (0-based) WITHOUT validation (no bounds, single-cell or overlap checks) — for
+   * readers and features that copy merges from a trusted source. Overlapping merges produce
+   * files Excel repairs.
+   */
+  addMergeRaw(m: CellRange): void {
     this._merges.push(m);
+    const idx = this._mergeIdx;
+    if (idx) indexMerge(idx, m);
   }
 
   /** Remove every merge intersecting the range. */
   unmergeCells(range: string): void {
     const m = decodeRange(range);
+    const before = this._merges.length;
     for (let i = this._merges.length - 1; i >= 0; i--) {
       if (overlaps(this._merges[i]!, m)) this._merges.splice(i, 1);
     }
+    if (this._merges.length !== before) this._mergeIdx = undefined;
+  }
+
+  /** First merge intersecting m, if any. Row-bucket index: O(merges near m), not O(all). */
+  private _mergeOverlap(m: CellRange): CellRange | undefined {
+    const all = this._merges;
+    if (all.length < 16) {
+      for (const x of all) if (overlaps(x, m)) return x;
+      return undefined;
+    }
+    let idx = this._mergeIdx;
+    if (!idx) {
+      idx = new Map();
+      for (const x of all) indexMerge(idx, x);
+      this._mergeIdx = idx;
+    }
+    for (let b = m.top >> MERGE_BUCKET; b <= m.bottom >> MERGE_BUCKET; b++) {
+      const list = idx.get(b);
+      if (list) for (const x of list) if (overlaps(x, m)) return x;
+    }
+    return undefined;
   }
 
   /** Merged ranges as A1 strings. */

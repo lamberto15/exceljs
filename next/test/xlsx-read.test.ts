@@ -2,10 +2,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import type { CellValue } from '../src/core/types.js';
-import type { Workbook } from '../src/core/workbook.js';
+import { Workbook } from '../src/core/workbook.js';
 import { CellKind } from '../src/core/worksheet.js';
 import {
-  definedNamesOf,
   readXlsx,
   translateFormula,
   XlsxParseError,
@@ -13,6 +12,7 @@ import {
   xlsxRows,
 } from '../src/xlsx/read/index.js';
 import { decodeXString } from '../src/xlsx/read/xml-util.js';
+import { writeXlsx } from '../src/xlsx/write/index.js';
 import { unzipSync, ZipLimitError, ZipPathError, zipSync } from '../src/zip/index.js';
 
 // ---------------------------------------------------------------- helpers
@@ -723,17 +723,40 @@ describe('hand-crafted XML edge cases', () => {
     });
   });
 
-  it('autoFilter from _xlnm._FilterDatabase, defined names kept raw', () => {
+  it('autoFilter from _xlnm._FilterDatabase, other defined names on wb.definedNames', () => {
     const buf = mini({
       sheets: [{ name: 'A', xml: sheetXml('<row r="1"><c r="A1"><v>1</v></c></row>') }],
       workbook: `<workbook ${NS}><sheets><sheet name="A" sheetId="1" r:id="rIdS0"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">A!$A$1:$C$9</definedName><definedName name="Rate">0.2</definedName></definedNames></workbook>`,
     });
     const wb = readXlsx(buf);
     expect(wb.worksheets[0]!.autoFilter).toBe('A1:C9');
-    expect(definedNamesOf(wb)).toEqual([
-      { name: '_xlnm._FilterDatabase', localSheetId: 0, hidden: true, value: 'A!$A$1:$C$9' },
+    expect(wb.definedNames).toEqual([{ name: 'Rate', value: '0.2' }]);
+  });
+
+  it('defined names round-trip; sheet scopes follow loaded sheets', async () => {
+    const wb = new Workbook();
+    wb.addWorksheet('A').autoFilter = 'A1:B2';
+    wb.addWorksheet('B').setCell('A1', 1);
+    wb.addWorksheet('C').autoFilter = 'A1:C1';
+    wb.definedNames.push(
       { name: 'Rate', value: '0.2' },
+      { name: '_xlnm.Print_Area', localSheetId: 2, value: "'C'!$A$1:$C$9" },
+      { name: 'Local', localSheetId: 1, value: "'B'!$A$1", hidden: true },
+    );
+    const buf = writeXlsx(wb);
+    const back = readXlsx(buf);
+    expect(back.definedNames).toEqual(wb.definedNames);
+    expect(back.worksheets[2]!.autoFilter).toBe('A1:C1');
+    const only = readXlsx(buf, { sheets: ['C'] });
+    expect(only.definedNames).toEqual([
+      { name: 'Rate', value: '0.2' },
+      { name: '_xlnm.Print_Area', localSheetId: 0, value: "'C'!$A$1:$C$9" },
     ]);
+    const x = new ExcelJS.Workbook();
+    // biome-ignore lint/suspicious/noExplicitAny: exceljs typings want a Node Buffer
+    await x.xlsx.load(buf as any);
+    expect(x.definedNames.getRanges('Local').ranges).toEqual(['B!$A$1']);
+    expect(x.getWorksheet('C')!.pageSetup.printArea).toBe('A1:C9');
   });
 
   it('date-formatted numbers become Dates (built-in and custom formats)', async () => {

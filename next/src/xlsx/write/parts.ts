@@ -2,7 +2,7 @@
 
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { StyleRegistry, Xf } from '../../core/styles.js';
-import type { Border, BorderEdge, Color, Fill, Font } from '../../core/types.js';
+import type { Border, BorderEdge, Color, DefinedName, Fill, Font } from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 
@@ -31,6 +31,8 @@ export interface BookInfo {
   readonly lastModifiedBy: string | undefined;
   readonly created: Date | undefined;
   readonly modified: Date | undefined;
+  /** User defined names (wb.definedNames); autoFilter names are added by workbookXml. */
+  readonly definedNames?: readonly DefinedName[] | undefined;
 }
 
 export const sheetPath = (i: number): string => `xl/worksheets/sheet${i + 1}.xml`;
@@ -89,6 +91,17 @@ function absRef(ref: string): string {
   return ref.replace(/\$/g, '').replace(/([A-Za-z]+)(\d+)/g, '$$$1$$$2');
 }
 
+function definedNameXml(
+  name: string,
+  sheet: number | undefined,
+  hidden: boolean,
+  value: string,
+): string {
+  return `<definedName name="${escapeAttr(name)}"${sheet !== undefined ? ` localSheetId="${sheet}"` : ''}${
+    hidden ? ' hidden="1"' : ''
+  }>${escapeText(value)}</definedName>`;
+}
+
 export function workbookXml(b: BookInfo): string {
   let s = `${XML_DECL}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`;
   s += b.date1904 ? '<workbookPr date1904="1"/>' : '<workbookPr/>';
@@ -96,15 +109,31 @@ export function workbookXml(b: BookInfo): string {
     b.activeTab > 0 ? ` firstSheet="0" activeTab="${b.activeTab}"` : ''
   }/></bookViews><sheets>`;
   let names = '';
+  const user = b.definedNames ?? [];
+  for (const n of user) {
+    if (
+      n.localSheetId !== undefined &&
+      !(n.localSheetId >= 0 && n.localSheetId < b.sheets.length)
+    ) {
+      continue; // scope points at no sheet: Excel would reject the file
+    }
+    names += definedNameXml(n.name, n.localSheetId, n.hidden === true, n.value);
+  }
   for (let i = 0; i < b.sheets.length; i++) {
     const sh = b.sheets[i]!;
     s += `<sheet name="${escapeAttr(sh.name)}" sheetId="${sh.sheetId}"${
       sh.state !== 'visible' ? ` state="${sh.state}"` : ''
     } r:id="rId${i + 1}"/>`;
-    if (sh.autoFilter) {
-      names += `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${escapeText(
+    if (
+      sh.autoFilter &&
+      !user.some((n) => n.name === '_xlnm._FilterDatabase' && n.localSheetId === i)
+    ) {
+      names += definedNameXml(
+        '_xlnm._FilterDatabase',
+        i,
+        true,
         `${quoteSheet(sh.name)}!${absRef(sh.autoFilter)}`,
-      )}</definedName>`;
+      );
     }
   }
   s += '</sheets>';

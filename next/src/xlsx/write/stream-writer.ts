@@ -355,6 +355,7 @@ export class XlsxWriter {
       lastModifiedBy: wb.lastModifiedBy,
       created: wb.created,
       modified: wb.modified,
+      definedNames: wb.definedNames,
     };
     const z = this._zip;
     if (this._sst) z.add('xl/sharedStrings.xml', sharedStringsXml(this._sst));

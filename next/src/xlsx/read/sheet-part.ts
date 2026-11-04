@@ -271,15 +271,13 @@ export class SheetHandler implements XmlHandler {
     const ol = a.outlineLevel !== undefined ? +a.outlineLevel : 0;
     const height = ht !== undefined && attrBool(a.customHeight) ? +ht : 0;
     const s = a.s !== undefined && attrBool(a.customFormat) ? this.xf(a.s) : 0;
-    if (height || hidden || ol || s) {
-      const ws = this.ws!;
-      if (!(this.row >= 0)) return;
-      ws.setRowProps(this.row + 1, {});
-      const rd = ws.rowData[this.row]!;
-      if (height > 0) rd.height = height;
-      if (hidden) rd.hidden = true;
-      if (ol) rd.outlineLevel = ol;
-      if (s) rd.xf = s;
+    if ((height || hidden || ol || s) && this.row >= 0) {
+      this.ws!.setRowProps(this.row + 1, {
+        height: height > 0 ? height : undefined,
+        hidden,
+        outlineLevel: ol,
+        styleIndex: s,
+      });
     }
   }
 
@@ -448,10 +446,7 @@ export class SheetHandler implements XmlHandler {
     if (this.rowStored++ === 0 && this.hint > 4) {
       // pre-size the row from the previous row's cell count (avoids ~5 regrowths per row)
       const r0 = this.cRow;
-      if (ws.rowData[r0] === undefined && r0 >= 0 && r0 < MAX_ROWS) {
-        ws.setRowProps(r0 + 1, {});
-        ws.rowData[r0]!._alloc(this.hint);
-      }
+      if (ws.rowData[r0] === undefined && r0 >= 0 && r0 < MAX_ROWS) ws._ensureRow(r0, this.hint);
     }
     ws.setCellRaw(this.cRow, c0, kind, num, obj, xf);
   }

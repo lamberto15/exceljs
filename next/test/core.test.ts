@@ -378,6 +378,38 @@ describe('Workbook / Worksheet', () => {
     ws.mergeCells('A1:C2');
   });
 
+  it('merge overlap check scales (indexed) and stays correct after unmerge', () => {
+    const ws = new Workbook().addWorksheet();
+    const t = performance.now();
+    for (let r = 1; r <= 40_000; r += 2) ws.mergeCells(r, 1, r + 1, 3);
+    expect(performance.now() - t).toBeLessThan(2000);
+    expect(ws.mergeRanges.length).toBe(20_000);
+    expect(() => ws.mergeCells('C40000:D40001')).toThrow(/overlaps A39999:C40000/);
+    expect(() => ws.mergeCells('B100:B300')).toThrow(/overlaps/);
+    ws.mergeCells('D1:E40000'); // tall, no overlap
+    expect(() => ws.mergeCells('E20000:F20001')).toThrow(/overlaps D1:E40000/);
+    ws.unmergeCells('A99:A100');
+    ws.mergeCells('A99:B100');
+    expect(() => ws.mergeCells('B99:B100')).toThrow(/overlaps A99:B100/);
+  });
+
+  it('addMergeRaw skips validation; _ensureRow pre-sizes; styleIndex row props', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet();
+    ws.addMergeRaw({ top: 0, left: 0, bottom: 1, right: 1 });
+    ws.addMergeRaw({ top: 1, left: 1, bottom: 2, right: 2 }); // overlapping: accepted
+    expect(ws.merges).toEqual(['A1:B2', 'B2:C3']);
+    const row = ws._ensureRow(4, 32);
+    expect(row.capacity).toBe(32);
+    expect(ws._ensureRow(4)).toBe(row);
+    expect(ws._ensureRow(4, 64).capacity).toBe(64);
+    const xf = wb.styles.intern({ font: { bold: true } });
+    ws.setRowProps(3, { styleIndex: xf, height: 20 });
+    expect(ws.getRowProps(3).height).toBe(20);
+    expect(ws.getRowProps(3).style?.font?.bold).toBe(true);
+    expect(ws.rowData[2]!.xf).toBe(xf);
+  });
+
   it('columns with headers and keys', () => {
     const ws = new Workbook().addWorksheet();
     ws.columns = [

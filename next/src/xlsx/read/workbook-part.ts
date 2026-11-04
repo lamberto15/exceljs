@@ -1,5 +1,6 @@
 // workbook.xml reader: sheet list (name, order, state, rel id), date system, defined names.
 
+import type { DefinedName } from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import { attrBool, attrLocal } from './xml-util.js';
@@ -10,15 +11,6 @@ export interface SheetEntry {
   readonly state: SheetState;
   /** Relationship id into xl/_rels/workbook.xml.rels. */
   readonly rId: string | undefined;
-}
-
-export interface DefinedName {
-  readonly name: string;
-  /** Raw formula text, e.g. "Sheet1!$A$1:$D$10". */
-  readonly value: string;
-  /** 0-based index into the sheet list for sheet-scoped names. */
-  readonly localSheetId?: number | undefined;
-  readonly hidden?: boolean | undefined;
 }
 
 export class WorkbookHandler implements XmlHandler {

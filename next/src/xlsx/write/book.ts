@@ -110,6 +110,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     lastModifiedBy: wb.lastModifiedBy,
     created: wb.created,
     modified: wb.modified,
+    definedNames: wb.definedNames,
   };
   yield { path: 'xl/workbook.xml', data: workbookXml(book), last: true };
   yield { path: 'xl/styles.xml', data: stylesXml(wb.styles), last: true };

@@ -18,7 +18,11 @@ export interface CellError {
 export interface Formula {
   /** Formula text without the leading '='. */
   readonly formula: string;
-  /** Cached result, written as <v>; readers return what the file had. */
+  /**
+   * Cached result, written as <v>; readers return what the file had. Dates are NOT converted:
+   * for a date-formatted formula cell the result is the serial number (in the workbook's date
+   * system) — convert with `serialToDate(result, wb.date1904)` when needed.
+   */
   readonly result?: number | string | boolean | CellError | undefined;
   /** Array formula range, e.g. "A1:B3" (written as t="array"). */
   readonly array?: string | undefined;
@@ -51,6 +55,17 @@ export type CellValue =
   | Hyperlink
   | null
   | undefined;
+
+/** A workbook-level defined name (named range / constant / formula). */
+export interface DefinedName {
+  /** e.g. "Rate", or a built-in like "_xlnm.Print_Area". */
+  readonly name: string;
+  /** Formula text without '=', e.g. "Sheet1!$A$1:$D$10" or "0.2". */
+  readonly value: string;
+  /** Sheet scope: 0-based index into `workbook.worksheets`; undefined = workbook scope. */
+  readonly localSheetId?: number | undefined;
+  readonly hidden?: boolean | undefined;
+}
 
 // ---- styles -------------------------------------------------------------
 

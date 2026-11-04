@@ -1,7 +1,7 @@
 // Workbook: ordered worksheets + one shared StyleRegistry.
 
 import { StyleRegistry } from './styles.js';
-import type { Color } from './types.js';
+import type { Color, DefinedName } from './types.js';
 import { type SheetState, Worksheet } from './worksheet.js';
 
 export interface WorkbookOptions {
@@ -24,6 +24,11 @@ export class Workbook {
   lastModifiedBy: string | undefined = undefined;
   created: Date = new Date();
   modified: Date = new Date();
+  /**
+   * Defined names, written to workbook.xml. `_xlnm._FilterDatabase` names are managed through
+   * `worksheet.autoFilter` (readers move them there; writers generate them) — don't add them.
+   */
+  definedNames: DefinedName[] = [];
 
   private readonly _sheets: Worksheet[] = [];
   private _nextId = 1;
