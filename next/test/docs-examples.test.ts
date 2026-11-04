@@ -10,6 +10,7 @@ import {
   addImage,
   addNote,
   addTable,
+  addTableRows,
   createXlsxWriter,
   deleteRows,
   duplicateRow,
@@ -22,6 +23,7 @@ import {
   setPrintArea,
   setPrintTitles,
   spliceRows,
+  tableRows,
   Workbook,
   type Worksheet,
   writeXlsx,
@@ -85,6 +87,27 @@ describe('docs/migrating-from-exceljs.md', () => {
 });
 
 describe('docs/features.md', () => {
+  it('table rows', () => {
+    const ws = new Workbook().addWorksheet('T');
+    addTable(ws, {
+      name: 'Sales',
+      columns: ['Region', { name: 'Units', totalsRowFunction: 'sum' }],
+      rows: [
+        ['North', 120],
+        ['South', 80],
+      ],
+      totalsRow: true,
+    });
+    addTableRows(ws, 'Sales', [['East', 95], { Region: 'West', Units: 60 }]);
+    expect(tableRows(ws, 'Sales')).toEqual([
+      { Region: 'North', Units: 120 },
+      { Region: 'South', Units: 80 },
+      { Region: 'East', Units: 95 },
+      { Region: 'West', Units: 60 },
+    ]);
+    expect(ws.tables![0]!.ref).toBe('A1:B6');
+  });
+
   it('inserting and deleting rows and columns', () => {
     const ws = new Workbook().addWorksheet('Data');
     ws.addRows([

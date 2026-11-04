@@ -13,6 +13,8 @@ import {
   deleteColumns,
   deleteRows,
   duplicateRow,
+  groupColumns,
+  groupRows,
   insertColumns,
   insertRow,
   insertRows,
@@ -465,5 +467,52 @@ describe('files', () => {
     const ex = await oracle(writeXlsx(wb));
     expect(ex.getWorksheet('Data')!.getCell('B3').value).toBe(2);
     expect(ex.getWorksheet('Other')!.getCell('A1').formula).toBe('SUM(Data!C1:C6)');
+  });
+});
+
+describe('groupRows / groupColumns (outline)', () => {
+  it('groups one level deeper, collapses, and round-trips collapsed', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('G');
+    for (let r = 1; r <= 6; r++) ws.addRow([r]);
+    groupRows(ws, 2, 5);
+    groupRows(ws, 3, 4, { collapsed: true });
+    expect([2, 3, 4, 5].map((r) => ws.getRowProps(r).outlineLevel)).toEqual([1, 2, 2, 1]);
+    expect(ws.getRowProps(3).hidden).toBe(true);
+    expect(ws.getRowProps(5)).toMatchObject({ collapsed: true, outlineLevel: 1 });
+    groupColumns(ws, 'B', 'C', { collapsed: true });
+    expect(ws.getColumn(2)).toMatchObject({ outlineLevel: 1, hidden: true });
+    expect(ws.getColumn(4).collapsed).toBe(true);
+    const bytes = writeXlsx(wb);
+    const back = readXlsx(bytes).getWorksheet('G')!;
+    expect(back.getRowProps(5)).toMatchObject({ collapsed: true, outlineLevel: 1 });
+    expect(back.getRowProps(3)).toMatchObject({ hidden: true, outlineLevel: 2 });
+    expect(back.getColumn(4).collapsed).toBe(true);
+    expect(back.getColumn(3)).toMatchObject({ outlineLevel: 1, hidden: true });
+    for (let k = 0; k < 8; k++) groupRows(ws, 2, 2);
+    expect(ws.getRowProps(2).outlineLevel).toBe(7);
+  });
+});
+
+describe('iterators', () => {
+  it('ws.rows() and row.cells()', () => {
+    const ws = new Workbook().addWorksheet('I');
+    ws.setCell('B1', 'b1');
+    ws.setCell('A3', 1);
+    ws.setStyle('C3', { font: { bold: true } }); // style-only: skipped
+    ws.setCell('D3', true);
+    ws.setRowProps(2, { height: 20 }); // no cells: skipped
+    const seen: [number, [number, unknown][]][] = [];
+    for (const row of ws.rows()) seen.push([row.number, [...row.cells()]]);
+    expect(seen).toEqual([
+      [1, [[2, 'b1']]],
+      [
+        3,
+        [
+          [1, 1],
+          [4, true],
+        ],
+      ],
+    ]);
   });
 });

@@ -16,9 +16,12 @@ import {
   addImage,
   addNote,
   addTable,
+  addTableRows,
   createXlsxWriter,
   deleteRows,
   duplicateRow,
+  groupColumns,
+  groupRows,
   insertColumns,
   insertRows,
   placeImage,
@@ -673,6 +676,50 @@ for (const [file, what] of [
     '17-structure-edits.xlsx',
     writeXlsx(wb),
     `Rows/columns inserted, deleted, duplicated and spliced after building the sheet. "Data": table Sales is A1:E6 with columns Item, Qty, Column5, Price, Total (items a, ins, c, d, e; Total = Qty*Price on every row, also "ins"). G1 = 19 (SUM(B2:B6)), G2 = 160 (B5*D5 → item d), G7 = 190 (prices); merged block I1:J2; bold CF on Qty >= 3; note on A4 (item c); rows 9-11 "dup" 7 with D = 14 (D10 = B10*2, D11 = B11*2); row 12 "spliced". "Summary": A1 = 19, A2 = 3 (item c's Qty), A3 = 19 (defined name QtyCol), A4 = 50; the chart shows a, ins, c, d, e. No repair prompt.`,
+  );
+}
+
+// 18: table rows appended, outline groups (collapsed)
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Tables');
+  addTable(ws, {
+    name: 'Orders',
+    columns: [
+      { name: 'Item', width: 16, totalsRowLabel: 'Total' },
+      { name: 'Qty', totalsRowFunction: 'sum' },
+      { name: 'Price' },
+      {
+        name: 'Amount',
+        calculatedColumnFormula: 'Orders[[#This Row],[Qty]]*Orders[[#This Row],[Price]]',
+      },
+    ],
+    rows: [
+      ['a', 1, 10],
+      ['b', 2, 20],
+    ],
+    totalsRow: true,
+  });
+  ws.setCell('A8', 'below the table');
+  addTableRows(ws, 'Orders', [['c', 3, 30], { Item: 'd', Qty: 4, Price: 40 }]);
+  const g = wb.addWorksheet('Outline');
+  g.addRow(['Region', 'Q1', 'Q2', 'Q3', 'Total']);
+  for (const r of ['N', 'S', 'E', 'W'])
+    g.addRow([r, 1, 2, 3, { formula: `SUM(B${g.rowCount + 1}:D${g.rowCount + 1})` }]);
+  g.addRow([
+    'All',
+    { formula: 'SUM(B2:B5)' },
+    { formula: 'SUM(C2:C5)' },
+    { formula: 'SUM(D2:D5)' },
+    { formula: 'SUM(E2:E5)' },
+  ]);
+  groupRows(g, 2, 5);
+  groupRows(g, 3, 4, { collapsed: true });
+  groupColumns(g, 'B', 'D', { collapsed: true });
+  save(
+    '18-table-rows-outline.xlsx',
+    writeXlsx(wb),
+    `"Tables": table Orders A1:D6 with items a, b, c, d (two appended), Amount = Qty*Price on every row (90 and 160 for c and d), totals row 6 (Qty 10), column A wider; "below the table" moved to A10. "Outline": rows 2-5 grouped (level 1), rows 3-4 a collapsed level-2 group (hidden, + button on row 5); columns B-D grouped and collapsed (hidden, + button above E). Expanding shows the data. No repair prompt.`,
   );
 }
 

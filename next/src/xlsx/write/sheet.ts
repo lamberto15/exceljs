@@ -176,6 +176,10 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
     out += ` outlineLevel="${row.outlineLevel}"`;
     props = true;
   }
+  if (row.collapsed) {
+    out += ' collapsed="1"';
+    props = true;
+  }
   if (row.xf !== 0) {
     out += ` s="${row.xf}" customFormat="1"`;
     props = true;
@@ -256,6 +260,7 @@ function sameCol(a: Column, b: Column): boolean {
     a.width === b.width &&
     a.hidden === b.hidden &&
     a.outlineLevel === b.outlineLevel &&
+    a.collapsed === b.collapsed &&
     a.styleIndex === b.styleIndex
   );
 }
@@ -265,14 +270,16 @@ function colsXml(cols: readonly (Column | undefined)[]): string {
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
     if (!c) continue;
-    if (c.width === undefined && !c.hidden && !c.outlineLevel && !c.styleIndex) continue;
+    if (c.width === undefined && !c.hidden && !c.outlineLevel && !c.collapsed && !c.styleIndex) {
+      continue;
+    }
     let j = i;
     while (j + 1 < cols.length && cols[j + 1] && sameCol(c, cols[j + 1]!)) j++;
     s += `<col min="${i + 1}" max="${j + 1}" width="${c.width ?? 9.140625}"${
       c.width !== undefined ? ' customWidth="1"' : ''
     }${c.hidden ? ' hidden="1"' : ''}${c.outlineLevel ? ` outlineLevel="${c.outlineLevel}"` : ''}${
-      c.styleIndex ? ` style="${c.styleIndex}"` : ''
-    }/>`;
+      c.collapsed ? ' collapsed="1"' : ''
+    }${c.styleIndex ? ` style="${c.styleIndex}"` : ''}/>`;
     i = j;
   }
   return s ? `<cols>${s}</cols>` : '';

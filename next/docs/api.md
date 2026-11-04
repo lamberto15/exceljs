@@ -83,7 +83,11 @@ insertColumns(ws, pos, cols | count)           // pos: number or letter; cols: a
 deleteColumns(ws, start, count = 1)
 spliceColumns(ws, start, count, ...cols)
 duplicateRow(ws, rowNum, count, insert = false) // copies below rowNum: inserted, or overwriting
+groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max 7); summary row below
+groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
+
+Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.
 
 `RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
 
@@ -230,7 +234,13 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 
 ### Tables
 
-`AddTableOptions`: `name`, `displayName?`, `ref?` or `topLeft?` (default `A1`), `columns: (string | TableColumn)[]`, `rows?`, `headerRow?`, `totalsRow?`, `style?: TableStyle` (`theme` such as `TableStyleMedium2`, `showFirstColumn`, `showLastColumn`, `showRowStripes`, `showColumnStripes`), `autoFilter?`, `headerStyle?`, `dataStyle?`, `totalsStyle?`. `TableColumn`: `name`, `totalsRowFunction` (`none sum average count countNums max min stdDev var custom`), `totalsRowLabel`, `totalsRowFormula`, `calculatedColumnFormula`, `headerStyle`, `dataStyle`, `totalsStyle`. It throws on invalid names, overlaps, duplicate columns or rows that do not fit.
+`AddTableOptions`: `name`, `displayName?`, `ref?` or `topLeft?` (default `A1`), `columns: (string | AddTableColumn)[]` (`AddTableColumn` = `TableColumn` + `width?`, set on the sheet column), `rows?`, `headerRow?`, `totalsRow?`, `style?: TableStyle` (`theme` such as `TableStyleMedium2`, `showFirstColumn`, `showLastColumn`, `showRowStripes`, `showColumnStripes`), `autoFilter?`, `headerStyle?`, `dataStyle?`, `totalsStyle?`. `TableColumn`: `name`, `totalsRowFunction` (`none sum average count countNums max min stdDev var custom`), `totalsRowLabel`, `totalsRowFormula`, `calculatedColumnFormula`, `headerStyle`, `dataStyle`, `totalsStyle`. It throws on invalid names, overlaps, duplicate columns or rows that do not fit.
+
+```ts
+getTable(ws, name) -> Table                       // case-insensitive; throws when missing
+tableRows(ws, name) -> Record<string, CellValue>[] // data rows keyed by column name (values as stored)
+addTableRows(ws, name, rows)                      // append above the totals row; arrays (table column order) or objects by column name
+```
 
 ### Pictures
 
