@@ -1,0 +1,52 @@
+// Thin adapter over ZipStreamWriter: sequential parts, string chunks encoded with TextEncoder.
+
+import { ZipStreamWriter } from '../../zip/index.js';
+
+type ZipFile = { push(data: Uint8Array | string, final?: boolean): void };
+
+const encoder = /* @__PURE__ */ new TextEncoder();
+
+export class ZipOut {
+  private readonly zip: ZipStreamWriter;
+  private cur: ZipFile | undefined = undefined;
+  private curPath = '';
+
+  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number) {
+    this.zip = new ZipStreamWriter(onData, level);
+  }
+
+  /** Append `data` to part `path` (opened on first use); `last` closes the part. */
+  write(path: string, data: string, last: boolean): void {
+    let f = this.cur;
+    if (f === undefined || this.curPath !== path) {
+      if (f !== undefined) throw new Error(`zip part ${this.curPath} was not closed`);
+      f = this.zip.file(path);
+      this.cur = f;
+      this.curPath = path;
+    }
+    f.push(encoder.encode(data), last);
+    if (last) this.cur = undefined;
+  }
+
+  /** Write a complete part. */
+  add(path: string, data: string): void {
+    this.write(path, data, true);
+  }
+
+  end(): void {
+    if (this.cur !== undefined) throw new Error(`zip part ${this.curPath} was not closed`);
+    this.zip.end();
+  }
+}
+
+export function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
+  let size = 0;
+  for (const c of chunks) size += c.length;
+  const out = new Uint8Array(size);
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
+  return out;
+}
