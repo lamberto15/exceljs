@@ -1,6 +1,6 @@
 # Releasing
 
-xlsxkit uses [Changesets](https://github.com/changesets/changesets) and a GitHub Actions workflow
+turbosheet uses [Changesets](https://github.com/changesets/changesets) and a GitHub Actions workflow
 ([`.github/workflows/next-release.yml`](../.github/workflows/next-release.yml)). Nothing is published
 from a developer machine in the normal flow.
 
@@ -42,7 +42,7 @@ workflow upgrades npm) and Node >= 22.14 (the workflow uses Node 24).
 - Settings, Actions, General, Workflow permissions: **Read and write**, and tick "Allow GitHub Actions
   to create and approve pull requests" (for the version PR).
 - The repository must be public (it is) for provenance.
-- After the first publish (below): on npmjs.com open the `xlsxkit` package, **Settings, Trusted
+- After the first publish (below): on npmjs.com open the `turbosheet` package, **Settings, Trusted
   publishing**, add a GitHub Actions publisher: owner `lamberto15`, repository `exceljs`, workflow
   `next-release.yml` (environment empty). Then, under the same settings, set publishing access to
   require 2FA and disallow tokens.
@@ -59,7 +59,7 @@ pnpm install --frozen-lockfile
 npm login                      # browser / 2FA
 npm pack --dry-run             # inspect the file list
 npm publish --access public    # prepublishOnly runs build + tests; a local publish has no provenance
-git tag xlsxkit@0.1.0 && git push origin xlsxkit@0.1.0
+git tag turbosheet@0.1.0 && git push origin turbosheet@0.1.0
 ```
 
 Then configure the trusted publisher (above). From 0.2.0 on, every release goes through changesets and
@@ -68,5 +68,5 @@ provenance via `scripts/publish-if-new.mjs` (skips versions already on npm).
 
 ## Deprecating or fixing a bad release
 
-`npm deprecate xlsxkit@0.1.1 "reason"`; publish a fixed version through the normal flow. Unpublishing is
+`npm deprecate turbosheet@0.1.1 "reason"`; publish a fixed version through the normal flow. Unpublishing is
 only possible within 72 hours and is discouraged.

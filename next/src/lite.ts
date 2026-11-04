@@ -1,7 +1,7 @@
 // `./lite` entry: the same API and Workbook model as the package root, but no feature is
 // enabled by default — pass the halves you use in `options.features`:
 //
-//   import { Workbook, writeXlsx, readXlsx, tablesWriter, tablesReader } from 'xlsxkit/lite';
+//   import { Workbook, writeXlsx, readXlsx, tablesWriter, tablesReader } from 'turbosheet/lite';
 //   writeXlsx(wb, { features: [tablesWriter] });
 //   readXlsx(buf, { features: [tablesReader] });
 //

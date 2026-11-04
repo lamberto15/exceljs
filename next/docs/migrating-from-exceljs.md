@@ -1,10 +1,10 @@
 # Migrating from ExcelJS
 
-xlsxkit is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to xlsxkit 0.1. Every xlsxkit sample here runs in CI (`test/docs-examples.test.ts`).
+turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to turbosheet 0.1. Every turbosheet sample here runs in CI (`test/docs-examples.test.ts`).
 
 ## The big differences
 
-| Topic | ExcelJS | xlsxkit |
+| Topic | ExcelJS | turbosheet |
 | --- | --- | --- |
 | In-memory write | `await wb.xlsx.writeBuffer()` (async, returns `Buffer`) | `writeXlsx(wb)` is **synchronous** and returns a `Uint8Array`. |
 | In-memory read | `await wb.xlsx.load(buffer)` into an existing workbook | `readXlsx(bytes)` is **synchronous** and **returns** a new `Workbook`. |
@@ -24,7 +24,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 
 ### Workbook and worksheets
 
-| ExcelJS | xlsxkit |
+| ExcelJS | turbosheet |
 | --- | --- |
 | `new ExcelJS.Workbook()` | `new Workbook()` |
 | `wb.creator`, `lastModifiedBy`, `created`, `modified` | same |
@@ -39,7 +39,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 
 ### Rows, columns, cells
 
-| ExcelJS | xlsxkit |
+| ExcelJS | turbosheet |
 | --- | --- |
 | `ws.columns = [{ header, key, width }]` | same |
 | `ws.getColumn(1).width = 20` | same |
@@ -64,7 +64,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 
 ### Values
 
-| ExcelJS value | xlsxkit |
+| ExcelJS value | turbosheet |
 | --- | --- |
 | number, string, boolean, `Date`, `null` | same |
 | `{ formula: 'SUM(A1:A2)', result: 3 }` | same |
@@ -75,7 +75,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 
 ### Features
 
-| ExcelJS | xlsxkit |
+| ExcelJS | turbosheet |
 | --- | --- |
 | `ws.addTable({ name, ref, columns, rows })` | `addTable(ws, { name, topLeft \| ref, columns, rows })`; columns may be plain strings; header/data/totals cells are written for you |
 | `cell.note = 'text' \| {...}` | `addNote(ws, 'A1', 'text' \| { text, author, visible, width, height })` |
@@ -97,9 +97,9 @@ await wb.xlsx.writeFile('out.xlsx');
 ```
 
 ```ts
-// xlsxkit
+// turbosheet
 import { readFileSync, writeFileSync } from 'node:fs';
-import { readXlsx, writeXlsx } from 'xlsxkit';
+import { readXlsx, writeXlsx } from 'turbosheet';
 
 const wb = readXlsx(readFileSync('in.xlsx'));
 wb.getWorksheet(1)!.getCell('A1').value = 'edited';
@@ -118,9 +118,9 @@ await wb.commit();
 ```
 
 ```ts
-// xlsxkit
+// turbosheet
 import { createWriteStream } from 'node:fs';
-import { createXlsxWriter } from 'xlsxkit';
+import { createXlsxWriter } from 'turbosheet';
 
 const file = createWriteStream('big.xlsx');
 const w = createXlsxWriter({ sink: (chunk) => new Promise((resolve) => file.write(chunk, () => resolve())) });
@@ -140,9 +140,9 @@ for await (const sheet of reader) for await (const row of sheet) { /* row.values
 ```
 
 ```ts
-// xlsxkit
+// turbosheet
 import { createReadStream } from 'node:fs';
-import { xlsxRows } from 'xlsxkit';
+import { xlsxRows } from 'turbosheet';
 
 for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
   // row.sheet, row.row (1-based), row.values (0-based: values[0] is column A)
@@ -153,13 +153,13 @@ CSV:
 
 ```ts
 // ExcelJS: await wb.csv.readFile(path); await wb.csv.writeBuffer()
-// xlsxkit: CSV is independent of the workbook
-import { parseCsv, writeCsv } from 'xlsxkit/csv';
+// turbosheet: CSV is independent of the workbook
+import { parseCsv, writeCsv } from 'turbosheet/csv';
 const rows = parseCsv(text, { parseNumbers: true });
 const csv = writeCsv(rows, { escapeFormulas: true });
 ```
 
-To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `xlsxkit/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))`.
+To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `turbosheet/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))`.
 
 ## Behavior differences to watch for
 
@@ -171,11 +171,11 @@ To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `
 - **Merged cells:** `mergeCells` does not clear or copy cell values; a value left in a non-top-left cell stays in the model (Excel displays only the top-left one). Put the value in the top-left cell.
 - **`ws.columns = [...]` with headers writes row 1**, like ExcelJS; `addRow` then continues below it.
 
-## What xlsxkit adds
+## What turbosheet adds
 
-- **Encryption:** `encryptXlsx` / `decryptXlsx` / `isEncrypted` in `xlsxkit/crypto` (agile read/write, standard read).
+- **Encryption:** `encryptXlsx` / `decryptXlsx` / `isEncrypted` in `turbosheet/crypto` (agile read/write, standard read).
 - **Round-trip preservation:** charts, pivot tables, shapes, VBA, threaded comments, themes and unknown XML survive load, edit, save. Inspect with `listPreservedParts`.
-- **`xlsxkit/lite`:** the same API with features opt-in, 20 KB write-only (see [bundle-size.md](./bundle-size.md)).
+- **`turbosheet/lite`:** the same API with features opt-in, 20 KB write-only (see [bundle-size.md](./bundle-size.md)).
 - **Profiles and compression control:** `profile: 'low-memory' | 'balanced' | 'max-speed'`, `compression`, `strings: 'shared' | 'inline'`.
 - **Zip-bomb limits** on every read path and **JSON helpers** (`sheetToObjects`, `objectsToSheet`, NDJSON).
 - **Web-standard runtime support:** browsers, workers and Bun/Deno are expected to work (CI covers Node 22/24).

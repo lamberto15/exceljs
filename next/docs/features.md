@@ -1,6 +1,6 @@
 # Features
 
-Every feature is available on `xlsxkit`. On `xlsxkit/lite` you opt in per call (see [Lite](#lite-opt-in-features)). Field-by-field options are in [api.md](./api.md#features). All samples assume `wb` is a `Workbook` and `ws` one of its sheets.
+Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per call (see [Lite](#lite-opt-in-features)). Field-by-field options are in [api.md](./api.md#features). All samples assume `wb` is a `Workbook` and `ws` one of its sheets.
 
 - [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
 - [Styles and number formats](#styles-and-number-formats)
@@ -22,7 +22,7 @@ Every feature is available on `xlsxkit`. On `xlsxkit/lite` you opt in per call (
 ```ts
 ws.setCell('A1', 'plain text');
 ws.setCell('A2', { richText: [{ text: 'bold ', font: { bold: true } }, { text: 'and plain' }] });
-ws.setCell('A3', { text: 'xlsxkit', hyperlink: 'https://example.com', tooltip: 'Home page' });
+ws.setCell('A3', { text: 'turbosheet', hyperlink: 'https://example.com', tooltip: 'Home page' });
 ws.setCell('B1', 10);
 ws.setCell('B2', 32);
 ws.setCell('B3', { formula: 'SUM(B1:B2)', result: 42 }); // cached result is written as given
@@ -30,7 +30,7 @@ ws.setCell('C1', new Date(Date.UTC(2025, 5, 1)));        // gets a default date 
 ws.setCell('C2', { error: '#N/A' });
 ```
 
-xlsxkit never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
+turbosheet never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
 
 ## Styles and number formats
 
@@ -166,7 +166,7 @@ await w.end();
 
 ## Encryption
 
-See [`xlsxkit/crypto` in api.md](./api.md#crypto):
+See [`turbosheet/crypto` in api.md](./api.md#crypto):
 
 ```ts
 const encrypted = await encryptXlsx(writeXlsx(wb), 'hunter2');
@@ -176,7 +176,7 @@ const wb2 = readXlsx(await decryptXlsx(encrypted, 'hunter2'));
 ## Lite: opt-in features
 
 ```ts
-import { Workbook, addTable, readXlsx, tablesReader, tablesWriter, writeXlsx } from 'xlsxkit/lite';
+import { Workbook, addTable, readXlsx, tablesReader, tablesWriter, writeXlsx } from 'turbosheet/lite';
 
 const wb = new Workbook();
 addTable(wb.addWorksheet('Data'), { name: 'T', columns: ['Region', 'Units'], rows: [['N', 1]] });

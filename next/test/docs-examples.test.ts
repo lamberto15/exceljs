@@ -35,7 +35,7 @@ describe('docs/migrating-from-exceljs.md', () => {
     const { join } = await import('node:path');
     const { arraysToSheet, sheetToArrays } = await import('../src/json/index.js');
     const { parseCsv, writeCsv } = await import('../src/csv/index.js');
-    const dir = mkdtempSync(join(tmpdir(), 'xlsxkit-mig-'));
+    const dir = mkdtempSync(join(tmpdir(), 'turbosheet-mig-'));
     try {
       const src = new Workbook();
       src.addWorksheet('S').setCell('A1', 'orig');
@@ -86,7 +86,11 @@ describe('docs/features.md', () => {
     ws.setCell('A2', {
       richText: [{ text: 'bold ', font: { bold: true } }, { text: 'and plain' }],
     });
-    ws.setCell('A3', { text: 'xlsxkit', hyperlink: 'https://example.com', tooltip: 'Home page' });
+    ws.setCell('A3', {
+      text: 'turbosheet',
+      hyperlink: 'https://example.com',
+      tooltip: 'Home page',
+    });
     ws.setCell('B1', 10);
     ws.setCell('B2', 32);
     ws.setCell('B3', { formula: 'SUM(B1:B2)', result: 42 });

@@ -4,11 +4,11 @@ Two entries expose the same functions and the same `Workbook` model:
 
 | Entry                   | Features                                                                     | Use it when                                                    |
 | ----------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `xlsxkit`        | all built-ins, always on                                                     | you want everything to just work (default)                     |
-| `xlsxkit/lite`   | none by default; opt in per call with `features`                             | bundle size matters (browser, edge), you write plain data      |
+| `turbosheet`        | all built-ins, always on                                                     | you want everything to just work (default)                     |
+| `turbosheet/lite`   | none by default; opt in per call with `features`                             | bundle size matters (browser, edge), you write plain data      |
 
 ```ts
-import { Workbook, writeXlsx, readXlsx, addTable, tablesWriter, tablesReader } from 'xlsxkit/lite';
+import { Workbook, writeXlsx, readXlsx, addTable, tablesWriter, tablesReader } from 'turbosheet/lite';
 
 const wb = new Workbook();
 addTable(wb.addWorksheet('Data'), { name: 'Sales', columns: ['Region', 'Units'], rows: [['N', 1]] });

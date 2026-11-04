@@ -1,6 +1,6 @@
 # API reference
 
-Generated from the 0.1.0 type declarations (`dist/*.d.ts`). `xlsxkit` and `xlsxkit/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `xlsxkit/csv`, `xlsxkit/json` and `xlsxkit/crypto` are separate entries.
+Generated from the 0.1.0 type declarations (`dist/*.d.ts`). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json` and `turbosheet/crypto` are separate entries.
 
 Conventions: **rows and columns in the public API are 1-based** (like Excel); columns may be given as a number or a letter (`3` or `'C'`). Cell addresses are A1 strings (`'B3'`). The low-level helpers in `address` (`decodeAddr`, `decodeRange`, `encodeAddr`, `encodeRange`, `encodeCol`, `decodeCol`) are **0-based** and ranges are `{ top, left, bottom, right }`.
 
@@ -84,7 +84,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | --- | --- |
 | number, string, boolean | as is |
 | `Date` | stored as a serial using the workbook date system (UTC based, the Excel 1900 leap-year bug is honored). Number cells with a date format read back as `Date`. |
-| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`. `result` is the cached value written to the file; **xlsxkit does not evaluate formulas**. For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
+| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`. `result` is the cached value written to the file; **turbosheet does not evaluate formulas**. For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
 | `RichText` | `{ richText: [{ text, font? }, ...] }` |
 | `Hyperlink` | `{ text, hyperlink, tooltip? }` |
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
@@ -227,7 +227,7 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 
 ## CSV
 
-`import { ... } from 'xlsxkit/csv'`
+`import { ... } from 'turbosheet/csv'`
 
 ```ts
 parseCsv(text, opts?): string[][]                       // CsvValue[][] when parseNumbers / parseDates is set
@@ -242,7 +242,7 @@ Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bo
 
 ## JSON
 
-`import { ... } from 'xlsxkit/json'`
+`import { ... } from 'turbosheet/json'`
 
 ```ts
 sheetToObjects(ws, { header?: number | string[], range?, defval?, raw? }): Record<string, unknown>[]
@@ -257,7 +257,7 @@ toJsonValue(cellValue): unknown
 
 ## Crypto
 
-`import { ... } from 'xlsxkit/crypto'` (async; uses WebCrypto)
+`import { ... } from 'turbosheet/crypto'` (async; uses WebCrypto)
 
 ```ts
 isEncrypted(data: Uint8Array): boolean
@@ -273,12 +273,12 @@ Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. 
 | --- | --- | --- |
 | `XlsxParseError` | `readXlsx`, `xlsxRows` | Broken XML or package structure. |
 | `EncryptedFileError` (extends `XlsxParseError`) | `readXlsx` | Input is an OLE container (password-protected, or a legacy `.xls`); use `decryptXlsx`. |
-| `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `xlsxkit` and `xlsxkit/lite`. |
+| `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `turbosheet` and `turbosheet/lite`. |
 | `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
-| `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `xlsxkit/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
-| `CsvError` | `xlsxkit/csv` | Option or size-limit problem. |
+| `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
+| `CsvError` | `turbosheet/csv` | Option or size-limit problem. |
 
-In `xlsxkit/lite`, writing a feature field whose writer is not enabled throws (for example ``Worksheet 'Data': ws.tables is set but the 'tables' feature is not enabled; pass features: [tablesWriter]``) instead of dropping data silently.
+In `turbosheet/lite`, writing a feature field whose writer is not enabled throws (for example ``Worksheet 'Data': ws.tables is set but the 'tables' feature is not enabled; pass features: [tablesWriter]``) instead of dropping data silently.
 
 ## Addresses and dates
 

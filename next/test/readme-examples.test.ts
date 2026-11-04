@@ -30,7 +30,7 @@ import {
 import { objectsToSheet, sheetToNdjson, sheetToObjects } from '../src/json/index.js';
 import * as lite from '../src/lite.js';
 
-const tmp = (): string => mkdtempSync(join(tmpdir(), 'xlsxkit-readme-'));
+const tmp = (): string => mkdtempSync(join(tmpdir(), 'turbosheet-readme-'));
 
 describe('README quick start', () => {
   it('write and read', () => {

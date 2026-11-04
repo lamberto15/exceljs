@@ -35,7 +35,7 @@ export const dataValidationReader: FeatureReader = { name: 'data-validation', ..
 ```
 
 ```ts
-import { writeXlsx, readXlsx, dataValidationWriter, dataValidationReader } from 'xlsxkit/lite';
+import { writeXlsx, readXlsx, dataValidationWriter, dataValidationReader } from 'turbosheet/lite';
 writeXlsx(wb, { features: [dataValidationWriter] });
 readXlsx(buf, { features: [dataValidationReader] });
 ```

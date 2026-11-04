@@ -1,4 +1,4 @@
-# xlsxkit
+# turbosheet
 
 Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript runtime.
 
@@ -8,13 +8,13 @@ Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript run
 
 - **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.3 s vs 3.5 s for `xlsx.load`.
 - **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
-- **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `xlsxkit/lite`. Tree-shakable, `sideEffects: false`.
+- **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
 - **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/`.
 - **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
 
 Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data.
 
-| 100k rows x 20 cols     | xlsxkit                               | ExcelJS 4.4.0           |
+| 100k rows x 20 cols     | turbosheet                               | ExcelJS 4.4.0           |
 | ----------------------- | ------------------------------------- | ----------------------- |
 | write, in memory        | 2.2 s `writeXlsx` (balanced)          | 7.6 s `writeBuffer`     |
 | write, in memory, fast  | 1.4 s `writeXlsx` (`max-speed`)       |                         |
@@ -27,7 +27,7 @@ Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple
 ## Install
 
 ```sh
-npm install xlsxkit     # or pnpm add / yarn add / bun add
+npm install turbosheet     # or pnpm add / yarn add / bun add
 ```
 
 ESM and CommonJS builds, TypeScript types included. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
@@ -37,7 +37,7 @@ ESM and CommonJS builds, TypeScript types included. Requires Node 22 or newer (o
 ### Write
 
 ```ts
-import { Workbook, writeXlsx } from 'xlsxkit';
+import { Workbook, writeXlsx } from 'turbosheet';
 
 const wb = new Workbook();
 const ws = wb.addWorksheet('Sales');
@@ -59,7 +59,7 @@ const bytes: Uint8Array = writeXlsx(wb); // synchronous
 ### Read
 
 ```ts
-import { readXlsx } from 'xlsxkit';
+import { readXlsx } from 'turbosheet';
 
 const back = readXlsx(bytes); // Uint8Array | ArrayBuffer, synchronous
 const sheet = back.getWorksheet('Sales')!;
@@ -72,7 +72,7 @@ sheet.eachRow((row, n) => console.log(n, row.values));
 
 ```ts
 import { createWriteStream } from 'node:fs';
-import { createXlsxWriter } from 'xlsxkit';
+import { createXlsxWriter } from 'turbosheet';
 
 const file = createWriteStream('big.xlsx');
 const w = createXlsxWriter({
@@ -97,7 +97,7 @@ file.end();
 
 ```ts
 import { createReadStream } from 'node:fs';
-import { xlsxRows } from 'xlsxkit';
+import { xlsxRows } from 'turbosheet';
 
 // Accepts bytes, an AsyncIterable<Uint8Array> (Node streams) or a web ReadableStream.
 for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
@@ -108,7 +108,7 @@ for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
 ### CSV
 
 ```ts
-import { csvRows, csvStream, parseCsv, writeCsv } from 'xlsxkit/csv';
+import { csvRows, csvStream, parseCsv, writeCsv } from 'turbosheet/csv';
 
 const text = writeCsv(
   [
@@ -127,7 +127,7 @@ parseCsv('a,1\r\nb,2', { parseNumbers: true }); // [['a', 1], ['b', 2]]
 ### JSON helpers
 
 ```ts
-import { objectsToSheet, sheetToNdjson, sheetToObjects } from 'xlsxkit/json';
+import { objectsToSheet, sheetToNdjson, sheetToObjects } from 'turbosheet/json';
 
 objectsToSheet(ws, [{ name: 'Ann', age: 31 }, { name: 'Bob', age: 42 }]); // header from keys
 sheetToObjects(ws); // [{ name: 'Ann', age: 31 }, { name: 'Bob', age: 42 }]
@@ -137,7 +137,7 @@ for await (const line of sheetToNdjson(ws)) process.stdout.write(line); // one J
 ### Password-protected files
 
 ```ts
-import { decryptXlsx, encryptXlsx, isEncrypted } from 'xlsxkit/crypto';
+import { decryptXlsx, encryptXlsx, isEncrypted } from 'turbosheet/crypto';
 
 const encrypted = await encryptXlsx(writeXlsx(wb), 'hunter2'); // AES-256, like Excel 2010+
 isEncrypted(encrypted); // true; readXlsx(encrypted) throws EncryptedFileError
@@ -151,7 +151,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 Tables, notes, pictures, conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
-import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'xlsxkit';
+import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
 
 addTable(ws, {
   name: 'Sales',
@@ -170,19 +170,19 @@ addConditionalFormatting(ws, 'B2:B3', [
 
 - [docs/api.md](./docs/api.md): API reference
 - [docs/features.md](./docs/features.md): one section per feature
-- [docs/migrating-from-exceljs.md](./docs/migrating-from-exceljs.md): ExcelJS to xlsxkit
-- [docs/bundle-size.md](./docs/bundle-size.md): `xlsxkit/lite` and size budgets
+- [docs/migrating-from-exceljs.md](./docs/migrating-from-exceljs.md): ExcelJS to turbosheet
+- [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
 - [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
 
 ## Entry points
 
 | Import             | What                                                        | Size (min + brotli, with deps) |
 | ------------------ | ----------------------------------------------------------- | ------------------------------ |
-| `xlsxkit`          | read + write, every feature on                              | 28 KB write-only, 55 KB read + write |
-| `xlsxkit/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
-| `xlsxkit/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
-| `xlsxkit/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
-| `xlsxkit/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
+| `turbosheet`          | read + write, every feature on                              | 28 KB write-only, 55 KB read + write |
+| `turbosheet/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
+| `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
+| `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
+| `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
 
 Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook, writeXlsx }` and `*`). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
 
