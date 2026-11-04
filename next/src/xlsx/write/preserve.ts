@@ -25,6 +25,7 @@ import {
   type PPart,
   type PRel,
   type PresWrite,
+  presTable,
   relTarget,
 } from '../common/preserved.js';
 import { SheetSlot } from '../features/types.js';
@@ -203,6 +204,12 @@ function reachable(wb: Workbook, pkg?: PackageParts): PPart[] {
     for (const f of p.frags) if (fragLive(f, ws)) used(f.xml, p.rels);
     for (const r of implicitRels(ws)) visit(r.target);
     if (p.drawing && p.name === ws.name) used(p.drawing.xml, p.drawing.rels);
+    for (const t of ws.tables ?? []) {
+      const k = presTable(ws, t);
+      if (!k) continue;
+      visit(k.rel.target);
+      pkg?.reserve(`table${k.id}`); // generated tables number their ids around it
+    }
   }
   return list;
 }

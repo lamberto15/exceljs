@@ -41,6 +41,7 @@ import type {
   PPart,
   PRel,
   PSheet,
+  PTable,
   PVml,
 } from '../common/preserved.js';
 import { decodePart, type Relationship, relTypeIs } from '../common/r-opc.js';
@@ -334,6 +335,24 @@ export class Preserver {
       if (t === undefined) continue;
       implicit.push(out.push({ type: r.type, target: t }) - 1);
     }
+    const tables: PTable[] = [];
+    for (const r of rels?.values() ?? []) {
+      // modelled tables whose part has relationships (query tables): keep the part
+      if (r.external || !relTypeIs(r.type, 'table') || !c.refs.has(r.id)) continue;
+      if (!this.pkg.relsOf(r.path)?.size) continue;
+      const head = /<(?:\w+:)?table\b[^>]*>/.exec(this.text(r.path) ?? '')?.[0] ?? '';
+      const name = / name="([^"]*)"/.exec(head)?.[1];
+      const t = ws.tables?.find((x) => x.name === name);
+      const p = t && this.part(r.path);
+      if (p) {
+        tables.push({
+          table: t,
+          key: JSON.stringify(t),
+          rel: { type: r.type, target: p },
+          id: +(/ id="(\d+)"/.exec(head)?.[1] ?? 0),
+        });
+      }
+    }
     let drawing: PDrawing | undefined;
     for (const r of rels?.values() ?? []) {
       if (!r.external && relTypeIs(r.type, 'drawing') && c.refs.has(r.id)) {
@@ -342,7 +361,12 @@ export class Preserver {
       }
     }
     const empty =
-      frags.length === 0 && implicit.length === 0 && !drawing && !vmlKept && c.prAttrs === '';
+      frags.length === 0 &&
+      implicit.length === 0 &&
+      !drawing &&
+      !vmlKept &&
+      tables.length === 0 &&
+      c.prAttrs === '';
     if (empty && sheetId === ws.id) return;
     const pf: PFrag[] = frags.map((f, i) => ({
       slot: f[0],
@@ -359,6 +383,7 @@ export class Preserver {
       prAttrs: c.prAttrs,
       drawing,
       vml: vmlKept,
+      tables: tables.length ? tables : undefined,
       w: presWrite,
     };
     ws.preserved = ps;

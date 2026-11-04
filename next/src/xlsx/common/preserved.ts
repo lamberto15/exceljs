@@ -18,6 +18,7 @@
 
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import type { Table } from '../features/tables.js';
 import type { PackageParts } from '../write/package.js';
 
 /** Writer-side preservation (../write/preserve.ts `presWrite`), attached by the reader. */
@@ -116,6 +117,20 @@ export interface PVml {
   readonly blocks: readonly number[];
 }
 
+/**
+ * A modelled table whose part has relationships of its own (a query table): while the model
+ * table is unchanged, its original part is written instead of a regenerated one.
+ */
+export interface PTable {
+  readonly table: Table;
+  /** JSON of `table` when read. */
+  readonly key: string;
+  /** Sheet → table part relationship. */
+  readonly rel: PRel;
+  /** The part's table `id` (kept unique against generated tables). */
+  readonly id: number;
+}
+
 export interface PSheet {
   /** Sheet name when read: renaming the sheet drops its linked preserved content. */
   readonly name: string;
@@ -130,6 +145,7 @@ export interface PSheet {
   readonly prAttrs: string;
   readonly drawing: PDrawing | undefined;
   readonly vml?: PVml | undefined;
+  readonly tables?: readonly PTable[] | undefined;
   /** Writer hooks. */
   readonly w: PresWrite;
 }
@@ -212,6 +228,12 @@ export function fillRels(xml: string, rels: readonly PRel[], from: string, add: 
 export function presVml(ws: Worksheet): PVml | undefined {
   const p = ws.preserved;
   return p && p.name === ws.name ? p.vml : undefined;
+}
+
+/** The kept part of a table read from the file, while the model table is unchanged. */
+export function presTable(ws: Worksheet, t: Table): PTable | undefined {
+  const k = ws.preserved?.tables?.find((x) => x.table === t);
+  return k && JSON.stringify(t) === k.key ? k : undefined;
 }
 
 /** Kept drawing anchors of a sheet, unless the sheet was renamed since it was read. */

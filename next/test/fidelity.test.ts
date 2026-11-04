@@ -575,3 +575,107 @@ describe('fidelity: chartsheets keep their tab position', () => {
     expect(order(trip(fixture('chart-sheet.xlsx')))).toEqual(['Chart1', 'Sheet1']);
   });
 });
+
+// ---------------------------------------------------------------- query tables
+
+describe('fidelity: table parts with relationships of their own (query tables)', () => {
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const QT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<queryTable xmlns="${NS}" name="Query1" connectionId="1" autoFormatId="16" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="4"><queryTableFields count="3"><queryTableField id="1" name="h1" tableColumnId="1"/><queryTableField id="2" name="h2" tableColumnId="2"/><queryTableField id="3" name="h3" tableColumnId="3"/></queryTableFields></queryTableRefresh></queryTable>`;
+  const CONN = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<connections xmlns="${NS}"><connection id="1" name="Query1" type="5" refreshedVersion="6" background="1"><dbPr connection="Provider=Fake;" command="SELECT 1"/></connection></connections>`;
+
+  /** Data A1:C6 is a query table (table part → queryTable part, connection in the workbook). */
+  function src(): Uint8Array {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.addRow(['h1', 'h2', 'h3']);
+    for (let i = 1; i <= 5; i++) ws.addRow([i, i * 2, i * 3]);
+    ws.tables = [
+      { name: 'Query1', ref: 'A1:C6', columns: [{ name: 'h1' }, { name: 'h2' }, { name: 'h3' }] },
+    ];
+    wb.addWorksheet('Other').addRow(['x']);
+    const b = writeXlsx(wb);
+    const z = unzipSync(b);
+    let t = text(z, 'xl/tables/table1.xml').replace('<table ', '<table tableType="queryTable" ');
+    for (let i = 1; i <= 3; i++) {
+      t = t.replace(`<tableColumn id="${i}" `, `<tableColumn id="${i}" uniqueName="${i}" `);
+      t = t.replace(`name="h${i}"/>`, `name="h${i}" queryTableFieldId="${i}"/>`);
+    }
+    return patch(b, {
+      'xl/tables/table1.xml': t,
+      'xl/tables/_rels/table1.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/queryTable" Target="../queryTables/queryTable1.xml"/></Relationships>`,
+      'xl/queryTables/queryTable1.xml': QT,
+      'xl/connections.xml': CONN,
+      'xl/_rels/workbook.xml.rels': text(z, 'xl/_rels/workbook.xml.rels').replace(
+        '</Relationships>',
+        `<Relationship Id="rIdConn" Type="${REL}/connections" Target="connections.xml"/></Relationships>`,
+      ),
+      '[Content_Types].xml': text(z, '[Content_Types].xml').replace(
+        '</Types>',
+        '<Override PartName="/xl/queryTables/queryTable1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.queryTable+xml"/><Override PartName="/xl/connections.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml"/></Types>',
+      ),
+    });
+  }
+
+  /** The table parts of a sheet with their XML and own relationships. */
+  function tablesOf(z: Zip, sheet: number): { path: string; xml: string; rels: string }[] {
+    const rels = text(z, `xl/worksheets/_rels/sheet${sheet}.xml.rels`);
+    return [...rels.matchAll(/Target="\.\.\/(tables\/[^"]+)"/g)].map((m) => {
+      const path = `xl/${m[1]}`;
+      const rp = path.replace(/([^/]+)$/, '_rels/$1.rels');
+      return { path, xml: text(z, path), rels: z[rp] ? text(z, rp) : '' };
+    });
+  }
+
+  it('the unchanged table keeps its part, its queryTable link and the connection', async () => {
+    const wb = readXlsx(src());
+    expect(wb.worksheets[0]!.tables![0]!.name).toBe('Query1');
+    const out = writeXlsx(wb);
+    const z = unzipSync(out);
+    checkPackage(z);
+    const [t] = tablesOf(z, 1);
+    expect(t!.xml).toContain('tableType="queryTable"');
+    expect(t!.xml).toContain('queryTableFieldId="2"');
+    expect(t!.rels).toContain('/queryTable" Target="../queryTables/queryTable1.xml"');
+    expect(text(z, 'xl/queryTables/queryTable1.xml')).toBe(QT);
+    expect(text(z, 'xl/connections.xml')).toBe(CONN);
+    // stable, and still modelled
+    const again = readXlsx(out);
+    expect(again.worksheets[0]!.tables![0]!.columns.map((c) => c.name)).toEqual(['h1', 'h2', 'h3']);
+    const z2 = unzipSync(writeXlsx(again));
+    checkPackage(z2);
+    expect(tablesOf(z2, 1)[0]!.rels).toContain('/queryTable"');
+    const x = await exceljsLoads(out);
+    expect(x.worksheets[0]!.getCell('B3').value).toBe(4);
+  });
+
+  it('user edits nearby: new tables get their own ids / parts; cell edits keep the link', () => {
+    const wb = readXlsx(src());
+    const other = wb.worksheets[1]!;
+    other.addRow(['k']);
+    other.addRow([1]);
+    other.tables = [{ name: 'Mine', ref: 'A1:A3', columns: [{ name: 'x' }] }];
+    wb.worksheets[0]!.setCell('B3', 99);
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    const kept = tablesOf(z, 1)[0]!;
+    const mine = tablesOf(z, 2)[0]!;
+    expect(kept.rels).toContain('/queryTable"');
+    expect(mine.path).not.toBe(kept.path);
+    const id = (x: string): string => /<table [^>]*?\sid="(\d+)"/.exec(x)![1]!;
+    expect(id(mine.xml)).not.toBe(id(kept.xml));
+    expect(mine.rels).toBe('');
+  });
+
+  it('a modified table is regenerated (its query link is dropped)', () => {
+    const wb = readXlsx(src());
+    wb.worksheets[0]!.tables![0]!.style = { theme: 'TableStyleLight1' };
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    const [t] = tablesOf(z, 1);
+    expect(t!.xml).toContain('TableStyleLight1');
+    expect(t!.xml).not.toContain('queryTable');
+    expect(t!.rels).toBe('');
+    expect(z['xl/queryTables/queryTable1.xml']).toBeUndefined();
+  });
+});
