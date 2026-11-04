@@ -896,6 +896,27 @@ for (const [file, what] of [
   );
 }
 
+// 25: hyperlink whose text has formatted runs
+{
+  const wb = new Workbook();
+  wb.addWorksheet('Links').setCell('A1', {
+    text: 'Bold start, plain end',
+    hyperlink: 'https://example.com',
+    runs: [
+      {
+        text: 'Bold start',
+        font: { bold: true, color: { argb: 'FF0563C1' }, underline: 'single' },
+      },
+      { text: ', plain end', font: { color: { argb: 'FF0563C1' }, underline: 'single' } },
+    ],
+  });
+  save(
+    '25-rich-hyperlink.xlsx',
+    writeXlsx(wb),
+    `"Links": A1 is a link to example.com whose first two words are bold. No repair prompt.`,
+  );
+}
+
 writeFileSync(
   join(out, 'CHECKLIST.md'),
   `# Excel compatibility check

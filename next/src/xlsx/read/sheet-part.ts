@@ -722,6 +722,7 @@ export class SheetHandler implements XmlHandler {
       for (let c = range.left; c <= range.right; c++) {
         const i = row ? row.find(c) : -1;
         let text: string;
+        let runs: RichText['richText'] | undefined;
         let xf = 0;
         if (i >= 0) {
           const k = row!.kind[i]!;
@@ -731,11 +732,14 @@ export class SheetHandler implements XmlHandler {
           }
           if (k === CellKind.Hyperlink) continue;
           xf = row!.style[i]!;
-          text = displayText(ws._valueAt(row!, i));
+          const v = ws._valueAt(row!, i);
+          text = displayText(v);
+          if (k === CellKind.RichText) runs = (v as RichText).richText;
         } else if (range.top === range.bottom && range.left === range.right) {
           text = '';
         } else continue;
         const link: Mutable<Hyperlink> = { text, hyperlink: target };
+        if (runs) link.runs = runs;
         if (h.tooltip !== undefined) link.tooltip = h.tooltip;
         ws.setCellRaw(r, c, CellKind.Hyperlink, 0, link, xf);
       }

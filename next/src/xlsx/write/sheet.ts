@@ -233,7 +233,9 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
       case 8: {
         // Hyperlink
         const h = obj![i] as Hyperlink;
-        out += strCell(ref, s, h.text ?? '', sst);
+        out += h.runs?.length
+          ? richCell(ref, s, { richText: h.runs })
+          : strCell(ref, s, h.text ?? '', sst);
         if (h.hyperlink) ctx.links.push({ ref, target: h.hyperlink, tooltip: h.tooltip });
         break;
       }

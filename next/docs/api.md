@@ -115,6 +115,8 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 
 
 `Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
+
+`Hyperlink.runs`: optional formatted runs of the link text (`text` stays the plain concatenation), read from files and written back as a rich string.
 ## Style
 
 Styles are **plain, immutable-by-convention objects**. They are interned into the workbook's `StyleRegistry` (one `xf` index per distinct style); objects returned by `getStyle` or `StyleRegistry.get` are shared and must not be mutated. Change a style by assigning a new object.
