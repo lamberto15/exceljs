@@ -32,7 +32,7 @@ Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple
 npm install turbosheet     # or pnpm add / yarn add / bun add
 ```
 
-ESM and CommonJS builds, TypeScript types included. Releases are published from CI with npm provenance. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
+ESM and CommonJS builds, TypeScript types included. Releases from 0.2.0 on are published from CI with signed npm provenance. Requires Node 22 or newer (or another modern runtime, see [Runtime support](#runtime-support)).
 
 ## Quick start
 
