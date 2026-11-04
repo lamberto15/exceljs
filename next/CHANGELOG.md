@@ -1,5 +1,16 @@
 # turbosheet
 
+## 0.2.0
+
+### Minor Changes
+
+- ab291c6: Chart writing: `addChart(ws, chart)` / `ws.charts` writes native bar, column, line, pie, doughnut,
+  scatter and area charts (titles, legend, axis titles / bounds / number formats, stacking, data
+  labels, series colors, markers, smoothing, built-in styles) with caches of the referenced cells,
+  sharing the sheet's drawing with pictures and with charts kept from read files. New opt-in
+  `chartsWriter` for `turbosheet/lite`. Reading keeps charts raw (round-trip preservation).
+- 4e42e76: Add column auto-fit: `autoFitColumns(ws, opts?)` sizes columns from their displayed contents (number formats, dates, rich text, bold/size, wrap, merges), and `estimateColumnWidths(rows, opts?)` computes widths from a sample for the streaming writer. Available from both `turbosheet` and `turbosheet/lite`; not included in a bundle unless imported.
+
 ## 0.1.0
 
 Initial release. A clean rewrite inspired by and partly derived from ExcelJS (MIT).
