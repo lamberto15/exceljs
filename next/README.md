@@ -190,6 +190,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 - [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
 - [docs/benchmarks.md](./docs/benchmarks.md): benchmark methodology and results
 - [CONTRIBUTING.md](./CONTRIBUTING.md): development setup and PR flow
+- [ROADMAP.md](./ROADMAP.md): released versions and what comes next
 - [docs/formula.md](./docs/formula.md): formula evaluation (`turbosheet/formula`)
 - [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
 
