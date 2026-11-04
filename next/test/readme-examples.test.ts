@@ -9,6 +9,14 @@ import { describe, expect, it } from 'vitest';
 import { decryptXlsx, encryptXlsx, isEncrypted, WrongPasswordError } from '../src/crypto/index.js';
 import { csvRows, csvStream, parseCsv, writeCsv } from '../src/csv/index.js';
 import {
+  createEvaluator,
+  evaluate,
+  evaluateCell,
+  evaluateFormula,
+  toNumber,
+  toText,
+} from '../src/formula/index.js';
+import {
   addConditionalFormatting,
   addDataValidation,
   addDefinedName,
@@ -228,5 +236,54 @@ describe('README lite', () => {
 
     // Using a feature without enabling it throws instead of silently dropping data.
     expect(() => lite.writeXlsx(wb)).toThrow(/tables/);
+  });
+});
+
+describe('README / docs/formula.md formulas', () => {
+  it('evaluate, evaluateFormula (README)', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['Units', 'Price']);
+    ws.addRow([12, 2.5]);
+    ws.setCell('C2', { formula: 'A2*B2' });
+    const report = evaluate(wb); // fills Formula.result of every formula, in dependency order
+    expect(report.circular).toEqual([]);
+    expect(report.unsupported).toEqual([]);
+    expect(ws.getValue('C2')).toEqual({ formula: 'A2*B2', result: 30 });
+    expect(evaluateFormula(wb, 'SUMIF(A:A,">10")')).toBe(12); // ad-hoc
+  });
+
+  it('read, evaluate, write (docs/formula.md)', () => {
+    const src = new Workbook();
+    const s = src.addWorksheet('Sheet1');
+    for (let r = 2; r <= 9; r++) s.setCell(r, 2, r);
+    s.setCell('D10', { formula: 'SUM(B2:B9)*Rate' });
+    addDefinedName(src, 'Rate', '0.5');
+    const bytes = writeXlsx(src);
+
+    const wb = readXlsx(bytes);
+    const report = evaluate(wb); // every formula cell gets a fresh Formula.result
+    expect(report).toEqual({ evaluated: 1, circular: [], unsupported: [], errors: [] });
+    const out = writeXlsx(wb); // the results are written as cached values (<v>)
+    expect(readXlsx(out).getWorksheet()!.getValue('D10')).toEqual({
+      formula: 'SUM(B2:B9)*Rate',
+      result: 22,
+    });
+    expect(evaluateCell(wb, 'Sheet1', 'D10')).toBe(22); // one cell and what it depends on
+    expect(evaluateFormula(wb, 'SUM(B2:B9)*Rate', { sheet: 'Sheet1' })).toBe(22);
+  });
+
+  it('custom functions (docs/formula.md)', () => {
+    const ev = createEvaluator({
+      functions: { DOUBLE: (args) => toNumber(args[0]!) * 2 },
+      now: () => new Date(2024, 0, 15),
+    });
+    ev.registerFunction('GREET', (args) => `Hello ${toText(args[0]!)}`);
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    ws.setCell('A1', 21);
+    ws.setCell('B1', { formula: 'DOUBLE(A1)&" "&GREET("you")&" "&TODAY()' });
+    ev.evaluate(wb);
+    expect((ws.getValue('B1') as { result: unknown }).result).toBe('42 Hello you 45306');
   });
 });

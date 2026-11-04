@@ -69,6 +69,14 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 24 KB | 23.3 KB  |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
+| formula                        | `./formula` `*`                                                | 16.5 KB | 16 KB  |
+
+`./formula` is a separate entry, so it costs nothing unless imported (the core bundles above did
+not change when it was added). Its budget covers the whole evaluator, because `evaluate` reaches
+every built-in through the function table: parser (~2.3 KB), engine (dependency graph, cycles,
+array formulas, ~5 KB), coercion and comparison rules incl. date / number text parsing (~1.8 KB),
+the `TEXT` number/date formatter (~2 KB) and 87 functions (~6 KB). The 15 KB target was missed by
+about 1 KB; 16.5 KB leaves room for fixes without letting it grow unnoticed.
 
 The root write-only limit is 32 KB (was 30 KB): the root may grow as features are added, because
 lite is the small path. The lite write-only limit is what guards against regressions in the core
