@@ -19,6 +19,11 @@ jobs:
       matrix:
         node: [22, 24]
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # macOS runners are scarce (free plan: max 5 concurrent) and turbosheet is pure JS, so
+        # one macOS job (newest Node) is enough; Linux and Windows run both Node versions.
+        exclude:
+          - node: 22
+            os: macos-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
