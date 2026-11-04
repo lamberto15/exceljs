@@ -34,37 +34,37 @@ Checks before merging the version PR: `CHANGELOG.md` reads well, `pnpm build && 
 
 ## One-time setup (done by the maintainer, not by the repo)
 
-- An npm account that owns the `xlsxkit` name, with **2FA enabled**.
-- An npm **automation** access token (granular token with publish rights on `xlsxkit`, 2FA bypass for
-  CI is required for token publishing) saved as the repository secret **`NPM_TOKEN`**
-  (Settings, Secrets and variables, Actions).
-- Settings, Actions, General: allow GitHub Actions to create pull requests ("Allow GitHub Actions to
-  create and approve pull requests"), and give workflows read and write permission.
-- The repository must be public for npm provenance.
-- Optional: once the package exists on npm, switch to npm trusted publishing (OIDC) in the package
-  settings and drop `NPM_TOKEN`.
+Publishing uses **npm trusted publishing (OIDC)**: GitHub Actions proves its identity to npm, so there
+is no npm token secret, and provenance is attached automatically. Requirements: npm CLI >= 11.5.1 (the
+workflow upgrades npm) and Node >= 22.14 (the workflow uses Node 24).
 
-## 0.1.0: the first publish
+- An npm account with **2FA enabled**.
+- Settings, Actions, General, Workflow permissions: **Read and write**, and tick "Allow GitHub Actions
+  to create and approve pull requests" (for the version PR).
+- The repository must be public (it is) for provenance.
+- After the first publish (below): on npmjs.com open the `xlsxkit` package, **Settings, Trusted
+  publishing**, add a GitHub Actions publisher: owner `lamberto15`, repository `exceljs`, workflow
+  `next-release.yml` (environment empty). Then, under the same settings, set publishing access to
+  require 2FA and disallow tokens.
 
-`package.json` is already at `0.1.0` and `CHANGELOG.md` already has the 0.1.0 entry, so no changeset is
-needed for it. Two options:
+## 0.1.0: the first publish (manual, once)
 
-1. **Automated.** After `NPM_TOKEN` is set, push/merge to `next`. The workflow finds no pending
-   changesets and `0.1.0` missing on npm, and publishes it.
-2. **Manual first publish** (to claim the name or to test locally):
+npm only lets a trusted publisher be configured for a package that already exists, so 0.1.0 is
+published from a maintainer's machine. `package.json` is already `0.1.0` and `CHANGELOG.md` has the
+entry, so no changeset is needed.
 
-   ```sh
-   cd next
-   pnpm install --frozen-lockfile
-   npm login                      # 2FA prompt
-   npm pack --dry-run             # inspect the file list
-   npm publish --access public    # prepublishOnly runs build + tests; add --provenance only from CI
-   git tag xlsxkit@0.1.0 && git push origin xlsxkit@0.1.0
-   ```
+```sh
+cd next
+pnpm install --frozen-lockfile
+npm login                      # browser / 2FA
+npm pack --dry-run             # inspect the file list
+npm publish --access public    # prepublishOnly runs build + tests; a local publish has no provenance
+git tag xlsxkit@0.1.0 && git push origin xlsxkit@0.1.0
+```
 
-   `--provenance` only works from a supported CI provider, so a local publish has none.
-
-After 0.1.0, every release goes through changesets as above.
+Then configure the trusted publisher (above). From 0.2.0 on, every release goes through changesets and
+the **next-release** workflow (Actions, next-release, Run workflow), which publishes over OIDC with
+provenance via `scripts/publish-if-new.mjs` (skips versions already on npm).
 
 ## Deprecating or fixing a bad release
 

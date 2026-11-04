@@ -118,7 +118,7 @@
     "bench": "node --expose-gc bench/run.mjs",
     "size": "size-limit",
     "changeset": "changeset",
-    "release": "changeset publish",
+    "release": "node scripts/publish-if-new.mjs",
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {

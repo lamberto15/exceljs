@@ -3,7 +3,9 @@ name: next-release
 # Manual trigger only (Actions > next-release > Run workflow), so nothing reaches npm by accident:
 #  - pending changesets (next/.changeset/*.md)  -> opens/updates the "Version Packages" PR
 #  - no pending changesets, version not on npm  -> builds, tests and publishes with provenance
-# Requires the repository secret NPM_TOKEN (see next/RELEASING.md). To automate later, add:
+# Publishing uses npm trusted publishing (OIDC): no token secret; the package must already exist on
+# npm and have this workflow (next-release.yml) registered as its trusted publisher. Provenance is
+# attached automatically. See next/RELEASING.md. To automate later, add:
 #   push: { branches: [next], paths: ['next/**'] }
 
 on:
@@ -16,7 +18,7 @@ concurrency:
 permissions:
   contents: write # push the version branch, create tags/releases
   pull-requests: write # open the "Version Packages" PR
-  id-token: write # npm provenance (OIDC)
+  id-token: write # npm trusted publishing + provenance (OIDC)
 
 jobs:
   release:
@@ -35,6 +37,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: next/pnpm-lock.yaml
           registry-url: https://registry.npmjs.org
+      - name: npm >= 11.5.1 (required for trusted publishing)
+        run: npm install -g npm@latest && npm --version
       - name: Install
         working-directory: next
         run: pnpm install --frozen-lockfile
@@ -49,14 +53,10 @@ jobs:
         uses: changesets/action@v1
         with:
           cwd: next
-          # Publishes every package whose version is not on npm yet (`changeset publish` runs
-          # `npm publish --access public`; provenance comes from NPM_CONFIG_PROVENANCE below).
-          publish: pnpm release
+          # Publishes with the npm CLI over OIDC when the version is not on npm yet, then tags.
+          publish: node scripts/publish-if-new.mjs
           version: pnpm changeset version
           commit: 'chore(release): version packages'
           title: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'
