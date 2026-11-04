@@ -19,7 +19,13 @@ import { type SheetContext, SheetHandler } from './sheet-part.js';
 import { SharedStringsHandler, type StringItem } from './strings-part.js';
 import { StylesHandler } from './styles-part.js';
 import { WorkbookHandler } from './workbook-part.js';
-import { EncryptedFileError, parseStrict, StrictXml, XlsxParseError } from './xml-util.js';
+import {
+  EncryptedFileError,
+  normalizeError,
+  parseStrict,
+  StrictXml,
+  XlsxParseError,
+} from './xml-util.js';
 
 export { translateFormula } from './formula.js';
 export type { SheetEntry } from './workbook-part.js';
@@ -172,6 +178,14 @@ function fanOut(list: SheetReader[]): SheetReader {
  * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`).
  */
 export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {}): Workbook {
+  try {
+    return readXlsxImpl(data, opts);
+  } catch (e) {
+    throw normalizeError(e);
+  }
+}
+
+function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbook {
   const bytes = toBytes(data);
   // OLE compound file signature D0 CF 11 E0: encrypted OOXML container.
   if (bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0)
@@ -518,6 +532,17 @@ class StreamReader {
 export async function* xlsxRows(
   source: Source,
   opts: ReadOptions = {},
+): AsyncGenerator<XlsxRow, void, undefined> {
+  try {
+    yield* xlsxRowsImpl(source, opts);
+  } catch (e) {
+    throw normalizeError(e);
+  }
+}
+
+async function* xlsxRowsImpl(
+  source: Source,
+  opts: ReadOptions,
 ): AsyncGenerator<XlsxRow, void, undefined> {
   const st = new StreamReader(opts);
   const pkg = st.pkg;

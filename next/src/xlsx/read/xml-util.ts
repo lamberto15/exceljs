@@ -1,6 +1,7 @@
 // Small XML helpers shared by the part parsers.
 
 import { type XmlAttrs, type XmlHandler, XmlTokenizer } from '../../xml/index.js';
+import { ZipLimitError } from '../../zip/index.js';
 
 /** Thrown for structurally invalid XML inside an XLSX part. */
 export class XlsxParseError extends Error {
@@ -16,6 +17,20 @@ export class EncryptedFileError extends XlsxParseError {
     super("File is password-protected: use decryptXlsx from '@sheetkit/xlsx/crypto'");
     this.name = 'EncryptedFileError';
   }
+}
+
+/**
+ * Map errors from the layers below (tokenizer, fflate inflate) onto the documented reader error
+ * classes: XlsxParseError, ZipLimitError (incl. ZipPathError) and RangeError. Anything else
+ * (a real bug) passes through untouched.
+ */
+export function normalizeError(e: unknown): unknown {
+  if (!(e instanceof Error) || e instanceof XlsxParseError || e instanceof ZipLimitError) return e;
+  if (e.message.startsWith('XmlTokenizer')) return new XlsxParseError(e.message);
+  // fflate's inflate/zip errors are plain Errors carrying a numeric `code`
+  if (typeof (e as { code?: unknown }).code === 'number')
+    return new ZipLimitError(`Corrupt zip data: ${e.message}`);
+  return e;
 }
 
 /**
