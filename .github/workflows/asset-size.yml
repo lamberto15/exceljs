@@ -1,6 +1,9 @@
 name: Asset size
 
-on: [pull_request]
+on:
+  pull_request:
+    # Legacy exceljs (dist/*.js) only; turbosheet bundle budgets are checked by next.yml (size-limit).
+    branches: [master]
 
 jobs:
   compare:

@@ -4,7 +4,8 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ '**' ]
+    # Legacy exceljs (lib/) CI only. The turbosheet rewrite on `next` is covered by next.yml.
+    branches: [ master ]
 
 jobs:
   test:
