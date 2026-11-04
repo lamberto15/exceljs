@@ -62,7 +62,8 @@ function colorKey(c: Color | undefined): string {
 function normColor(c: Color | undefined): Color | undefined {
   if (!c) return undefined;
   const o: Mutable<Color> = {};
-  if (c.argb !== undefined) o.argb = c.argb.toUpperCase();
+  // RGB-only values get an opaque alpha, as they are written and read back
+  if (c.argb !== undefined) o.argb = (c.argb.length === 6 ? `FF${c.argb}` : c.argb).toUpperCase();
   if (c.theme !== undefined) o.theme = c.theme;
   if (c.tint !== undefined) o.tint = c.tint;
   if (c.indexed !== undefined) o.indexed = c.indexed;
@@ -143,6 +144,16 @@ function borderKey(b: Border): string {
   }`;
 }
 
+/**
+ * Rotation in Excel's encoding: 1..90 counter-clockwise, 91..180 = -1..-90 (clockwise), 255 =
+ * vertical text. Negative degrees (-90..-1) are converted (-45 → 135); anything else is dropped.
+ */
+function textRotation(r: number | undefined): number | undefined {
+  if (!r) return undefined;
+  const v = r < 0 ? 90 - r : r;
+  return (v > 0 && v <= 180) || v === 255 ? v : undefined;
+}
+
 function normAlignment(a: Alignment | undefined): Alignment | undefined {
   if (!a) return undefined;
   const o: Mutable<Alignment> = {};
@@ -163,12 +174,14 @@ function normAlignment(a: Alignment | undefined): Alignment | undefined {
     o.shrinkToFit = true;
     any = true;
   }
-  if (a.indent) {
+  // indent and textRotation are unsigned in OOXML: out-of-range values would corrupt the file
+  if (a.indent && a.indent > 0) {
     o.indent = a.indent;
     any = true;
   }
-  if (a.textRotation) {
-    o.textRotation = a.textRotation;
+  const r = textRotation(a.textRotation);
+  if (r) {
+    o.textRotation = r;
     any = true;
   }
   return any ? o : undefined;

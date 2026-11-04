@@ -22,7 +22,9 @@ export function tElem(v: string): string {
 
 export function colorAttrs(c: Color): string {
   let s = '';
-  if (c.argb !== undefined) s += ` rgb="${escapeAttr(c.argb)}"`;
+  // ST_UnsignedIntHex is 8 hex digits: an RGB-only value gets an opaque alpha (as readers assume)
+  if (c.argb !== undefined)
+    s += ` rgb="${escapeAttr(c.argb.length === 6 ? `FF${c.argb}` : c.argb)}"`;
   else if (c.theme !== undefined) s += ` theme="${c.theme}"`;
   else if (c.indexed !== undefined) s += ` indexed="${c.indexed}"`;
   if (c.tint !== undefined && c.tint !== 0) s += ` tint="${c.tint}"`;
