@@ -1,12 +1,15 @@
 // Small synchronous SHA-512 (FIPS 180-4) on 32-bit halves. Used for sheet/workbook protection
-// password hashes, which sync writers must compute without WebCrypto (async only).
+// password hashes, which sync writers must compute without WebCrypto (async only), and by the
+// `./crypto` entry for the 100k-iteration password spin loop (an awaited WebCrypto digest per
+// iteration is several times slower). `iv` allows SHA-384; `sha512Consts` exposes the derived
+// constants (SHA-256 reuses their high words).
 // Round constants are derived on first use (fractional parts of cube / square roots of the
 // first primes, via BigInt) instead of shipping a 1.3 KB table.
 
 let K: Int32Array | undefined;
 let IV: Int32Array | undefined;
 
-function iroot(n: bigint, k: bigint): bigint {
+export function iroot(n: bigint, k: bigint): bigint {
   // integer k-th root by Newton iteration
   let x = 1n << (BigInt(n.toString(2).length) / k + 1n);
   for (;;) {
@@ -46,11 +49,17 @@ function init(): void {
 
 const W = /* @__PURE__ */ new Int32Array(160);
 
-/** SHA-512 digest (64 bytes). */
-export function sha512(msg: Uint8Array): Uint8Array {
+/** Derived round constants (80 x hi/lo words) and initial hash value (8 x hi/lo words). */
+export function sha512Consts(): [Int32Array, Int32Array] {
+  if (K === undefined) init();
+  return [K!, IV!];
+}
+
+/** SHA-512 digest (64 bytes); a custom initial value `iv` gives the SHA-384 core. */
+export function sha512(msg: Uint8Array, iv?: Int32Array): Uint8Array {
   if (K === undefined) init();
   const k = K!;
-  const H = IV!.slice();
+  const H = (iv ?? IV!).slice();
   const len = msg.length;
   const blocks = ((len + 16) >> 7) + 1;
   const buf = new Uint8Array(blocks * 128);

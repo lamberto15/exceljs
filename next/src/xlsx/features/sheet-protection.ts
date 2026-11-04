@@ -9,8 +9,8 @@
 // Permission flags mean "users MAY do this while protected" (exceljs semantics); unset flags
 // keep Excel's defaults (selecting cells allowed, everything else locked).
 
+import { sha512 } from '../../core/sha512.js';
 import type { Worksheet } from '../../core/worksheet.js';
-import { sha512 } from './sha512.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot } from './types.js';
 import { attrs, base64, bool, num, unbase64 } from './util.js';
 
