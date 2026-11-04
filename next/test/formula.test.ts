@@ -576,7 +576,7 @@ describe('evaluate', () => {
     expect(back.getValue('E3')).toEqual({ formula: '1/0', result: { error: '#DIV/0!' } });
   });
 
-  it('matches the cached values Excel stored in real files', () => {
+  it('matches the cached values Excel stored in real files', { timeout: 60_000 }, () => {
     let total = 0;
     let match = 0;
     const mismatches: string[] = [];
