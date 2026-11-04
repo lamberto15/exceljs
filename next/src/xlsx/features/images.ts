@@ -17,10 +17,11 @@
 // this writer appends them after the pictures, renumbering their relationships (until the
 // sheet is renamed).
 
+import { decodeRange } from '../../core/address.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, parseXml } from '../../xml/index.js';
-import { type AnchorInput, anchorXml, drawingEmitter, toAnchor } from './drawing.js';
+import { type AnchorInput, anchorXml, colPx, drawingEmitter, rowPx, toAnchor } from './drawing.js';
 import {
   type DrawingWriteCtx,
   type FeatureReader,
@@ -145,13 +146,90 @@ export function placeImage(
   anchor: AnchorInput,
   opts: PlaceImageOptions = {},
 ): ImagePlacement {
-  const p: ImagePlacement = { imageId, anchor: toAnchor(anchor) };
+  const p: ImagePlacement = { imageId, anchor: toAnchor(anchor, ws) };
   for (const k of ['editAs', 'hyperlink', 'tooltip', 'description', 'name'] as const) {
     if (opts[k] !== undefined) (p as unknown as Record<string, unknown>)[k] = opts[k];
   }
   ws.images ??= [];
   ws.images.push(p);
   return p;
+}
+
+/** Pixel size of PNG, JPEG or GIF bytes (read from the header); undefined for other formats. */
+export function imageSize(data: Uint8Array): ImageSize | undefined {
+  const b = data;
+  const be16 = (i: number): number => (b[i]! << 8) | b[i + 1]!;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b.length >= 24) {
+    const be32 = (i: number): number => ((b[i]! << 24) | (b[i + 1]! << 16) | be16(i + 2)) >>> 0;
+    return { width: be32(16), height: be32(20) };
+  }
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b.length >= 10) {
+    return { width: b[6]! | (b[7]! << 8), height: b[8]! | (b[9]! << 8) };
+  }
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) return undefined;
+      const m = b[i + 1]!;
+      // SOFn (not DHT c4, JPG c8, DAC cc) carries the frame size
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+        return { width: be16(i + 7), height: be16(i + 5) };
+      }
+      i += 2 + be16(i + 2);
+    }
+  }
+  return undefined;
+}
+
+export interface FitImageOptions extends PlaceImageOptions {
+  /** Space kept free around the picture, in pixels (default 2). */
+  padding?: number | undefined;
+  /** Grow pictures smaller than the box too (default false: only shrink). */
+  upscale?: boolean | undefined;
+}
+
+/**
+ * Place a workbook picture inside a cell or range (`"B2"`, `"B2:D6"`), scaled to fit with its
+ * aspect ratio kept and centered, using the sheet's column widths and row heights (set them
+ * first). PNG, JPEG and GIF sizes are read from the image; other formats throw.
+ */
+export function fitImage(
+  ws: Worksheet,
+  imageId: number,
+  range: string,
+  opts: FitImageOptions = {},
+): ImagePlacement {
+  const img = ws.workbook.images?.find((i) => i.id === imageId);
+  const size = img && imageSize(img.data);
+  if (!size || !size.width || !size.height) {
+    throw new Error(`fitImage: unknown pixel size of image ${imageId} (PNG, JPEG or GIF needed)`);
+  }
+  const r = decodeRange(range);
+  let w = 0;
+  let h = 0;
+  for (let c = r.left; c <= r.right; c++) w += colPx(ws, c);
+  for (let y = r.top; y <= r.bottom; y++) h += rowPx(ws, y);
+  const pad = opts.padding ?? 2;
+  let s = Math.min((w - 2 * pad) / size.width, (h - 2 * pad) / size.height);
+  if (!opts.upscale) s = Math.min(s, 1);
+  const iw = Math.max(1, Math.round(size.width * s));
+  const ih = Math.max(1, Math.round(size.height * s));
+  // top-left corner as cell + offset
+  let x = (w - iw) / 2;
+  let c = r.left;
+  while (x >= colPx(ws, c) && c < r.right) x -= colPx(ws, c++);
+  let y = (h - ih) / 2;
+  let row = r.top;
+  while (y >= rowPx(ws, row) && row < r.bottom) y -= rowPx(ws, row++);
+  return placeImage(
+    ws,
+    imageId,
+    {
+      from: { col: c, row, colOff: Math.round(x), rowOff: Math.round(y) },
+      ext: { width: iw, height: ih },
+    },
+    opts,
+  );
 }
 
 // ---------------------------------------------------------------- writing

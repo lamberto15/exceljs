@@ -61,15 +61,15 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 33 KB | 32.61 KB |
-| read+write                     | root `*`                                                       | 70 KB | 68.26 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 22 KB | 21.33 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 39.29 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 25.5 KB | 25.01 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.56 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 25.5 KB | 24.59 KB |
-| csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
-| crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 34 KB | 33.08 KB |
+| read+write                     | root `*`                                                       | 70 KB | 69.33 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 22 KB | 21.64 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 39.68 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 26 KB | 25.51 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.61 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 25.5 KB | 25.11 KB |
+| csv                            | `./csv` `*`                                                    | 5 KB | 2.38 KB |
+| crypto                         | `./crypto` `*`                                                 | 8 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 16.5 KB | 16.02 KB |
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to

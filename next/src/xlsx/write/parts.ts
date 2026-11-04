@@ -301,6 +301,13 @@ function dxfXml(d: Style, reg: StyleRegistry): string {
   return `${s}</dxf>`;
 }
 
+const XFPB = 'http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag';
+
+/** xl/featurePropertyBag/featurePropertyBag.xml: the checkbox bag that `xfComplement i="0"` maps to. */
+export function checkboxBagXml(): string {
+  return `${XML_DECL}<FeaturePropertyBags xmlns="${XFPB}"><bag type="Checkbox"/><bag type="XFControls"><bagId k="CellControl">0</bagId></bag><bag type="XFComplement"><bagId k="XFControls">1</bagId></bag><bag type="XFComplements" extRef="XFComplementsMapperExtRef"><a k="MappedFeaturePropertyBags"><bagId>2</bagId></a></bag></FeaturePropertyBags>`;
+}
+
 function xfXml(x: Xf, named: unknown): string {
   let s = `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}" borderId="${x.borderId}" xfId="${(named && x.xfId) || 0}"`;
   if (x.numFmtId) s += ' applyNumberFormat="1"';
@@ -311,11 +318,14 @@ function xfXml(x: Xf, named: unknown): string {
   const p = x.protection;
   if (a) s += ' applyAlignment="1"';
   if (p) s += ' applyProtection="1"';
-  if (!a && !p) return `${s}/>`;
+  if (!a && !p && !x.checkbox) return `${s}/>`;
   s += '>';
   if (a) s += alignmentXml(a);
   if (p) {
     s += `<protection${p.locked === false ? ' locked="0"' : ''}${p.hidden ? ' hidden="1"' : ''}/>`;
+  }
+  if (x.checkbox) {
+    s += `<extLst><ext uri="{C7286773-470A-42A8-94C5-96B5CB345126}" xmlns:xfpb="${XFPB}"><xfpb:xfComplement i="0"/></ext></extLst>`;
   }
   return `${s}</xf>`;
 }

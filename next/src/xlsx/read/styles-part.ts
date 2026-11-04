@@ -33,6 +33,7 @@ interface RawXf {
   xfId: number;
   alignment?: Alignment;
   protection?: Protection;
+  checkbox?: boolean;
 }
 
 const EDGES = new Set(['left', 'right', 'top', 'bottom', 'diagonal', 'start', 'end']);
@@ -135,6 +136,8 @@ export class StylesHandler implements XmlHandler {
           if (a.indent !== undefined && +a.indent) al.indent = +a.indent;
           if (a.textRotation !== undefined && +a.textRotation) al.textRotation = +a.textRotation;
           this.xf.alignment = al;
+        } else if (this.xf && ln === 'xfComplement') {
+          this.xf.checkbox = true; // feature property bag: in-cell checkbox
         } else if (this.xf && ln === 'protection') {
           const p: Mutable<Protection> = {};
           if (a.locked !== undefined) p.locked = attrBool(a.locked);
@@ -308,6 +311,7 @@ export class StylesHandler implements XmlHandler {
         alignment: x.alignment,
         protection: x.protection,
         xfId: named ? x.xfId : 0,
+        checkbox: x.checkbox,
       });
     }
     return out;

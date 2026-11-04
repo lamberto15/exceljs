@@ -247,7 +247,9 @@ addTableRows(ws, name, rows)                      // append above the totals row
 
 ### Pictures
 
-`ImageExtension`: `png jpeg jpg gif bmp tiff svg emf wmf webp`. `placeImage` anchors: a range string (`'B2:D6'`), `{ tl: 'B2' | CellPosition, ext: { width, height } }` (pixels), or an `ImageAnchor` (`{ from, to }`, `{ from, ext }`, `{ pos, ext }`). Options: `editAs`, `hyperlink`, `tooltip`, `description`, `name`. Identical pictures are stored once. Set `ws.backgroundImage = id` for a sheet background.
+`ImageExtension`: `png jpeg jpg gif bmp tiff svg emf wmf webp`. `placeImage` anchors: a range string (`'B2:D6'`), `{ tl: 'B2' | CellPosition, ext: { width, height } }` (pixels), `{ tl, br }` (corners), or an `ImageAnchor` (`{ from, to }`, `{ from, ext }`, `{ pos, ext }`). Options: `editAs`, `hyperlink`, `tooltip`, `description`, `name`. Identical pictures are stored once. Set `ws.backgroundImage = id` for a sheet background. Positions may be fractional (`{ col: 1.5, row: 2.25 }`, sized with the sheet's widths / heights). `fitImage(ws, id, range, { padding?, upscale?, ...PlaceImageOptions })` scales a picture into a cell / range (aspect kept, centered); `imageSize(bytes)` → `{ width, height }` for PNG / JPEG / GIF.
+
+In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; a boolean value with `style.checkbox`).
 
 ### Charts
 

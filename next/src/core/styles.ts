@@ -40,6 +40,8 @@ export interface Xf {
    * when it keeps the file's named styles (round-trip preservation), else 0.
    */
   readonly xfId?: number | undefined;
+  /** In-cell checkbox (xf extLst xfComplement → FeaturePropertyBag part). */
+  readonly checkbox?: boolean | undefined;
 }
 
 export interface NumFmt {
@@ -326,6 +328,7 @@ export class StyleRegistry {
       borderId: style.border ? this.addBorder(style.border) : 0,
       alignment: style.alignment,
       protection: style.protection,
+      checkbox: style.checkbox === true || undefined,
     });
     this._byObject.set(style, xf);
     return xf;
@@ -336,7 +339,7 @@ export class StyleRegistry {
     const alignment = normAlignment(raw.alignment);
     const protection = normProtection(raw.protection);
     const named = raw.xfId;
-    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}${named ? `,${named}` : ''}`;
+    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}${named ? `,${named}` : ''}${raw.checkbox ? ',cb' : ''}`;
     const hit = this._xfIdx.get(key);
     if (hit !== undefined) return hit;
     if (
@@ -355,6 +358,7 @@ export class StyleRegistry {
     if (alignment) xf.alignment = alignment;
     if (protection) xf.protection = protection;
     if (named) xf.xfId = named;
+    if (raw.checkbox) xf.checkbox = true;
     const idx = this._xfs.length;
     this._xfs.push(xf);
     this._xfIdx.set(key, idx);
@@ -505,6 +509,7 @@ export class StyleRegistry {
       if (rec.borderId !== 0) s.border = this._borders[rec.borderId];
       if (rec.alignment) s.alignment = rec.alignment;
       if (rec.protection) s.protection = rec.protection;
+      if (rec.checkbox) s.checkbox = true;
       this._styleCache[xf] = s;
       this._byObject.set(s, xf);
     }

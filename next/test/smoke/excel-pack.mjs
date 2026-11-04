@@ -20,12 +20,14 @@ import {
   createXlsxWriter,
   deleteRows,
   duplicateRow,
+  fitImage,
   groupColumns,
   groupRows,
   insertColumns,
   insertRows,
   placeImage,
   readXlsx,
+  setCheckbox,
   setPrintArea,
   setPrintTitles,
   setSheetStyle,
@@ -781,6 +783,28 @@ for (const [file, what] of [
     '20-bug-sweep.xlsx',
     writeXlsx(wb),
     `"Sweep" (green tab): table WithNote A1:B3 with a note on B2; headerless table NoHeader D1:E2 (no header, no filter buttons); rows 7-9 grouped and collapsed (+ on row 10); Page Layout: fit to 1 page wide, first-page header "First page", others "Other pages". Excel must not crash or repair (exceljs#1348/#1369/#1615).`,
+  );
+}
+
+// 21: in-cell checkboxes, a picture fitted into a range, fractional anchor
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Drawings');
+  ws.addRow(['Task', 'Done']);
+  ws.addRow(['write tests', true]);
+  ws.addRow(['verify in Excel', false]);
+  ws.addRow(['ship', false]);
+  setCheckbox(ws, 'B2:B4');
+  ws.setCell('C1', { formula: 'COUNTIF(B2:B4,TRUE)' });
+  ws.getColumn('E').width = 30;
+  for (let r = 2; r <= 6; r++) ws.setRowProps(r, { height: 30 });
+  const img = addImage(wb, { base64: PNG, extension: 'png' });
+  fitImage(ws, img, 'E2:E6', { upscale: true });
+  placeImage(ws, img, { tl: { col: 6.5, row: 1.5 }, ext: { width: 24, height: 24 } });
+  save(
+    '21-checkboxes-drawings.xlsx',
+    writeXlsx(wb),
+    `"Drawings": B2:B4 are in-cell checkboxes (B2 checked; Excel 365 2024+, older versions show TRUE/FALSE), C1 = 1 and changes when you tick a box; the red square fills E2:E6's height and is centered horizontally in column E; a small red square starts halfway into column G and row 2. No repair prompt.`,
   );
 }
 

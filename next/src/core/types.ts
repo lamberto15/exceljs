@@ -181,6 +181,11 @@ export interface Style {
   readonly border?: Border | undefined;
   readonly alignment?: Alignment | undefined;
   readonly protection?: Protection | undefined;
+  /**
+   * In-cell checkbox (Excel 365, 2024+): boolean cells show a checkbox, TRUE = checked. Older
+   * Excel versions show TRUE / FALSE. See `setCheckbox`.
+   */
+  readonly checkbox?: boolean | undefined;
 }
 
 // ---- options / profiles --------------------------------------------------
