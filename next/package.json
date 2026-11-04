@@ -1,0 +1,77 @@
+{
+  "name": "@sheetkit/xlsx",
+  "version": "0.0.0",
+  "description": "Fast, small, streaming-first XLSX/CSV library for every JS runtime.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./csv": {
+      "types": "./dist/csv.d.ts",
+      "import": "./dist/csv.js",
+      "require": "./dist/csv.cjs"
+    },
+    "./json": {
+      "types": "./dist/json.d.ts",
+      "import": "./dist/json.js",
+      "require": "./dist/json.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "bench": "node --expose-gc bench/run.mjs",
+    "size": "size-limit"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@size-limit/preset-small-lib": "^11.0.0",
+    "@types/node": "^22.20.5",
+    "exceljs": "4.4.0",
+    "size-limit": "^11.0.0",
+    "tinybench": "^3.0.0",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "size-limit": [
+    {
+      "name": "write-only",
+      "path": "dist/index.js",
+      "import": "{ Workbook, writeXlsx }",
+      "limit": "30 KB"
+    },
+    {
+      "name": "read+write",
+      "path": "dist/index.js",
+      "import": "*",
+      "limit": "60 KB"
+    },
+    {
+      "name": "csv",
+      "path": "dist/csv.js",
+      "import": "*",
+      "limit": "5 KB"
+    }
+  ],
+  "packageManager": "pnpm@12.16.1"
+}
