@@ -572,12 +572,12 @@ for (const [file, what] of [
       'FIND("M","Miriam McGovern",3)+SEARCH("margin","Profit Margin")+LEN("hello")',
     ],
     ['TEXTJOIN / CONCAT', 'TEXTJOIN(", ",TRUE,Data!A2:A4)&CONCAT("-",UPPER("x"))'],
-    ['TEXT number formats', 'TEXT(1234.567,"#,##0.00")&" "&TEXT(0.256,"0%")&" "&TEXT(5,"000")'],
+    ['TEXT number formats', 'TEXT(1234.567,"0")&" "&TEXT(0.256,"0%")&" "&TEXT(5,"000")'],
     [
       'TEXT date formats',
       'TEXT(Data!E2,"yyyy-mm-dd")&" "&TEXT(Data!E3,"dd/mm/yyyy")&" "&TEXT(Data!E4,"mmm d, yyyy")',
     ],
-    ['VALUE / EXACT / REPT', 'VALUE("$1,000")+EXACT("a","A")+LEN(REPT("ab",3))'],
+    ['VALUE / EXACT / REPT', 'VALUE("1000")+EXACT("a","A")+LEN(REPT("ab",3))'],
     ['DATE / YEAR / MONTH / DAY', 'DATE(YEAR(Data!E3),MONTH(Data!E3)+1,DAY(Data!E3))'],
     ['WEEKDAY / EDATE / EOMONTH', 'WEEKDAY(Data!E2)+EDATE(Data!E2,1)-EOMONTH(Data!E2,0)'],
     ['DATEDIF / DAYS', 'DATEDIF(Data!E5,Data!E6,"M")+DAYS(Data!E6,Data!E5)'],
@@ -606,7 +606,7 @@ for (const [file, what] of [
   save(
     '16-formulas.xlsx',
     writeXlsx(wb),
-    `"Formulas" sheet: ${formulas.length} formulas whose cached values were computed by turbosheet/formula. Values shown before Excel recalculates match after pressing Ctrl+Alt+F9: column D is turbosheet's result as a plain value, so after recalculation column C (Excel) must equal D and the Match column must be TRUE on every row.`,
+    `"Formulas" sheet: ${formulas.length} formulas whose cached values were computed by turbosheet/formula. Values shown before Excel recalculates match after pressing Ctrl+Alt+F9: column D is turbosheet's result as a plain value, so after recalculation column C (Excel) must equal D and the Match column must be TRUE on every row (all 38). Future functions (XOR, IFS, SWITCH, IFNA, XLOOKUP, XMATCH, TEXTJOIN, CONCAT, DAYS) must not show #NAME?. The examples avoid currency and thousands/decimal separators; TEXT date codes (yyyy, mmm) assume an English Excel UI.`,
   );
 }
 

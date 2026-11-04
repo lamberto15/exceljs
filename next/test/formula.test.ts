@@ -491,6 +491,10 @@ describe('evaluate', () => {
     expect(evaluateFormula(wb, 'ROW()+COLUMN()', { address: 'C5' })).toBe(8);
     expect(evaluateFormula(wb, 'ROW()')).toEqual({ error: '#VALUE!' });
     expect(() => evaluateFormula(wb, 'SUM(')).toThrow(FormulaParseError);
+    // file-format prefixes are accepted
+    expect(evaluateFormula(wb, '_xlfn.XLOOKUP(2,{1;2},{"a";"b"})')).toBe('b');
+    expect(evaluateFormula(wb, '_xlfn.IFNA(NA(),1)+_XLFN.XOR(TRUE,FALSE)')).toBe(2);
+    expect(evaluateFormula(wb, '_xlfn._xlws.SORT({2,1})')).toEqual({ error: '#NAME?' });
   });
 
   it('TODAY/NOW use the injectable clock', () => {

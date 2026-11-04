@@ -171,7 +171,14 @@ Tested formats include `"0"`, `"0.00"`, `"#,##0"`, `"#,##0.00"`, `"$#,##0.00"`, 
 - Dynamic-array spilling: a formula only produces several cells when it is stored as an array
   formula (`Formula.array`); otherwise legacy implicit intersection applies (see above).
 - Formulas are expected in the file format's syntax (en-US: `,` argument separator, `.` decimal
-  point), which is what `readXlsx` returns and Excel writes.
+  point), which is what `readXlsx` returns and Excel writes. Function names come without the
+  `_xlfn.` prefix files use for newer functions (the readers strip it, the writers add it back);
+  the evaluator also accepts prefixed names.
+- **en-US conventions.** Text-to-number conversion (`VALUE`, arithmetic, criteria) and `TEXT`
+  use en-US rules regardless of the machine's locale: `.` decimal point, `,` thousands
+  separator, `$` currency, US date order (`1/31/2024`), English month and day names. Excel
+  applies the user's locale instead, so `VALUE("$1,000")` or `TEXT(x,"#,##0.00")` can give a
+  different result (or `#VALUE!`) in Excel on a machine with other regional settings.
 - Volatile functions are recomputed on every `evaluate`; there is no incremental recalculation.
 - Implicit intersection uses the host cell's row / column regardless of the referenced sheet.
 
