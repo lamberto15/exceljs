@@ -12,7 +12,8 @@
     "exceljs",
     "typescript",
     "encryption",
-    "worksheet"
+    "worksheet",
+    "formula"
   ],
   "homepage": "https://github.com/lamberto15/exceljs/tree/next/next#readme",
   "bugs": {
@@ -84,6 +85,16 @@
         "default": "./dist/crypto.cjs"
       }
     },
+    "./formula": {
+      "import": {
+        "types": "./dist/formula.d.ts",
+        "default": "./dist/formula.js"
+      },
+      "require": {
+        "types": "./dist/formula.d.cts",
+        "default": "./dist/formula.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -99,6 +110,9 @@
       ],
       "crypto": [
         "dist/crypto.d.ts"
+      ],
+      "formula": [
+        "dist/formula.d.ts"
       ]
     }
   },
@@ -190,6 +204,12 @@
       "path": "dist/crypto.js",
       "import": "*",
       "limit": "8 KB"
+    },
+    {
+      "name": "formula",
+      "path": "dist/formula.js",
+      "import": "*",
+      "limit": "16.5 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"
