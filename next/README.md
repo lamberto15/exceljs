@@ -189,7 +189,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 - [docs/exceljs-parity.md](./docs/exceljs-parity.md): every ExcelJS test, ported and classified (supported / different / missing)
 - [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
 - [docs/benchmarks.md](./docs/benchmarks.md): benchmark methodology and results
-- [CONTRIBUTING.md](./CONTRIBUTING.md): development setup and PR flow
+- [CONTRIBUTING.md](./CONTRIBUTING.md) · [ROADMAP.md](./ROADMAP.md): development setup and PR flow
 - [docs/formula.md](./docs/formula.md): formula evaluation (`turbosheet/formula`)
 - [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
 
