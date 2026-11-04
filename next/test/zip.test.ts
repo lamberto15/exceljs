@@ -3,6 +3,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { zipSync as rawZipSync, strFromU8, strToU8, Zip, ZipDeflate } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
+  deflateStream,
+  inflateStream,
+  unzipLazy,
   unzipStream,
   unzipSync,
   ZipLimitError,
@@ -219,5 +222,90 @@ describe('regressions', () => {
     const z = zipSync([{ path: 'big.bin', data: big }], 0);
     const m = unzipSync(z);
     expect(m.get('big.bin')?.length).toBe(big.length);
+  });
+});
+
+describe('unzipLazy', () => {
+  const join = (parts: Iterable<Uint8Array>): Uint8Array => {
+    const arr = [...parts];
+    const out = new Uint8Array(arr.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of arr) out.set(p, o), (o += p.length);
+    return out;
+  };
+
+  it('indexes without inflating and matches unzipSync', () => {
+    for (const level of [0, 6]) {
+      const zip = zipSync(sample, level);
+      const lazy = unzipLazy(zip);
+      const eager = unzipSync(zip);
+      expect([...lazy.keys()]).toEqual([...eager.keys()]);
+      for (const [k, v] of eager) {
+        const e = lazy.get(k)!;
+        expect(e.size).toBe(v.length);
+        expect(e.compression).toBe(level === 0 ? 0 : 8);
+        expect(e.bytes()).toEqual(v);
+        expect(join(e.chunks(1))).toEqual(v);
+      }
+    }
+  });
+
+  it('chunks() inflates incrementally', () => {
+    const data = strToU8(
+      Array.from({ length: 60_000 }, (_, i) => `<c r="A${i}"><v>${i * 3.7}</v></c>`).join(''),
+    );
+    const e = unzipLazy(zipSync([{ path: 'big.bin', data }], 6)).get('big.bin')!;
+    const parts = [...e.chunks(16 * 1024)];
+    expect(parts.length).toBeGreaterThan(3);
+    expect(Math.max(...parts.map((p) => p.length))).toBeLessThan(data.length);
+    expect(join(parts)).toEqual(data);
+  });
+
+  it('enforces limits on actual output', () => {
+    const zip = zipSync(sample, 6);
+    expect(() => unzipLazy(zip, { maxEntries: 3 })).toThrow(ZipLimitError);
+    const big = zipSync([{ path: 'a', data: 'x'.repeat(100_000) }], 6).slice();
+    const dv = new DataView(big.buffer);
+    dv.setUint32(22, 1, true);
+    dv.setUint32(big.length - 22 - 46 - 1 + 24, 1, true); // lie in the central directory too
+    const e = unzipLazy(big, { maxEntryBytes: 1000 }).get('a')!;
+    expect(() => e.bytes()).toThrow(/too large/);
+    const bomb = zipSync([{ path: 'zeros.bin', data: new Uint8Array(50_000_000) }], 9);
+    expect(() => unzipLazy(bomb).get('zeros.bin')!.bytes()).toThrow(/ratio/);
+    expect(() => [...unzipLazy(bomb).get('zeros.bin')!.chunks()]).toThrow(/ratio/);
+    const two = zipSync(
+      [
+        { path: 'a', data: 'x'.repeat(6000) },
+        { path: 'b', data: 'y'.repeat(6000) },
+      ],
+      6,
+    );
+    const m = unzipLazy(two, { maxTotalBytes: 10_000 });
+    m.get('a')!.bytes();
+    m.get('a')!.bytes(); // re-reading the same entry is not double counted
+    expect(() => m.get('b')!.bytes()).toThrow(/total/i);
+  });
+
+  it.each(['../a', '/abs', 'a\\b'])('rejects unsafe path %j', (p) => {
+    expect(() => unzipLazy(rawZipSync({ [p]: strToU8('x') }))).toThrow(ZipPathError);
+  });
+
+  it('rejects non-zip data and truncated archives', () => {
+    expect(() => unzipLazy(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toThrow(ZipLimitError);
+    expect(unzipLazy(new Uint8Array(0)).size).toBe(0);
+    const zip = zipSync(sample, 6);
+    expect(() => unzipLazy(zip.subarray(0, zip.length - 30))).toThrow(ZipLimitError);
+  });
+
+  it('deflateStream / inflateStream round-trip', () => {
+    const src = strToU8('<x>hello</x>'.repeat(10_000));
+    const comp: Uint8Array[] = [];
+    const d = deflateStream(1, (c) => void comp.push(c));
+    d.push(src.subarray(0, 5000));
+    d.push(src.subarray(5000), true);
+    const outp: Uint8Array[] = [];
+    const inf = inflateStream((c) => void outp.push(c));
+    for (let i = 0; i < comp.length; i++) inf.push(comp[i]!, i === comp.length - 1);
+    expect(join(outp)).toEqual(src);
   });
 });

@@ -10,7 +10,9 @@ import {
   ZipPassThrough,
 } from 'fflate';
 import type { Limits } from '../core/types.js';
-import { DEFAULT_LIMITS } from '../core/types.js';
+import { Budget, ZipLimitError, ZipPathError } from './limits.js';
+
+export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 
 export interface ZipEntryIn {
   path: string;
@@ -23,41 +25,10 @@ export interface ZipEntryOut {
   chunks: AsyncIterable<Uint8Array>;
 }
 
-/** Thrown when a configured limit (entries, bytes, ratio) is exceeded or the archive is malformed. */
-export class ZipLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ZipLimitError';
-  }
-}
-
-/** Thrown for unsafe entry names (path traversal, absolute paths, ...). */
-export class ZipPathError extends ZipLimitError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ZipPathError';
-  }
-}
-
-/** Ratio checks only start once an entry has produced this many bytes. */
-const RATIO_MIN_BYTES = 1024 * 1024;
 /** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
 const SLICE = 16 * 1024;
 
 type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-export function assertSafePath(path: string): void {
-  if (
-    path.length === 0 ||
-    path.includes('\0') ||
-    path.includes('\\') ||
-    path.startsWith('/') ||
-    /^[A-Za-z]:/.test(path) ||
-    path.split('/').includes('..')
-  ) {
-    throw new ZipPathError(`Unsafe zip entry path: ${JSON.stringify(path)}`);
-  }
-}
 
 // ---------------------------------------------------------------- writing
 
@@ -111,17 +82,14 @@ interface Sink {
 /** Streaming unzip driver that enforces limits on actual decompressed output. */
 class Driver {
   readonly #unzip: Unzip;
-  readonly #limits: Limits;
   readonly #sink: Sink;
-  #entries = 0;
-  #total = 0;
   #open = false;
   /** Compressed bytes seen for the current entry (counted by the inflate decoder). */
   #compressed = 0;
 
   constructor(sink: Sink, limits?: Partial<Limits>) {
     this.#sink = sink;
-    this.#limits = { ...DEFAULT_LIMITS, ...limits };
+    const budget = new Budget(limits);
     const self = this;
     class CountingInflate implements UnzipDecoder {
       static compression = 8;
@@ -139,15 +107,7 @@ class Driver {
     this.#unzip.register(CountingInflate);
     this.#unzip.register(UnzipPassThrough);
     this.#unzip.onfile = (file) => {
-      const L = this.#limits;
-      if (++this.#entries > L.maxEntries) {
-        throw new ZipLimitError(`Too many zip entries (max ${L.maxEntries})`);
-      }
-      assertSafePath(file.name);
-      if (file.name.endsWith('/')) return; // directory: nothing to extract
-      if (file.originalSize !== undefined && file.originalSize > L.maxEntryBytes) {
-        throw new ZipLimitError(`Zip entry too large: ${file.name}`);
-      }
+      if (!budget.enter(file.name, file.originalSize)) return; // directory
       this.#open = true;
       this.#compressed = 0;
       let out = 0;
@@ -158,22 +118,7 @@ class Driver {
       file.ondata = (err, data, final) => {
         if (err) throw err;
         out += data.length;
-        this.#total += data.length;
-        if (out > L.maxEntryBytes) {
-          throw new ZipLimitError(`Zip entry too large: ${name} (max ${L.maxEntryBytes} bytes)`);
-        }
-        if (this.#total > L.maxTotalBytes) {
-          throw new ZipLimitError(`Zip total uncompressed size exceeds ${L.maxTotalBytes} bytes`);
-        }
-        if (
-          checkRatio &&
-          out > RATIO_MIN_BYTES &&
-          out / Math.max(this.#compressed, 1) > L.maxCompressionRatio
-        ) {
-          throw new ZipLimitError(
-            `Zip entry ${name} exceeds max compression ratio ${L.maxCompressionRatio}`,
-          );
-        }
+        budget.output(name, out, data.length, this.#compressed, checkRatio);
         if (data.length > 0) this.#sink.chunk(data);
         if (final) {
           this.#open = false;

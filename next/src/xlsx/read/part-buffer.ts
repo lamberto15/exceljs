@@ -3,17 +3,17 @@
 // per ASCII char); with `compress` they are re-deflated at level 1 (≈5-10x smaller for sheet XML,
 // at the cost of one extra deflate + inflate pass).
 
-import { Deflate, Inflate } from 'fflate';
+import { type ByteStream, deflateStream, inflateStream } from '../../zip/index.js';
 
 export class PartBuffer {
   private readonly chunks: Uint8Array[] = [];
-  private readonly deflate: Deflate | undefined;
+  private readonly deflate: ByteStream | undefined;
   /** Bytes held (compressed size when compressing). */
   size = 0;
 
   constructor(compress: boolean) {
     if (compress) {
-      this.deflate = new Deflate({ level: 1 }, (d) => {
+      this.deflate = deflateStream(1, (d) => {
         this.chunks.push(d);
         this.size += d.length;
       });
@@ -38,7 +38,7 @@ export class PartBuffer {
     const dec = new TextDecoder();
     const pending: string[] = [];
     const inflate = this.deflate
-      ? new Inflate((d) => {
+      ? inflateStream((d) => {
           const s = dec.decode(d, { stream: true });
           if (s) pending.push(s);
         })

@@ -126,8 +126,6 @@ export function contentTypeOf(ct: ContentTypes, path: string): string | undefine
   return dot < 0 ? undefined : ct.defaults.get(path.slice(dot + 1).toLowerCase());
 }
 
-const CHUNK = 1 << 20;
-
 function decoderFor(bytes: Uint8Array): TextDecoder {
   if (bytes.length >= 2) {
     if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le');
@@ -142,18 +140,16 @@ export function decodePart(bytes: Uint8Array): string {
 }
 
 /**
- * Decode a part in ~1 MB string chunks (keeps peak memory low for huge sheets: the whole
- * decoded XML never exists as one string).
+ * Decode a part given as byte chunks (e.g. incremental inflate output), streaming: multi-byte
+ * sequences split across chunks are handled; the encoding is picked from the first chunk's BOM.
  */
-export function decodePartChunked(bytes: Uint8Array, onChunk: (s: string) => void): void {
-  if (bytes.length <= CHUNK) {
-    onChunk(decodePart(bytes));
-    return;
-  }
-  const dec = decoderFor(bytes);
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    const end = Math.min(i + CHUNK, bytes.length);
-    const s = dec.decode(bytes.subarray(i, end), { stream: end < bytes.length });
+export function decodeChunks(chunks: Iterable<Uint8Array>, onChunk: (s: string) => void): void {
+  let dec: TextDecoder | undefined;
+  for (const c of chunks) {
+    dec ??= decoderFor(c);
+    const s = dec.decode(c, { stream: true });
     if (s.length > 0) onChunk(s);
   }
+  const tail = dec?.decode();
+  if (tail) onChunk(tail);
 }

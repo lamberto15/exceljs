@@ -49,8 +49,14 @@ export class ZipStreamWriter {                       // streaming, emits Uint8Ar
 export function unzipSync(data: Uint8Array, limits?: Partial<Limits>): Map<string, Uint8Array>;
 export function unzipStream(source: AsyncIterable<Uint8Array>, limits?: Partial<Limits>):
   AsyncIterable<{ path: string; chunks: AsyncIterable<Uint8Array> }>;  // optional/may be phase 2
+export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<string, LazyEntry>;
+//   LazyEntry { path, size, compressedSize, compression, bytes(): Uint8Array,
+//               chunks(chunkSize?): Iterable<Uint8Array> }  — central directory only; inflate on demand
+export function deflateStream(level, onData): ByteStream;   // raw DEFLATE push streams, so no
+export function inflateStream(onData): ByteStream;          // module outside src/zip imports fflate
 export class ZipLimitError extends Error {}
 ```
+Limit accounting lives in `src/zip/limits.ts` (`Budget`) and is shared by every unzip path.
 Enforce `Limits` (from types.ts): entry count, per-entry & total uncompressed bytes (checked while inflating, not just from headers), compression ratio; reject paths with `..`, absolute paths, backslashes, NUL.
 
 ## src/csv — RFC 4180 streaming read/write

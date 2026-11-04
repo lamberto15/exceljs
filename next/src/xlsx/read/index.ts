@@ -4,8 +4,8 @@ import type { CellValue, ReadOptions } from '../../core/types.js';
 import { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, type XmlHandler } from '../../xml/index.js';
-import { unzipStream, unzipSync } from '../../zip/index.js';
-import { decodePart, decodePartChunked } from '../common/r-opc.js';
+import { unzipLazy, unzipStream } from '../../zip/index.js';
+import { decodeChunks, decodePart } from '../common/r-opc.js';
 import { CT_PATH, maybeRelevant, type ResolvedSheet, XlsxPackage } from './package.js';
 import { PartBuffer } from './part-buffer.js';
 import { type SheetContext, SheetHandler } from './sheet-part.js';
@@ -116,20 +116,23 @@ function parseCore(xml: string, wb: Workbook): void {
  * Throws ZipLimitError / ZipPathError for hostile archives and XlsxParseError for broken XML.
  */
 export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {}): Workbook {
-  const files = unzipSync(toBytes(data), opts.limits);
+  // Lazy: only the parts we need are inflated, one at a time; big parts (sheets, shared
+  // strings) are inflated and decoded incrementally, so their full XML never exists in memory.
+  const files = unzipLazy(toBytes(data), opts.limits);
   if (files.size === 0)
     throw new XlsxParseError('Not an XLSX file: empty or unreadable zip archive');
   const pkg = new XlsxPackage();
   for (const name of files.keys()) pkg.addName(name);
   const text = (path: string): string | undefined => {
-    const b = files.get(pkg.entry(path));
-    return b === undefined ? undefined : decodePart(b);
+    const e = files.get(pkg.entry(path));
+    return e === undefined ? undefined : decodePart(e.bytes());
   };
 
   const ct = text(CT_PATH);
   if (ct !== undefined) pkg.addMeta(CT_PATH, ct);
   for (const name of files.keys()) {
-    if (name.endsWith('.rels') && name !== CT_PATH) pkg.addMeta(name, decodePart(files.get(name)!));
+    if (name.endsWith('.rels') && name !== CT_PATH)
+      pkg.addMeta(name, decodePart(files.get(name)!.bytes()));
   }
   pkg.final = true;
 
@@ -163,11 +166,11 @@ export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {})
 
   let strings: StringItem[] = [];
   const sstPath = pkg.sstPath();
-  const sstBytes = sstPath ? files.get(sstPath) : undefined;
-  if (sstBytes !== undefined) {
+  const sstEntry = sstPath ? files.get(sstPath) : undefined;
+  if (sstEntry !== undefined) {
     const h = new SharedStringsHandler();
     const p = new StrictXml(h, sstPath!);
-    decodePartChunked(sstBytes, (s) => p.write(s));
+    decodeChunks(sstEntry.chunks(), (s) => p.write(s));
     p.end();
     strings = h.items;
   }
@@ -175,8 +178,8 @@ export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {})
   const filter = opts.sheets ? new Set(opts.sheets.map((s) => s.toLowerCase())) : undefined;
   for (const s of pkg.sheets() ?? []) {
     if (filter && !filter.has(s.name.toLowerCase())) continue;
-    const bytes = files.get(s.path);
-    if (bytes === undefined) continue;
+    const entry = files.get(s.path);
+    if (entry === undefined) continue;
     const ws = addSheet(wb, s);
     const ctx: SheetContext = {
       strings,
@@ -187,7 +190,7 @@ export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {})
     };
     const h = new SheetHandler(ctx, ws);
     const p = new StrictXml(h, s.path);
-    decodePartChunked(bytes, (chunk) => p.write(chunk));
+    decodeChunks(entry.chunks(), (chunk) => p.write(chunk));
     p.end();
     h.finish();
     if (ws.autoFilter === undefined) {
