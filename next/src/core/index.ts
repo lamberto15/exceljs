@@ -11,6 +11,7 @@ export {
   MAX_ROWS,
 } from './address.js';
 export { dateToSerial, serialToDate } from './dates.js';
+export type { WorkbookFeatureFields, WorksheetFeatureFields } from './features.js';
 export {
   BUILTIN_NUM_FMTS,
   builtinFormat,

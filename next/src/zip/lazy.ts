@@ -107,8 +107,14 @@ export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<strin
         const len = dv.getUint16(x + 2, true);
         if (id === 1) {
           let q = x + 4;
-          if (usize === 0xffffffff) (usize = Number(dv.getBigUint64(q, true))), (q += 8);
-          if (csize === 0xffffffff) (csize = Number(dv.getBigUint64(q, true))), (q += 8);
+          if (usize === 0xffffffff) {
+            usize = Number(dv.getBigUint64(q, true));
+            q += 8;
+          }
+          if (csize === 0xffffffff) {
+            csize = Number(dv.getBigUint64(q, true));
+            q += 8;
+          }
           if (lho === 0xffffffff) lho = Number(dv.getBigUint64(q, true));
           break;
         }

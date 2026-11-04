@@ -215,6 +215,8 @@ export class StyleRegistry {
   private readonly _styleCache: (Style | undefined)[] = [];
   private readonly _dateXf: (boolean | undefined)[] = [];
   private readonly _withFmt = new Map<string, number>();
+  private readonly _dxfs: Style[] = [];
+  private readonly _dxfIdx = new Map<string, number>();
 
   get fonts(): readonly Font[] {
     return this._fonts;
@@ -235,6 +237,47 @@ export class StyleRegistry {
   }
   get defaultFont(): Font {
     return this._fonts[0]!;
+  }
+  /**
+   * Differential formats (styles.xml `<dxfs>`), used by conditional formatting and tables.
+   * Index = the `dxfId` written by those features. Entries are normalized partial styles.
+   */
+  get dxfs(): readonly Style[] {
+    return this._dxfs;
+  }
+
+  /**
+   * Partial style → dxf index (deduped). Unlike `intern`, fonts are NOT completed with the
+   * default font (a dxf only overrides what it lists). A `numFmt` gets its id registered here.
+   */
+  internDxf(style: Style): number {
+    const o: Mutable<Style> = {};
+    if (style.font) o.font = normFont(style.font, {});
+    if (style.numFmt) {
+      o.numFmt = style.numFmt;
+      this.numFmtId(style.numFmt);
+    }
+    if (style.fill) o.fill = normFill(style.fill);
+    const al = normAlignment(style.alignment);
+    if (al) o.alignment = al;
+    if (style.border) o.border = normBorder(style.border);
+    if (style.protection) {
+      const p: Mutable<Protection> = {};
+      if (style.protection.locked !== undefined) p.locked = style.protection.locked;
+      if (style.protection.hidden !== undefined) p.hidden = style.protection.hidden;
+      o.protection = p;
+    }
+    const pr = o.protection;
+    const key = `${o.font ? fontKey(o.font) : '-'}#${o.numFmt ?? ''}#${o.fill ? fillKey(o.fill) : '-'}#${alignKey(
+      o.alignment,
+    )}#${o.border ? borderKey(o.border) : '-'}#${pr ? `${pr.locked ?? ''}${pr.hidden ?? ''}` : ''}`;
+    let idx = this._dxfIdx.get(key);
+    if (idx === undefined) {
+      idx = this._dxfs.length;
+      this._dxfs.push(o);
+      this._dxfIdx.set(key, idx);
+    }
+    return idx;
   }
 
   /** Style → xf index (0 for undefined / empty style). */

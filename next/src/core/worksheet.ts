@@ -74,6 +74,7 @@ import {
   MAX_ROWS,
 } from './address.js';
 import { dateToSerial, serialToDate } from './dates.js';
+import type { WorksheetFeatureFields } from './features.js';
 import type { StyleRegistry } from './styles.js';
 import type {
   Alignment,
@@ -413,6 +414,10 @@ export class Column {
 
 // ---- Worksheet ----------------------------------------------------------------------
 
+/** Feature-owned optional fields (pageSetup, protection, ...), see core/features.ts. */
+export interface Worksheet extends WorksheetFeatureFields {}
+
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: type-only feature fields
 export class Worksheet {
   readonly workbook: Workbook;
   /** sheetId (1-based, stable across removals of other sheets). */

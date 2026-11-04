@@ -12,6 +12,7 @@ import type { CellValue, ErrorCode, Formula, Hyperlink, RichText } from '../../c
 import { CellKind, type Worksheet, type WorksheetView } from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import type { Relationship } from '../common/r-opc.js';
+import type { SheetReadCtx, SheetReader, SubtreeHandler } from '../features/types.js';
 import { translateFormula } from './formula.js';
 import { type StringItem, StringItemBuilder } from './strings-part.js';
 import { parseColor } from './styles-part.js';
@@ -27,7 +28,13 @@ export interface SheetContext {
   readonly date1904: boolean;
   /** The sheet's relationships (hyperlink targets). */
   readonly rels?: Map<string, Relationship> | undefined;
+  /** Feature readers by element path ("pageSetup", "sheetPr/pageSetUpPr"); DOM mode only. */
+  readonly features?: ReadonlyMap<string, SheetReader> | undefined;
+  readonly featureCtx?: SheetReadCtx | undefined;
 }
+
+/** Placeholder subtree handler for consumed leaf elements. */
+const LEAF: SubtreeHandler = {};
 
 export type RowCallback = (r0: number, values: CellValue[]) => void;
 
@@ -109,6 +116,13 @@ export class SheetHandler implements XmlHandler {
   private rowStored = 0;
   private hint = 0;
 
+  // feature delegation (outside sheetData only)
+  private readonly fmap: ReadonlyMap<string, SheetReader> | undefined;
+  private sub: SubtreeHandler | undefined;
+  private subDepth = 0;
+  /** Local name of the current depth-2 element (for "parent/child" feature paths). */
+  private el2 = '';
+
   constructor(ctx: SheetContext, ws: Worksheet | undefined, onRow?: RowCallback) {
     this.ctx = ctx;
     this.ws = ws;
@@ -116,6 +130,7 @@ export class SheetHandler implements XmlHandler {
     this.strings = ctx.strings;
     this.xfMap = ctx.xfMap;
     this.styles = ctx.styles;
+    this.fmap = ws !== undefined && ctx.features?.size ? ctx.features : undefined;
   }
 
   open(name: string, a: XmlAttrs, _selfClosing: boolean): void {
@@ -149,7 +164,21 @@ export class SheetHandler implements XmlHandler {
           return;
       }
     }
+    if (this.sub !== undefined) {
+      this.sub.open?.(ln, a, _selfClosing);
+      return;
+    }
+    if (this.fmap !== undefined && d <= 3) {
+      const key = d === 2 ? ln : `${this.el2}/${ln}`;
+      const r = this.fmap.get(key);
+      if (r !== undefined) {
+        this.sub = r.open?.(this.ctx.featureCtx!, key, a) ?? LEAF;
+        this.subDepth = d;
+        return;
+      }
+    }
     if (d === 2) {
+      this.el2 = ln;
       switch (ln) {
         case 'sheetData':
           this.inData = true;
@@ -225,6 +254,13 @@ export class SheetHandler implements XmlHandler {
           return;
       }
     }
+    if (this.sub !== undefined) {
+      if (d === this.subDepth) {
+        this.sub.end?.();
+        this.sub = undefined;
+      } else this.sub.close?.(name.indexOf(':') < 0 ? name : localName(name));
+      return;
+    }
     if (d === 2 && this.inViews) {
       this.inViews = false;
     }
@@ -236,6 +272,7 @@ export class SheetHandler implements XmlHandler {
       this.hasV = true;
     } else if (this.cap === Cap.F) this.fText += t;
     else if (this.inIs) this.is.onText(t);
+    else if (this.sub !== undefined) this.sub.text?.(t);
   }
 
   /** Apply deferred sheet-level data (DOM mode). Call after the last chunk. */

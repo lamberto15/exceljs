@@ -1,6 +1,8 @@
 // styles.xml reader: numFmts, fonts, fills, borders, cellXfs → StyleRegistry.
 // Produces `xfMap`: file cellXfs index → registry xf index (cells use `xfMap[s]`).
-// Not read (yet): dxfs (conditional-format styles), cellStyleXfs / cellStyles (named styles),
+// dxfs (differential formats for conditional formatting / tables) → `dxfMap` (file dxf index →
+// registry dxf index, see `applyDxfs`).
+// Not read (yet): cellStyleXfs / cellStyles (named styles),
 // gradient fills (mapped to no fill), indexedColors / mruColors overrides.
 
 import type { StyleRegistry } from '../../core/styles.js';
@@ -13,6 +15,7 @@ import type {
   Fill,
   Font,
   Protection,
+  Style,
 } from '../../core/types.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import { attrBool } from './xml-util.js';
@@ -100,6 +103,9 @@ export class StylesHandler implements XmlHandler {
   readonly fills: (Fill | undefined)[] = [];
   readonly borders: Border[] = [];
   readonly xfs: RawXf[] = [];
+  readonly dxfs: Style[] = [];
+  private dxf: Mutable<Style> | undefined;
+  private dxfPart = '';
 
   private section = '';
   private font: Mutable<Font> | undefined;
@@ -183,6 +189,79 @@ export class StylesHandler implements XmlHandler {
           this.xf.protection = p;
         }
         break;
+      case 'dxfs':
+        this.openDxf(ln, a);
+        break;
+    }
+  }
+
+  private openDxf(ln: string, a: XmlAttrs): void {
+    const d = this.depth;
+    if (d === 3) {
+      if (ln === 'dxf') this.dxf = {};
+      return;
+    }
+    const x = this.dxf;
+    if (!x) return;
+    if (d === 4) {
+      this.dxfPart = ln;
+      switch (ln) {
+        case 'font':
+          x.font = {};
+          break;
+        case 'numFmt':
+          if (a.formatCode !== undefined) x.numFmt = a.formatCode;
+          break;
+        case 'alignment': {
+          const al: Mutable<Alignment> = {};
+          if (a.horizontal) al.horizontal = a.horizontal as Alignment['horizontal'];
+          if (a.vertical) al.vertical = a.vertical as Alignment['vertical'];
+          if (attrBool(a.wrapText)) al.wrapText = true;
+          if (attrBool(a.shrinkToFit)) al.shrinkToFit = true;
+          if (a.indent !== undefined && +a.indent) al.indent = +a.indent;
+          if (a.textRotation !== undefined && +a.textRotation) al.textRotation = +a.textRotation;
+          x.alignment = al;
+          break;
+        }
+        case 'border':
+          x.border = {};
+          break;
+        case 'protection': {
+          const p: Mutable<Protection> = {};
+          if (a.locked !== undefined) p.locked = attrBool(a.locked);
+          if (a.hidden !== undefined) p.hidden = attrBool(a.hidden);
+          x.protection = p;
+          break;
+        }
+      }
+      return;
+    }
+    switch (this.dxfPart) {
+      case 'font':
+        if (d === 5) fontChild(x.font as Mutable<Font>, ln, a);
+        break;
+      case 'fill':
+        if (ln === 'patternFill') {
+          // dxf fills may omit patternType (Excel then means solid with bgColor)
+          x.fill = { type: 'pattern', pattern: a.patternType ?? 'solid' };
+        } else if (x.fill && (ln === 'fgColor' || ln === 'bgColor')) {
+          const c = parseColor(a);
+          if (c) (x.fill as Mutable<Fill>)[ln] = c;
+        }
+        break;
+      case 'border': {
+        const b = x.border as Mutable<Border>;
+        if (d === 5 && EDGES.has(ln)) {
+          const e = ln === 'start' ? 'left' : ln === 'end' ? 'right' : ln;
+          if (a.style !== undefined) b[e as 'left'] = { style: a.style as BorderStyle };
+          this.edge = e;
+        } else if (d === 6 && ln === 'color' && this.edge) {
+          const cur = b[this.edge as 'left'];
+          const c = parseColor(a);
+          if (cur && c) b[this.edge as 'left'] = { ...cur, color: c };
+        }
+        break;
+      }
     }
   }
 
@@ -228,7 +307,21 @@ export class StylesHandler implements XmlHandler {
           this.xf = undefined;
         }
         break;
+      case 'dxfs':
+        if (d === 3 && this.dxf) {
+          if (this.dxf.font) this.dxf.font = cleanFont(this.dxf.font as Mutable<Font>);
+          this.dxfs.push(this.dxf);
+          this.dxf = undefined;
+        } else if (d === 4) this.dxfPart = '';
+        break;
     }
+  }
+
+  /** Register dxfs; returns file dxf index → registry dxf index. Call after `apply`. */
+  applyDxfs(reg: StyleRegistry): Uint32Array {
+    const out = new Uint32Array(this.dxfs.length);
+    for (let i = 0; i < this.dxfs.length; i++) out[i] = reg.internDxf(this.dxfs[i]!);
+    return out;
   }
 
   /** Register everything into the registry; returns file xf index → registry xf index. */

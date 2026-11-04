@@ -1,5 +1,6 @@
 // Workbook: ordered worksheets + one shared StyleRegistry.
 
+import type { WorkbookFeatureFields } from './features.js';
 import { StyleRegistry } from './styles.js';
 import type { Color, DefinedName } from './types.js';
 import { type SheetState, Worksheet } from './worksheet.js';
@@ -16,6 +17,10 @@ export interface WorksheetOptions {
 
 const INVALID_NAME = /[\\/?*[\]:]/;
 
+/** Feature-owned optional fields, see core/features.ts. */
+export interface Workbook extends WorkbookFeatureFields {}
+
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: type-only feature fields
 export class Workbook {
   /** 1904 date system flag; changing it after storing dates shifts them by 1462 days. */
   date1904: boolean;

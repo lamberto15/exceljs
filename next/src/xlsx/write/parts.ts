@@ -2,7 +2,16 @@
 
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { StyleRegistry, Xf } from '../../core/styles.js';
-import type { Border, BorderEdge, Color, DefinedName, Fill, Font } from '../../core/types.js';
+import type {
+  Alignment,
+  Border,
+  BorderEdge,
+  Color,
+  DefinedName,
+  Fill,
+  Font,
+  Style,
+} from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 
@@ -38,8 +47,23 @@ export interface BookInfo {
 export const sheetPath = (i: number): string => `xl/worksheets/sheet${i + 1}.xml`;
 export const sheetRelsPath = (i: number): string => `xl/worksheets/_rels/sheet${i + 1}.xml.rels`;
 
-export function contentTypesXml(sheetCount: number, sharedStrings: boolean): string {
-  let s = `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="${CT}spreadsheetml.sheet.main+xml"/>`;
+/** [Content_Types].xml; `defaults` / `overrides` come from features (PackageParts). */
+export function contentTypesXml(
+  sheetCount: number,
+  sharedStrings: boolean,
+  defaults: ReadonlyMap<string, string> = new Map(),
+  overrides: readonly [string, string][] = [],
+): string {
+  let s = `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>`;
+  for (const [ext, ct] of defaults) {
+    if (ext !== 'rels' && ext !== 'xml') {
+      s += `<Default Extension="${escapeAttr(ext)}" ContentType="${escapeAttr(ct)}"/>`;
+    }
+  }
+  s += `<Override PartName="/xl/workbook.xml" ContentType="${CT}spreadsheetml.sheet.main+xml"/>`;
+  for (const [path, ct] of overrides) {
+    s += `<Override PartName="/${escapeAttr(path)}" ContentType="${escapeAttr(ct)}"/>`;
+  }
   for (let i = 0; i < sheetCount; i++) {
     s += `<Override PartName="/${sheetPath(i)}" ContentType="${CT}spreadsheetml.worksheet+xml"/>`;
   }
@@ -102,12 +126,21 @@ function definedNameXml(
   }>${escapeText(value)}</definedName>`;
 }
 
-export function workbookXml(b: BookInfo): string {
-  let s = `${XML_DECL}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`;
-  s += b.date1904 ? '<workbookPr date1904="1"/>' : '<workbookPr/>';
-  s += `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="12300"${
-    b.activeTab > 0 ? ` firstSheet="0" activeTab="${b.activeTab}"` : ''
-  }/></bookViews><sheets>`;
+/**
+ * workbook.xml. `extra`: feature elements as [BookSlot, xml] pairs, merged into CT_Workbook
+ * order with the built-ins (slot 18 = extLst children, wrapped in one <extLst>).
+ */
+export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []): string {
+  const parts: [number, string][] = [
+    [2, b.date1904 ? '<workbookPr date1904="1"/>' : '<workbookPr/>'],
+    [
+      4,
+      `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="12300"${
+        b.activeTab > 0 ? ` firstSheet="0" activeTab="${b.activeTab}"` : ''
+      }/></bookViews>`,
+    ],
+  ];
+  let sheets = '<sheets>';
   let names = '';
   const user = b.definedNames ?? [];
   for (const n of user) {
@@ -121,7 +154,7 @@ export function workbookXml(b: BookInfo): string {
   }
   for (let i = 0; i < b.sheets.length; i++) {
     const sh = b.sheets[i]!;
-    s += `<sheet name="${escapeAttr(sh.name)}" sheetId="${sh.sheetId}"${
+    sheets += `<sheet name="${escapeAttr(sh.name)}" sheetId="${sh.sheetId}"${
       sh.state !== 'visible' ? ` state="${sh.state}"` : ''
     } r:id="rId${i + 1}"/>`;
     if (
@@ -136,13 +169,26 @@ export function workbookXml(b: BookInfo): string {
       );
     }
   }
-  s += '</sheets>';
-  if (names) s += `<definedNames>${names}</definedNames>`;
-  s += b.formulas ? '<calcPr calcId="191029" fullCalcOnLoad="1"/>' : '<calcPr calcId="191029"/>';
+  parts.push([5, `${sheets}</sheets>`]);
+  if (names) parts.push([8, `<definedNames>${names}</definedNames>`]);
+  parts.push([
+    9,
+    b.formulas ? '<calcPr calcId="191029" fullCalcOnLoad="1"/>' : '<calcPr calcId="191029"/>',
+  ]);
+  let ext = '';
+  for (const e of extra) {
+    if (e[0] === 18) ext += e[1];
+    else if (e[1]) parts.push(e);
+  }
+  parts.sort((x, y) => x[0] - y[0]);
+  let s = `${XML_DECL}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`;
+  for (const p of parts) s += p[1];
+  if (ext) s += `<extLst>${ext}</extLst>`;
   return `${s}</workbook>`;
 }
 
-export function workbookRelsXml(sheetCount: number, sharedStrings: boolean): string {
+/** Workbook relationships; `extra` = feature rel elements (ids from sheetCount + 3, see BOOK_REL_BASE). */
+export function workbookRelsXml(sheetCount: number, sharedStrings: boolean, extra = ''): string {
   let s = `${XML_DECL}<Relationships xmlns="${NS_PKG_REL}">`;
   for (let i = 0; i < sheetCount; i++) {
     s += `<Relationship Id="rId${i + 1}" Type="${REL}worksheet" Target="worksheets/sheet${i + 1}.xml"/>`;
@@ -151,24 +197,13 @@ export function workbookRelsXml(sheetCount: number, sharedStrings: boolean): str
   if (sharedStrings) {
     s += `<Relationship Id="rId${sheetCount + 2}" Type="${REL}sharedStrings" Target="sharedStrings.xml"/>`;
   }
-  return `${s}</Relationships>`;
+  return `${s}${extra}</Relationships>`;
 }
 
 export interface LinkRec {
   readonly ref: string;
   readonly target: string;
   readonly tooltip: string | undefined;
-}
-
-/** Sheet rels for external hyperlinks (internal "#Sheet!A1" links need no relationship). */
-export function sheetRelsXml(links: readonly LinkRec[]): string {
-  let s = `${XML_DECL}<Relationships xmlns="${NS_PKG_REL}">`;
-  let id = 0;
-  for (const l of links) {
-    if (l.target.charCodeAt(0) === 35) continue;
-    s += `<Relationship Id="rId${++id}" Type="${REL}hyperlink" Target="${escapeAttr(l.target)}" TargetMode="External"/>`;
-  }
-  return `${s}</Relationships>`;
 }
 
 export function sharedStringsXml(sst: SharedStrings): string {
@@ -259,6 +294,36 @@ function borderXml(b: Border): string {
   )}${edgeXml('bottom', b.bottom)}${edgeXml('diagonal', d)}</border>`;
 }
 
+function alignmentXml(a: Alignment): string {
+  let s = '<alignment';
+  if (a.horizontal) s += ` horizontal="${a.horizontal}"`;
+  if (a.vertical) s += ` vertical="${a.vertical}"`;
+  if (a.textRotation) s += ` textRotation="${a.textRotation}"`;
+  if (a.wrapText) s += ' wrapText="1"';
+  if (a.indent) s += ` indent="${a.indent}"`;
+  if (a.shrinkToFit) s += ' shrinkToFit="1"';
+  return `${s}/>`;
+}
+
+/** One `<dxf>` (CT_Dxf child order: font, numFmt, fill, alignment, border, protection). */
+function dxfXml(d: Style, reg: StyleRegistry): string {
+  let s = '<dxf>';
+  if (d.font) s += `<font>${fontBody(d.font, 'name')}</font>`;
+  if (d.numFmt) {
+    s += `<numFmt numFmtId="${reg.numFmtId(d.numFmt)}" formatCode="${escapeAttr(d.numFmt)}"/>`;
+  }
+  if (d.fill) s += fillXml(d.fill);
+  if (d.alignment) s += alignmentXml(d.alignment);
+  if (d.border) s += borderXml(d.border);
+  const p = d.protection;
+  if (p) {
+    s += `<protection${p.locked !== undefined ? ` locked="${p.locked ? 1 : 0}"` : ''}${
+      p.hidden !== undefined ? ` hidden="${p.hidden ? 1 : 0}"` : ''
+    }/>`;
+  }
+  return `${s}</dxf>`;
+}
+
 function xfXml(x: Xf): string {
   let s = `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}" borderId="${x.borderId}" xfId="0"`;
   if (x.numFmtId) s += ' applyNumberFormat="1"';
@@ -271,16 +336,7 @@ function xfXml(x: Xf): string {
   if (p) s += ' applyProtection="1"';
   if (!a && !p) return `${s}/>`;
   s += '>';
-  if (a) {
-    s += '<alignment';
-    if (a.horizontal) s += ` horizontal="${a.horizontal}"`;
-    if (a.vertical) s += ` vertical="${a.vertical}"`;
-    if (a.textRotation) s += ` textRotation="${a.textRotation}"`;
-    if (a.wrapText) s += ' wrapText="1"';
-    if (a.indent) s += ` indent="${a.indent}"`;
-    if (a.shrinkToFit) s += ' shrinkToFit="1"';
-    s += '/>';
-  }
+  if (a) s += alignmentXml(a);
   if (p) {
     s += `<protection${p.locked === false ? ' locked="0"' : ''}${p.hidden ? ' hidden="1"' : ''}/>`;
   }
@@ -305,5 +361,10 @@ export function stylesXml(reg: StyleRegistry): string {
   for (const b of reg.borders) s += borderXml(b);
   s += `</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${reg.xfs.length}">`;
   for (const x of reg.xfs) s += xfXml(x);
-  return `${s}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/></styleSheet>`;
+  s +=
+    '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>';
+  const dx = reg.dxfs;
+  s += `<dxfs count="${dx.length}">`;
+  for (const d of dx) s += dxfXml(d, reg);
+  return `${s}</dxfs><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/></styleSheet>`;
 }

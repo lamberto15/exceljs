@@ -32,25 +32,13 @@ import {
   Worksheet,
   type WorksheetView,
 } from '../../core/worksheet.js';
-import { activeTabOf, CHUNK, sheetEntry } from './book.js';
+import { activeTabOf, bookParts, CHUNK, sheetEntry } from './book.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
+import { PackageParts } from './package.js';
+import type { BookInfo } from './parts.js';
 import {
-  appPropsXml,
-  type BookInfo,
-  contentTypesXml,
-  corePropsXml,
-  rootRelsXml,
-  sharedStringsXml,
-  sheetPath,
-  sheetRelsPath,
-  sheetRelsXml,
-  stylesXml,
-  workbookRelsXml,
-  workbookXml,
-} from './parts.js';
-import {
+  afterSheetParts,
   encodeRow,
-  hasExternalLinks,
   newSheetCtx,
   type SheetCtx,
   sheetHead,
@@ -177,13 +165,11 @@ export class StreamSheet {
   _commitSync(): void {
     if (this._committed) return;
     this._encode();
-    const ws = this.worksheet;
-    this._buf += sheetTail(ws, this._ctx);
+    this._buf += sheetTail(this._ctx);
     this._emit(true);
     this._committed = true;
-    if (hasExternalLinks(this._ctx)) {
-      this._w._zip.add(sheetRelsPath(this.index), sheetRelsXml(this._ctx.links));
-    }
+    // feature parts (comments, tables, ...) and the sheet rels go right after the sheet
+    for (const p of afterSheetParts(this._ctx, this._w._pkg)) this._w._zip.add(p.path, p.data);
     this._ctx.links.length = 0;
     this._w._sheetDone(this, this._ctx.formulas);
   }
@@ -213,7 +199,8 @@ export class StreamSheet {
   private _start(): void {
     this._started = true;
     const ws = this.worksheet;
-    this._buf = sheetHead(ws, { tabSelected: this._w._claimActive(this) });
+    this._ctx.tabSelected = this._w._claimActive(this);
+    this._buf = sheetHead(this._ctx);
     const pre = ws.rowData;
     for (let r = 0; r < pre.length; r++) {
       const row = pre[r];
@@ -247,7 +234,7 @@ export class StreamSheet {
 
   private _emit(last: boolean): void {
     if (!last && this._buf.length === 0) return;
-    this._w._zip.write(sheetPath(this.index), this._buf, last);
+    this._w._zip.write(this._ctx.path, this._buf, last);
     this._buf = '';
   }
 }
@@ -261,6 +248,8 @@ export class XlsxWriter {
   readonly _zip: ZipOut;
   /** @internal */
   readonly _flushRows: number;
+  /** @internal Feature parts / content types / part counters. */
+  readonly _pkg: PackageParts = new PackageParts();
   private readonly _o: ResolvedWriteOptions;
   private readonly _sst: SharedStrings | undefined;
   private readonly _sheets: StreamSheet[] = [];
@@ -325,7 +314,9 @@ export class XlsxWriter {
       else ws.freeze(opts.freeze.rows, opts.freeze.cols ?? 0);
     }
     if (opts.autoFilter) ws.autoFilter = opts.autoFilter;
-    const s = new StreamSheet(this, ws, this._sheets.length, newSheetCtx(this._sst));
+    const index = this._sheets.length;
+    const ctx = newSheetCtx({ sst: this._sst, pkg: this._pkg, ws, index, streaming: true });
+    const s = new StreamSheet(this, ws, index, ctx);
     this._sheets.push(s);
     this._open = s;
     return s;
@@ -358,14 +349,7 @@ export class XlsxWriter {
       definedNames: wb.definedNames,
     };
     const z = this._zip;
-    if (this._sst) z.add('xl/sharedStrings.xml', sharedStringsXml(this._sst));
-    z.add('xl/styles.xml', stylesXml(wb.styles));
-    z.add('xl/workbook.xml', workbookXml(book));
-    z.add('xl/_rels/workbook.xml.rels', workbookRelsXml(sheets.length, shared));
-    z.add('[Content_Types].xml', contentTypesXml(sheets.length, shared));
-    z.add('_rels/.rels', rootRelsXml());
-    z.add('docProps/core.xml', corePropsXml(book));
-    z.add('docProps/app.xml', appPropsXml(book));
+    for (const p of bookParts(wb, book, this._pkg, this._sst)) z.add(p.path, p.data);
     z.end();
     await this._settle();
   }

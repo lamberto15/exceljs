@@ -6,7 +6,10 @@ import { SharedStrings } from '../../core/sharedstrings.js';
 import type { WriteOptions } from '../../core/types.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import { WRITERS } from '../features/registry.js';
+import type { BookWriteCtx } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
+import { PackageParts, type PartRec, RelList, relElems } from './package.js';
 import {
   appPropsXml,
   type BookInfo,
@@ -15,14 +18,11 @@ import {
   rootRelsXml,
   type SheetEntry,
   sharedStringsXml,
-  sheetPath,
-  sheetRelsPath,
-  sheetRelsXml,
   stylesXml,
   workbookRelsXml,
   workbookXml,
 } from './parts.js';
-import { encodeRow, hasExternalLinks, newSheetCtx, sheetHead, sheetTail } from './sheet.js';
+import { afterSheetParts, encodeRow, newSheetCtx, sheetHead, sheetTail } from './sheet.js';
 import { concatChunks, ZipOut } from './zipout.js';
 
 /** Sheet XML is handed to the zip in pieces of about this many UTF-16 units. */
@@ -30,8 +30,65 @@ export const CHUNK: number = 128 * 1024;
 
 interface Piece {
   path: string;
-  data: string;
+  data: string | Uint8Array;
   last: boolean;
+}
+
+/**
+ * Workbook-level parts, written after all sheets: feature book hooks/parts, workbook.xml,
+ * styles, shared strings, workbook rels, content types, root rels, docProps. Shared by every
+ * writer.
+ */
+export function bookParts(
+  wb: Workbook,
+  book: BookInfo,
+  pkg: PackageParts,
+  sst: SharedStrings | undefined,
+): PartRec[] {
+  const n = book.sheets.length;
+  // ids after the built-in worksheet / styles / sharedStrings relationships
+  const rels = new RelList(n + 3);
+  const ctx: BookWriteCtx = {
+    workbook: wb,
+    styles: wb.styles,
+    addRel: (type, target, external) => rels.add(type, target, external),
+    addPart: (path, data, ct) => pkg.addPart(path, data, ct),
+    addDefault: (ext, ct) => pkg.addDefault(ext, ct),
+    nextIndex: (f) => pkg.nextIndex(f),
+  };
+  for (const f of WRITERS) f.book?.write?.(ctx);
+  const extra: [number, string, number][] = [];
+  for (const f of WRITERS) {
+    for (const e of f.book?.emitters ?? []) {
+      const x = e.emit(ctx);
+      if (x) extra.push([e.slot, x, e.order ?? 0]);
+    }
+  }
+  extra.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  const out = pkg.take();
+  const shared = sst !== undefined;
+  out.push(
+    {
+      path: 'xl/workbook.xml',
+      data: workbookXml(
+        book,
+        extra.map((e) => [e[0], e[1]]),
+      ),
+    },
+    { path: 'xl/styles.xml', data: stylesXml(wb.styles) },
+  );
+  if (sst) out.push({ path: 'xl/sharedStrings.xml', data: sharedStringsXml(sst) });
+  out.push(
+    { path: 'xl/_rels/workbook.xml.rels', data: workbookRelsXml(n, shared, relElems(rels.recs)) },
+    {
+      path: '[Content_Types].xml',
+      data: contentTypesXml(n, shared, pkg.defaults, pkg.overrides),
+    },
+    { path: '_rels/.rels', data: rootRelsXml() },
+    { path: 'docProps/core.xml', data: corePropsXml(book) },
+    { path: 'docProps/app.xml', data: appPropsXml(book) },
+  );
+  return out;
 }
 
 /** Index of the active (selected) tab: first visible sheet with tabSelected, else first visible. */
@@ -58,32 +115,23 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
   if (sheets.length === 0) throw new Error('Workbook has no worksheets');
   const active = activeTabOf(sheets);
   const sst = o.strings === 'shared' ? new SharedStrings() : undefined;
-  const shared = sst !== undefined;
+  const pkg = new PackageParts();
   let formulas = false;
-
-  yield { path: '[Content_Types].xml', data: contentTypesXml(sheets.length, shared), last: true };
-  yield { path: '_rels/.rels', data: rootRelsXml(), last: true };
-  yield {
-    path: 'xl/_rels/workbook.xml.rels',
-    data: workbookRelsXml(sheets.length, shared),
-    last: true,
-  };
 
   for (let si = 0; si < sheets.length; si++) {
     const ws = sheets[si]!;
-    const path = sheetPath(si);
-    const ctx = newSheetCtx(sst);
+    const ctx = newSheetCtx({ sst, pkg, ws, index: si, streaming: false });
+    const path = ctx.path;
     const rows = ws.rowData;
     let outline = 0;
     for (let r = 0; r < rows.length; r++) {
       const ol = rows[r]?.outlineLevel;
       if (ol !== undefined && ol > outline) outline = ol;
     }
-    let buf = sheetHead(ws, {
-      dimension: ws.dimensions?.ref,
-      tabSelected: si === active,
-      outlineLevelRow: outline,
-    });
+    ctx.dimension = ws.dimensions?.ref;
+    ctx.tabSelected = si === active;
+    ctx.outlineLevelRow = outline;
+    let buf = sheetHead(ctx);
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (row === undefined) continue;
@@ -93,17 +141,15 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
         buf = '';
       }
     }
-    yield { path, data: buf + sheetTail(ws, ctx), last: true };
-    if (hasExternalLinks(ctx)) {
-      yield { path: sheetRelsPath(si), data: sheetRelsXml(ctx.links), last: true };
-    }
+    yield { path, data: buf + sheetTail(ctx), last: true };
+    for (const p of afterSheetParts(ctx, pkg)) yield { path: p.path, data: p.data, last: true };
     if (ctx.formulas) formulas = true;
   }
 
   const book: BookInfo = {
     sheets: sheets.map(sheetEntry),
     date1904: wb.date1904,
-    sharedStrings: shared,
+    sharedStrings: sst !== undefined,
     formulas,
     activeTab: active,
     creator: wb.creator,
@@ -112,11 +158,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     modified: wb.modified,
     definedNames: wb.definedNames,
   };
-  yield { path: 'xl/workbook.xml', data: workbookXml(book), last: true };
-  yield { path: 'xl/styles.xml', data: stylesXml(wb.styles), last: true };
-  if (sst) yield { path: 'xl/sharedStrings.xml', data: sharedStringsXml(sst), last: true };
-  yield { path: 'docProps/core.xml', data: corePropsXml(book), last: true };
-  yield { path: 'docProps/app.xml', data: appPropsXml(book), last: true };
+  for (const p of bookParts(wb, book, pkg, sst)) yield { path: p.path, data: p.data, last: true };
 }
 
 /**

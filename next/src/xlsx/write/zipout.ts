@@ -33,7 +33,7 @@ export class ZipOut {
   }
 
   /** Append `data` to part `path` (opened on first use); `last` closes the part. */
-  write(path: string, data: string, last: boolean): void {
+  write(path: string, data: string | Uint8Array, last: boolean): void {
     let f = this.cur;
     if (f === undefined || this.curPath !== path) {
       if (f !== undefined) throw new Error(`zip part ${this.curPath} was not closed`);
@@ -41,12 +41,12 @@ export class ZipOut {
       this.cur = f;
       this.curPath = path;
     }
-    f.push(encoder.encode(data), last);
+    f.push(typeof data === 'string' ? encoder.encode(data) : data, last);
     if (last) this.cur = undefined;
   }
 
   /** Write a complete part. */
-  add(path: string, data: string): void {
+  add(path: string, data: string | Uint8Array): void {
     this.write(path, data, true);
   }
 

@@ -6,6 +6,13 @@ import type { Worksheet } from '../../core/worksheet.js';
 import { localName, type XmlHandler } from '../../xml/index.js';
 import { unzipLazy, unzipStream } from '../../zip/index.js';
 import { decodeChunks, decodePart } from '../common/r-opc.js';
+import { READERS } from '../features/registry.js';
+import type {
+  PackageReadCtx,
+  SheetReadCtx,
+  SheetReader,
+  SubtreeHandler,
+} from '../features/types.js';
 import { CT_PATH, maybeRelevant, type ResolvedSheet, XlsxPackage } from './package.js';
 import { PartBuffer } from './part-buffer.js';
 import { type SheetContext, SheetHandler } from './sheet-part.js';
@@ -101,6 +108,61 @@ function parseCore(xml: string, wb: Workbook): void {
 
 // ---------------------------------------------------------------- DOM mode
 
+let featureMap: Map<string, SheetReader> | undefined;
+let featureReaders: SheetReader[] | undefined;
+
+/**
+ * Feature sheet readers by element path (built once from the registry). Several features may
+ * claim the same path (e.g. "extLst/ext"): they are combined into one reader that fans events
+ * out to each.
+ */
+function sheetFeatures(): Map<string, SheetReader> {
+  if (featureMap === undefined) {
+    const multi = new Map<string, SheetReader[]>();
+    featureReaders = [];
+    for (const f of READERS) {
+      const r = f.sheet;
+      if (!r) continue;
+      featureReaders.push(r);
+      for (const el of r.elements ?? []) {
+        const list = multi.get(el);
+        if (list) list.push(r);
+        else multi.set(el, [r]);
+      }
+    }
+    featureMap = new Map();
+    for (const [el, list] of multi) featureMap.set(el, list.length === 1 ? list[0]! : fanOut(list));
+  }
+  return featureMap;
+}
+
+function fanOut(list: SheetReader[]): SheetReader {
+  return {
+    open(ctx, el, a) {
+      const subs: SubtreeHandler[] = [];
+      for (const r of list) {
+        const h = r.open?.(ctx, el, a);
+        if (h) subs.push(h);
+      }
+      if (subs.length === 0) return undefined;
+      return {
+        open: (n, at, sc) => {
+          for (const h of subs) h.open?.(n, at, sc);
+        },
+        close: (n) => {
+          for (const h of subs) h.close?.(n);
+        },
+        text: (t) => {
+          for (const h of subs) h.text?.(t);
+        },
+        end: () => {
+          for (const h of subs) h.end?.();
+        },
+      };
+    },
+  };
+}
+
 /**
  * Read a whole XLSX file into a {@link Workbook} (synchronous).
  * - `opts.sheets`: only load these sheet names (case-insensitive); others are not created.
@@ -148,13 +210,22 @@ export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {})
   }
 
   let xfMap: Uint32Array | undefined;
+  let dxfMap: Uint32Array | undefined;
   const stylesPath = pkg.stylesPath();
   const stylesXml = stylesPath ? text(stylesPath) : undefined;
   if (stylesXml !== undefined) {
     const sh = new StylesHandler();
     parseStrict(stylesXml, sh, stylesPath!);
     xfMap = sh.apply(wb.styles);
+    dxfMap = sh.applyDxfs(wb.styles);
   }
+  const pctx: PackageReadCtx = {
+    workbook: wb,
+    readText: text,
+    readBytes: (path) => files.get(pkg.entry(path))?.bytes(),
+    relsOf: (path) => pkg.relsOf(path),
+  };
+  const features = sheetFeatures();
 
   let strings: StringItem[] = [];
   const sstPath = pkg.sstPath();
@@ -176,24 +247,38 @@ export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {})
     if (entry === undefined) continue;
     const ws = addSheet(wb, s);
     sheetMap.set(s.index, wb.worksheets.length - 1);
+    const rels = pkg.relsOf(s.path);
+    const fctx: SheetReadCtx = {
+      ...pctx,
+      ws,
+      path: s.path,
+      rels,
+      xf: (v) => (xfMap ? (xfMap[+v] ?? 0) : 0),
+      dxf: (v) => (dxfMap ? (dxfMap[+v] ?? 0) : 0),
+      scratch: new Map(),
+    };
     const ctx: SheetContext = {
       strings,
       xfMap,
       styles: wb.styles,
       date1904: wb.date1904,
-      rels: pkg.relsOf(s.path),
+      rels,
+      features,
+      featureCtx: fctx,
     };
     const h = new SheetHandler(ctx, ws);
     const p = new StrictXml(h, s.path);
     decodeChunks(entry.chunks(), (chunk) => p.write(chunk));
     p.end();
     h.finish();
+    for (const r of featureReaders!) r.finish?.(fctx);
     if (ws.autoFilter === undefined) {
       const af = filterDatabase(wbh.definedNames, s.index);
       if (af) ws.autoFilter = af;
     }
   }
   wb.definedNames = modelNames(wbh.definedNames, sheetMap);
+  for (const f of READERS) f.book?.(pctx);
   return wb;
 }
 

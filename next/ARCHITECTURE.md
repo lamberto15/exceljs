@@ -87,3 +87,21 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
 - Addresses: 0-based `(row, col)` internally; helpers `encodeCol(0)="A"`, `decodeCol`, `encodeAddr`, `decodeAddr("B3")`, `decodeRange("A1:C3")`.
 - Dates: `dateToSerial(d, date1904)`, `serialToDate(n, date1904)` (UTC based, Excel 1900 leap-year bug honored).
 - Built-in number formats table (ids 0–49) and `isDateFormat(fmt)` detection.
+- `StyleRegistry.internDxf(style)` → dxf index (`<dxfs>`, for conditional formatting / tables).
+- `Workbook.definedNames: DefinedName[]` (sheet scope = index into `worksheets`; `_xlnm._FilterDatabase`
+  is managed via `worksheet.autoFilter`). Reader/feature helpers: `ws._ensureRow(r0, capacity)`,
+  `RowProps.styleIndex`, `ws.addMergeRaw(range)` (unvalidated); `mergeCells` overlap checks are indexed.
+- Feature-owned optional fields (`ws.pageSetup`, `ws.protection`, ...) are declared type-only in
+  `src/core/features.ts` and merged into `Worksheet` / `Workbook`.
+
+## src/xlsx — read / write / features
+- `write/`: `writeXlsx` (sync, fflate), `xlsxStream` and `createXlsxWriter` (async, native deflate when
+  available). Sheet XML = head emitters + `encodeRow` (shared hot loop) + tail emitters. Package order:
+  each sheet part, then its feature parts and rels; workbook-level parts (workbook.xml, styles, sst,
+  rels, `[Content_Types].xml`, docProps) last, from `bookParts()` shared by all writers.
+- `read/`: `readXlsx` (DOM; lazy unzip, one part inflated at a time) and `xlsxRows` (streaming rows).
+- `features/`: extension points (`types.ts`) and the static registry (`registry.ts`: `WRITERS`,
+  `READERS`). Every worksheet element is produced by a `SheetEmitter` bound to a CT_Worksheet slot
+  (`SheetSlot`), built-ins included, so element order is global. Features also add package parts,
+  relationships and content types, and consume worksheet subtrees when reading (never inside
+  `sheetData`). How to add a feature: `src/xlsx/features/README.md`.

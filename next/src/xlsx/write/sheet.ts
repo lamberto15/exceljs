@@ -1,6 +1,9 @@
-// Worksheet XML: head (sheetPr … <sheetData>), the row/cell encoder (hot loop) and the tail
-// (</sheetData> autoFilter mergeCells hyperlinks pageMargins). The cell encoder `encodeRow` is
-// the single implementation shared by writeXlsx, xlsxStream and the streaming writer.
+// Worksheet XML: head (everything before <sheetData>), the row/cell encoder (hot loop) and the
+// tail (everything after </sheetData>). The cell encoder `encodeRow` is the single
+// implementation shared by writeXlsx, xlsxStream and the streaming writer.
+//
+// Head and tail are produced by SheetEmitters ordered by CT_Worksheet slot (features/types.ts):
+// the built-in ones below plus every registered feature's, so element order is global.
 //
 // Rich text is always written inline (<is><r>…</r></is>) — the shared string table only holds
 // plain strings. Hyperlink cells are written as their text (shared or inline per options) and
@@ -11,20 +14,74 @@ import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { CellError, Formula, Hyperlink, RichText, RichTextRun } from '../../core/types.js';
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
-import { colorAttrs, fontBody, type LinkRec, NS_MAIN, NS_R, tElem, XML_DECL } from './parts.js';
+import { WRITERS } from '../features/registry.js';
+import {
+  type SheetEmitter,
+  SheetPrOrder,
+  SheetSlot,
+  type SheetWriteCtx,
+} from '../features/types.js';
+import { type PackageParts, type PartRec, RelList, relsXml } from './package.js';
+import {
+  colorAttrs,
+  fontBody,
+  type LinkRec,
+  NS_MAIN,
+  NS_R,
+  sheetPath,
+  sheetRelsPath,
+  tElem,
+  XML_DECL,
+} from './parts.js';
 
-/** Mutable per-sheet encoding state. */
-export interface SheetCtx {
+/** Mutable per-sheet encoding state (also the features' SheetWriteCtx). */
+export interface SheetCtx extends SheetWriteCtx {
   /** Shared string table; undefined = inline strings. */
   readonly sst: SharedStrings | undefined;
   /** Hyperlinks collected while encoding (emitted in the sheet tail). */
   readonly links: LinkRec[];
   /** Set when any formula cell was written. */
   formulas: boolean;
+  /** Sheet relationships (written to the rels part after the sheet). */
+  readonly rels: RelList;
+  /** Used range ("A1:C10"); omitted when undefined (streaming). */
+  dimension: string | undefined;
+  /** Max row outline level (sheetFormatPr outlineLevelRow); 0 = unknown/none. */
+  outlineLevelRow: number;
+  tabSelected: boolean;
 }
 
-export function newSheetCtx(sst: SharedStrings | undefined): SheetCtx {
-  return { sst, links: [], formulas: false };
+export interface NewSheetCtx {
+  readonly sst: SharedStrings | undefined;
+  readonly pkg: PackageParts;
+  readonly ws: Worksheet;
+  readonly index: number;
+  readonly streaming: boolean;
+}
+
+export function newSheetCtx(o: NewSheetCtx): SheetCtx {
+  const pkg = o.pkg;
+  const rels = new RelList();
+  const ws = o.ws;
+  return {
+    sst: o.sst,
+    links: [],
+    formulas: false,
+    rels,
+    dimension: undefined,
+    outlineLevelRow: 0,
+    tabSelected: false,
+    ws,
+    workbook: ws.workbook,
+    styles: ws.workbook.styles,
+    index: o.index,
+    path: sheetPath(o.index),
+    streaming: o.streaming,
+    addRel: (type, target, external) => rels.add(type, target, external),
+    addPart: (path, data, ct) => pkg.addPart(path, data, ct),
+    addDefault: (ext, ct) => pkg.addDefault(ext, ct),
+    nextIndex: (f) => pkg.nextIndex(f),
+  };
 }
 
 // ---- caches (module level; contents are deterministic, so sharing is safe) -------------
@@ -172,15 +229,7 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
   return `${out}</row>`;
 }
 
-// ---- head ------------------------------------------------------------------------------
-
-export interface SheetHeadOptions {
-  /** Used range ("A1:C10"); omitted when undefined (streaming). */
-  readonly dimension?: string | undefined;
-  readonly tabSelected: boolean;
-  /** Max row outline level (sheetFormatPr outlineLevelRow); 0 = unknown/none. */
-  readonly outlineLevelRow?: number | undefined;
-}
+// ---- head & tail -----------------------------------------------------------------------
 
 function viewXml(v: WorksheetView | undefined, selected: boolean): string {
   let s = '<sheetView workbookViewId="0"';
@@ -214,16 +263,14 @@ function sameCol(a: Column, b: Column): boolean {
   );
 }
 
-function colsXml(cols: readonly (Column | undefined)[]): { xml: string; outline: number } {
+function colsXml(cols: readonly (Column | undefined)[]): string {
   let s = '';
-  let outline = 0;
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
     if (!c) continue;
     if (c.width === undefined && !c.hidden && !c.outlineLevel && !c.styleIndex) continue;
     let j = i;
     while (j + 1 < cols.length && cols[j + 1] && sameCol(c, cols[j + 1]!)) j++;
-    if (c.outlineLevel > outline) outline = c.outlineLevel;
     s += `<col min="${i + 1}" max="${j + 1}" width="${c.width ?? 9.140625}"${
       c.width !== undefined ? ' customWidth="1"' : ''
     }${c.hidden ? ' hidden="1"' : ''}${c.outlineLevel ? ` outlineLevel="${c.outlineLevel}"` : ''}${
@@ -231,49 +278,134 @@ function colsXml(cols: readonly (Column | undefined)[]): { xml: string; outline:
     }/>`;
     i = j;
   }
-  return { xml: s ? `<cols>${s}</cols>` : '', outline };
+  return s ? `<cols>${s}</cols>` : '';
 }
 
-/** Everything up to and including `<sheetData>`. */
-export function sheetHead(ws: Worksheet, o: SheetHeadOptions): string {
-  let s = `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`;
-  if (ws.tabColor) s += `<sheetPr><tabColor${colorAttrs(ws.tabColor)}/></sheetPr>`;
-  if (o.dimension) s += `<dimension ref="${o.dimension}"/>`;
-  s += `<sheetViews>${viewXml(ws.views[0], o.tabSelected)}</sheetViews>`;
-  const cols = colsXml(ws.columnData);
-  s += '<sheetFormatPr defaultRowHeight="15"';
-  if (o.outlineLevelRow) s += ` outlineLevelRow="${o.outlineLevelRow}"`;
-  if (cols.outline) s += ` outlineLevelCol="${cols.outline}"`;
-  return `${s}/>${cols.xml}<sheetData>`;
+function colOutline(cols: readonly (Column | undefined)[]): number {
+  let outline = 0;
+  for (const c of cols) if (c && c.outlineLevel > outline) outline = c.outlineLevel;
+  return outline;
 }
 
-/** `</sheetData>` through `</worksheet>`. Hyperlink r:ids match {@link sheetRelsXml}. */
-export function sheetTail(ws: Worksheet, ctx: SheetCtx): string {
-  let s = '</sheetData>';
-  if (ws.autoFilter) s += `<autoFilter ref="${escapeAttr(ws.autoFilter)}"/>`;
-  const merges = ws.mergeRanges;
-  if (merges.length > 0) {
-    s += `<mergeCells count="${merges.length}">`;
-    for (const m of merges) s += `<mergeCell ref="${encodeRange(m)}"/>`;
-    s += '</mergeCells>';
-  }
-  if (ctx.links.length > 0) {
-    s += '<hyperlinks>';
-    let id = 0;
-    for (const l of ctx.links) {
-      const tip = l.tooltip !== undefined ? ` tooltip="${escapeAttr(l.tooltip)}"` : '';
-      s +=
-        l.target.charCodeAt(0) === 35
-          ? `<hyperlink ref="${l.ref}" location="${escapeAttr(l.target.slice(1))}"${tip}/>`
-          : `<hyperlink ref="${l.ref}" r:id="rId${++id}"${tip}/>`;
+interface Emitter {
+  readonly slot: number;
+  readonly order?: number | undefined;
+  emit(ctx: SheetCtx): string;
+}
+
+/** Built-in worksheet elements (features add the rest, see features/types.ts SheetSlot). */
+const BUILTIN: readonly Emitter[] = [
+  {
+    slot: SheetSlot.sheetPr,
+    order: SheetPrOrder.tabColor,
+    emit: (c) => (c.ws.tabColor ? `<tabColor${colorAttrs(c.ws.tabColor)}/>` : ''),
+  },
+  {
+    slot: SheetSlot.dimension,
+    emit: (c) => (c.dimension ? `<dimension ref="${c.dimension}"/>` : ''),
+  },
+  {
+    slot: SheetSlot.sheetViews,
+    emit: (c) => `<sheetViews>${viewXml(c.ws.views[0], c.tabSelected)}</sheetViews>`,
+  },
+  {
+    slot: SheetSlot.sheetFormatPr,
+    emit: (c) => {
+      let s = '<sheetFormatPr defaultRowHeight="15"';
+      if (c.outlineLevelRow) s += ` outlineLevelRow="${c.outlineLevelRow}"`;
+      const oc = colOutline(c.ws.columnData);
+      if (oc) s += ` outlineLevelCol="${oc}"`;
+      return `${s}/>`;
+    },
+  },
+  { slot: SheetSlot.cols, emit: (c) => colsXml(c.ws.columnData) },
+  {
+    slot: SheetSlot.autoFilter,
+    emit: (c) => (c.ws.autoFilter ? `<autoFilter ref="${escapeAttr(c.ws.autoFilter)}"/>` : ''),
+  },
+  {
+    slot: SheetSlot.mergeCells,
+    emit: (c) => {
+      const merges = c.ws.mergeRanges;
+      if (merges.length === 0) return '';
+      let s = `<mergeCells count="${merges.length}">`;
+      for (const m of merges) s += `<mergeCell ref="${encodeRange(m)}"/>`;
+      return `${s}</mergeCells>`;
+    },
+  },
+  {
+    slot: SheetSlot.hyperlinks,
+    emit: (c) => {
+      if (c.links.length === 0) return '';
+      let s = '<hyperlinks>';
+      for (const l of c.links) {
+        const tip = l.tooltip !== undefined ? ` tooltip="${escapeAttr(l.tooltip)}"` : '';
+        s +=
+          l.target.charCodeAt(0) === 35
+            ? `<hyperlink ref="${l.ref}" location="${escapeAttr(l.target.slice(1))}"${tip}/>`
+            : `<hyperlink ref="${l.ref}" r:id="${c.addRel('hyperlink', l.target, true)}"${tip}/>`;
+      }
+      return `${s}</hyperlinks>`;
+    },
+  },
+];
+
+let emitters: Emitter[] | undefined;
+let worksheetOpen: string | undefined;
+
+/** Built-in + feature emitters, sorted by (slot, order); computed once. */
+function sheetEmitters(): Emitter[] {
+  if (emitters === undefined) {
+    const all: Emitter[] = [...BUILTIN];
+    let ns = '';
+    for (const f of WRITERS) {
+      for (const e of f.sheet?.emitters ?? []) all.push(e as SheetEmitter as Emitter);
+      for (const n of f.sheet?.namespaces ?? []) if (!ns.includes(n)) ns += ` ${n}`;
     }
-    s += '</hyperlinks>';
+    all.sort((a, b) => a.slot - b.slot || (a.order ?? 0) - (b.order ?? 0));
+    emitters = all;
+    worksheetOpen = `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"${ns}>`;
   }
-  return `${s}<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`;
+  return emitters;
 }
 
-/** True when the sheet needs a rels part (external hyperlinks). */
-export function hasExternalLinks(ctx: SheetCtx): boolean {
-  for (const l of ctx.links) if (l.target.charCodeAt(0) !== 35) return true;
-  return false;
+/** Run the emitters of slots [lo, hi]; container slots (sheetPr, extLst) are wrapped. */
+function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
+  let pr = '';
+  let s = '';
+  let ext = '';
+  for (const e of sheetEmitters()) {
+    if (e.slot < lo || e.slot > hi) continue;
+    const x = e.emit(ctx);
+    if (x === '') continue;
+    if (e.slot === SheetSlot.sheetPr) pr += x;
+    else if (e.slot === SheetSlot.extLst) ext += x;
+    else s += x;
+  }
+  if (pr) s = `<sheetPr>${pr}</sheetPr>${s}`;
+  if (ext) s += `<extLst>${ext}</extLst>`;
+  return s;
+}
+
+/** Everything up to and including `<sheetData>`. Set ctx.dimension/outlineLevelRow/tabSelected first. */
+export function sheetHead(ctx: SheetCtx): string {
+  const body = runEmitters(ctx, 0, SheetSlot.sheetData - 1);
+  return `${worksheetOpen}${body}<sheetData>`;
+}
+
+/** `</sheetData>` through `</worksheet>`. Allocates the sheet's relationships (see ctx.rels). */
+export function sheetTail(ctx: SheetCtx): string {
+  return `</sheetData>${runEmitters(ctx, SheetSlot.sheetData + 1, SheetSlot.extLst)}</worksheet>`;
+}
+
+/**
+ * Parts to write right after the sheet part: queued feature parts, then the sheet's rels part
+ * when it has relationships.
+ */
+export function afterSheetParts(ctx: SheetCtx, pkg: PackageParts): PartRec[] {
+  const out = pkg.take();
+  if (ctx.rels.recs.length > 0) {
+    out.push({ path: sheetRelsPath(ctx.index), data: relsXml(ctx.rels.recs) });
+  }
+  return out;
 }
