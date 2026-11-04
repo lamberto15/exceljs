@@ -6,13 +6,30 @@ type ZipFile = { push(data: Uint8Array | string, final?: boolean): void };
 
 const encoder = /* @__PURE__ */ new TextEncoder();
 
+/** Max uncompressed bytes queued for the native compressor before writers wait. */
+const QUEUE_MAX = 4 << 20;
+
 export class ZipOut {
   private readonly zip: ZipStreamWriter;
   private cur: ZipFile | undefined = undefined;
   private curPath = '';
 
-  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number) {
-    this.zip = new ZipStreamWriter(onData, level);
+  /**
+   * `native`: deflate with the platform's CompressionStream when available (async paths only;
+   * output then arrives asynchronously — use `ready()` for backpressure and await `idle()`).
+   */
+  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number, native = false) {
+    this.zip = new ZipStreamWriter(onData, level, { native });
+  }
+
+  /** Wait (async mode only) until little enough input is queued for compression. */
+  ready(): Promise<void> | undefined {
+    return this.zip.ready(QUEUE_MAX);
+  }
+
+  /** Resolves when everything written so far has been compressed and emitted. */
+  idle(): Promise<void> {
+    return this.zip.idle();
   }
 
   /** Append `data` to part `path` (opened on first use); `last` closes the part. */

@@ -2,8 +2,10 @@
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import ExcelJS from 'exceljs';
+import { unzipSync as rawUnzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { CellKind, Workbook } from '../src/core/index.js';
+import { readXlsx, xlsxRows } from '../src/xlsx/read/index.js';
 import {
   createXlsxWriter,
   resolveWriteOptions,
@@ -12,7 +14,7 @@ import {
   xlsxStream,
 } from '../src/xlsx/write/index.js';
 import { parseXml } from '../src/xml/index.js';
-import { unzipSync } from '../src/zip/index.js';
+import { nativeDeflateAvailable, unzipSync } from '../src/zip/index.js';
 
 const dec = new TextDecoder();
 
@@ -636,4 +638,39 @@ describe('createXlsxWriter', () => {
     // in-memory workbook of this size would need
     expect(samples[samples.length - 1]! - samples[0]!).toBeLessThan(64 * 1048576);
   }, 60_000);
+});
+
+describe('native CompressionStream path', () => {
+  it('is used in this runtime', () => {
+    expect(nativeDeflateAvailable()).toBe(true);
+  });
+
+  it('xlsxStream / createXlsxWriter output opens in our readers, fflate and exceljs', async () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('N');
+    for (let r = 0; r < 3000; r++) ws.addRow([r, `s${r % 50}`, r % 2 === 0, r * 1.5]);
+    const a = await readAll(xlsxStream(wb));
+    const chunks: Uint8Array[] = [];
+    const w = createXlsxWriter({ sink: (c) => void chunks.push(c), flushRows: 100 });
+    const s = w.addWorksheet('N');
+    for (let r = 0; r < 3000; r++) s.addRow([r, `s${r % 50}`, r % 2 === 0, r * 1.5]);
+    await w.end();
+    const b = await readAll(new Blob(chunks as BlobPart[]).stream());
+    for (const buf of [a, b]) {
+      // local headers use data descriptors (flag bit 3), deflate method 8
+      const dv = new DataView(buf.buffer, buf.byteOffset);
+      expect(dv.getUint32(0, true)).toBe(0x04034b50);
+      expect(dv.getUint16(6, true) & 8).toBe(8);
+      expect(dv.getUint16(8, true)).toBe(8);
+      expect(rawUnzipSync(buf)['xl/worksheets/sheet1.xml']!.length).toBeGreaterThan(50_000);
+      const ours = readXlsx(buf).getWorksheet('N')!;
+      expect(ours.getValue('B2999')).toBe('s48');
+      let n = 0;
+      for await (const row of xlsxRows(buf)) n += row.values.length;
+      expect(n).toBe(12_000);
+      const x = (await oracle(buf)).getWorksheet('N')!;
+      expect(x.getCell('A3000').value).toBe(2999);
+      expect(x.getCell('D3000').value).toBe(2999 * 1.5);
+    }
+  });
 });

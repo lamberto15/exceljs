@@ -140,26 +140,25 @@ export function xlsxStream(wb: Workbook, opts?: WriteOptions): ReadableStream<Ui
   const o = resolveWriteOptions(opts);
   let gen: Generator<Piece, void, undefined> | undefined;
   let zip: ZipOut | undefined;
-  let out: Uint8Array[] = [];
   return new ReadableStream<Uint8Array>({
-    start() {
+    start(controller) {
       gen = pieces(wb, o);
-      zip = new ZipOut((c) => void out.push(c), o.compression);
+      // Native CompressionStream (when available) deflates off the main thread; chunks are
+      // enqueued as the compressor produces them.
+      zip = new ZipOut((c) => c.length > 0 && controller.enqueue(c), o.compression, true);
     },
-    pull(controller) {
+    async pull(controller) {
       for (;;) {
         const r = gen!.next();
-        if (r.done) zip!.end();
-        else zip!.write(r.value.path, r.value.data, r.value.last);
-        if (out.length > 0) {
-          const batch = out;
-          out = [];
-          for (const c of batch) controller.enqueue(c);
-        }
         if (r.done) {
+          zip!.end();
+          await zip!.idle();
           controller.close();
           return;
         }
+        zip!.write(r.value.path, r.value.data, r.value.last);
+        const w = zip!.ready();
+        if (w) await w;
         if ((controller.desiredSize ?? 0) <= 0) return;
       }
     },

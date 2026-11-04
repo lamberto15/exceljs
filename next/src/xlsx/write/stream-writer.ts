@@ -18,7 +18,9 @@
 //   commit (memory ∝ hyperlink count).
 // - Output goes to `sink` (awaited sequentially when it returns a promise) or to `readable`.
 //   addRow() is synchronous; call `await sheet.flush()` periodically (or use `addRows`) to apply
-//   backpressure. In readable mode commit()/end() never wait for the consumer (so writing
+//   backpressure (with native CompressionStream deflate, compression is asynchronous: rows
+//   added in a synchronous loop queue their XML until the next await, so flush() also bounds
+//   that queue). In readable mode commit()/end() never wait for the consumer (so writing
 //   everything before reading cannot deadlock); flush()/addRows() do.
 
 import { SharedStrings } from '../../core/sharedstrings.js';
@@ -306,7 +308,8 @@ export class XlsxWriter {
         { highWaterMark: hwm, size: (c) => c.byteLength },
       );
     }
-    this._zip = new ZipOut((chunk, final) => this._out(chunk, final), this._o.compression);
+    // native CompressionStream when available: deflate runs off the main thread
+    this._zip = new ZipOut((chunk, final) => this._out(chunk, final), this._o.compression, true);
   }
 
   /** Add a worksheet. Commits the currently open sheet (sheets are written sequentially). */
@@ -470,6 +473,8 @@ export class XlsxWriter {
 
   /** @internal Wait for the consumer (sink queue drained / readable below its high-water mark). */
   async _drain(): Promise<void> {
+    const z = this._zip.ready();
+    if (z) await z;
     if (this._sink) {
       while (this._busy) await this._busy;
     } else {
@@ -485,6 +490,7 @@ export class XlsxWriter {
 
   /** @internal commit()/end(): sink mode waits for delivery; readable mode never blocks. */
   async _settle(): Promise<void> {
+    await this._zip.idle();
     if (this._sink) await this._drain();
     else this._throwIfFailed();
   }

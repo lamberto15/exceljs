@@ -11,6 +11,7 @@ import {
 } from 'fflate';
 import type { Limits } from '../core/types.js';
 import { Budget, ZipLimitError, ZipPathError } from './limits.js';
+import { Inflight, NativeDeflateFile, nativeDeflateAvailable } from './native.js';
 
 export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 
@@ -41,29 +42,69 @@ export function zipSync(entries: ZipEntryIn[], level: number): Uint8Array {
   return fflateZipSync(z);
 }
 
+export interface ZipStreamOptions {
+  /**
+   * Deflate entries with the platform's native `CompressionStream('deflate-raw')` when
+   * available (output then arrives asynchronously: await `idle()` before relying on it).
+   * Native deflate has no level setting; level-0 entries are still stored.
+   */
+  native?: boolean;
+}
+
 export class ZipStreamWriter {
   readonly #zip: Zip;
   readonly #level: number;
+  readonly #native: Inflight | undefined;
 
-  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number) {
+  constructor(
+    onData: (chunk: Uint8Array, final: boolean) => void,
+    level: number,
+    opts?: ZipStreamOptions,
+  ) {
     this.#level = level;
+    const native = opts?.native && nativeDeflateAvailable() ? new Inflight() : undefined;
+    this.#native = native;
     this.#zip = new Zip((err, chunk, final) => {
       if (err) throw err;
       onData(chunk, final);
     });
   }
 
+  /** True when entries are compressed asynchronously by the native deflater. */
+  get async(): boolean {
+    return this.#native !== undefined;
+  }
+
   /** Add a file. Push data incrementally; pass `final = true` on the last push to close it. */
   file(path: string, level?: number): { push(data: Uint8Array | string, final?: boolean): void } {
     const lvl = level ?? this.#level;
+    const n = this.#native;
+    if (n?.error !== undefined) throw n.error;
     const f: ZipInputFile & { push(chunk: Uint8Array, final?: boolean): void } =
-      lvl === 0 ? new ZipPassThrough(path) : new ZipDeflate(path, { level: lvl as Level });
+      lvl === 0
+        ? new ZipPassThrough(path)
+        : n
+          ? new NativeDeflateFile(path, n)
+          : new ZipDeflate(path, { level: lvl as Level });
     this.#zip.add(f);
     return {
       push(data, final = false) {
         f.push(typeof data === 'string' ? strToU8(data) : data, final);
       },
     };
+  }
+
+  /**
+   * Backpressure for async (native) mode: resolves once at most `maxBytes` of pushed input is
+   * still waiting for the compressor; undefined when no wait is needed (always, in sync mode).
+   */
+  ready(maxBytes: number): Promise<void> | undefined {
+    return this.#native?.below(maxBytes);
+  }
+
+  /** Resolves when all pushed data has been compressed and emitted (immediately in sync mode). */
+  idle(): Promise<void> {
+    return this.#native ? this.#native.idle() : Promise.resolve();
   }
 
   end(): void {

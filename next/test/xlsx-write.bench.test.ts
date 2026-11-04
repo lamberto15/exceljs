@@ -9,7 +9,10 @@ import ExcelJS from 'exceljs';
 import { describe, it } from 'vitest';
 import { Workbook } from '../src/core/index.js';
 import type { Profile } from '../src/core/types.js';
-import { createXlsxWriter, writeXlsx } from '../src/xlsx/write/index.js';
+import { createXlsxWriter, writeXlsx, xlsxStream } from '../src/xlsx/write/index.js';
+
+// NO_NATIVE=1 hides CompressionStream so the async writers use fflate (A/B comparison).
+if (process.env.NO_NATIVE) delete (globalThis as { CompressionStream?: unknown }).CompressionStream;
 
 const ROWS = Number(process.env.BENCH_ROWS ?? 100_000);
 const COLS = 20;
@@ -84,6 +87,58 @@ function oursBuffered(profile: Profile): number {
   return buf.length;
 }
 
+function buildWorkbook(): Workbook {
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.columns = Array.from({ length: COLS }, (_, c) => ({
+    width: 12,
+    style: c >= 17 ? MONEY : undefined,
+  }));
+  const row: unknown[] = new Array(COLS);
+  for (let r = 0; r < ROWS; r++) {
+    // biome-ignore lint/suspicious/noExplicitAny: bench data
+    ws.addRow(makeRow(r, row) as any, r % 10 === 0 ? BOLD : undefined);
+    if (r % 5000 === 0) sample();
+  }
+  return wb;
+}
+
+async function oursXlsxStream(profile: Profile): Promise<number> {
+  const wb = buildWorkbook();
+  let bytes = 0;
+  const reader = xlsxStream(wb, { profile }).getReader();
+  for (;;) {
+    const r = await reader.read();
+    if (r.done) break;
+    bytes += r.value.length;
+    sample();
+  }
+  return bytes;
+}
+
+async function oursStreamingAsync(profile: Profile): Promise<number> {
+  let bytes = 0;
+  const w = createXlsxWriter({ profile, sink: (c) => void (bytes += c.length) });
+  const s = w.addWorksheet('Data', {
+    columns: Array.from({ length: COLS }, (_, c) => ({
+      width: 12,
+      style: c >= 17 ? MONEY : undefined,
+    })),
+  });
+  const row: unknown[] = new Array(COLS);
+  for (let r = 0; r < ROWS; r++) {
+    // biome-ignore lint/suspicious/noExplicitAny: bench data
+    s.addRow(makeRow(r, row) as any, r % 10 === 0 ? BOLD : undefined);
+    if (r % 1000 === 999) {
+      sample();
+      await s.flush();
+    }
+  }
+  await s.commit();
+  await w.end();
+  return bytes;
+}
+
 async function oursStreaming(profile: Profile): Promise<number> {
   let bytes = 0;
   const w = createXlsxWriter({ profile, sink: (c) => void (bytes += c.length) });
@@ -148,6 +203,12 @@ describe.skipIf(!process.env.RUN_BENCH)('xlsx write benchmark', () => {
     }
     for (const p of ['balanced', 'low-memory', 'max-speed'] as const) {
       await measure(`ours createXlsxWriter (${p})`, () => oursStreaming(p));
+    }
+    for (const p of ['balanced', 'low-memory', 'max-speed'] as const) {
+      await measure(`ours createXlsxWriter+flush (${p})`, () => oursStreamingAsync(p));
+    }
+    for (const p of ['balanced', 'low-memory', 'max-speed'] as const) {
+      await measure(`ours xlsxStream (${p})`, () => oursXlsxStream(p));
     }
     await measure('exceljs xlsx.writeBuffer', exceljsBuffered);
     await measure('exceljs WorkbookWriter (sharedStrings)', () => exceljsStreaming(true));
