@@ -273,7 +273,7 @@ Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. 
 | --- | --- | --- |
 | `XlsxParseError` | `readXlsx`, `xlsxRows` | Broken XML or package structure. |
 | `EncryptedFileError` (extends `XlsxParseError`) | `readXlsx` | Input is an OLE container (password-protected, or a legacy `.xls`); use `decryptXlsx`. |
-| `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path. Thrown, but the classes are not exported from the entry points in 0.1.0: match on `err.name`/`err.message`. |
+| `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `xlsxkit` and `xlsxkit/lite`. |
 | `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `xlsxkit/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
 | `CsvError` | `xlsxkit/csv` | Option or size-limit problem. |

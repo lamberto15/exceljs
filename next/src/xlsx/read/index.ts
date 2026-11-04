@@ -6,6 +6,8 @@ import type { Workbook } from '../../core/workbook.js';
 import { READERS, withAll } from '../features/registry.js';
 import { readXlsx as readCore } from './reader.js';
 
+export { ZipLimitError, ZipPathError } from '../../zip/limits.js';
+
 export {
   EncryptedFileError,
   type SheetEntry,

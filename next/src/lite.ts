@@ -31,3 +31,4 @@ export {
   XlsxWriter,
   type XlsxWriterOptions,
 } from './xlsx/write/stream-writer.js';
+export { ZipLimitError, ZipPathError } from './zip/limits.js';
