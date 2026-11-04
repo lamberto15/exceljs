@@ -1,0 +1,187 @@
+# Features
+
+Every feature is available on `xlsxkit`. On `xlsxkit/lite` you opt in per call (see [Lite](#lite-opt-in-features)). Field-by-field options are in [api.md](./api.md#features). All samples assume `wb` is a `Workbook` and `ws` one of its sheets.
+
+- [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
+- [Styles and number formats](#styles-and-number-formats)
+- [Tables](#tables)
+- [Notes (comments)](#notes-comments)
+- [Pictures](#pictures)
+- [Conditional formatting](#conditional-formatting)
+- [Data validation](#data-validation)
+- [Defined names, print area and titles](#defined-names-print-area-and-titles)
+- [Print setup and headers/footers](#print-setup-and-headersfooters)
+- [Sheet protection](#sheet-protection)
+- [Round-trip preservation](#round-trip-preservation)
+- [Streaming with features](#streaming-with-features)
+- [Encryption](#encryption)
+- [Lite: opt-in features](#lite-opt-in-features)
+
+## Cell values, rich text, hyperlinks, formulas
+
+```ts
+ws.setCell('A1', 'plain text');
+ws.setCell('A2', { richText: [{ text: 'bold ', font: { bold: true } }, { text: 'and plain' }] });
+ws.setCell('A3', { text: 'xlsxkit', hyperlink: 'https://example.com', tooltip: 'Home page' });
+ws.setCell('B1', 10);
+ws.setCell('B2', 32);
+ws.setCell('B3', { formula: 'SUM(B1:B2)', result: 42 }); // cached result is written as given
+ws.setCell('C1', new Date(Date.UTC(2025, 5, 1)));        // gets a default date format
+ws.setCell('C2', { error: '#N/A' });
+```
+
+xlsxkit never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
+
+## Styles and number formats
+
+```ts
+ws.setStyle('A1', {
+  font: { name: 'Calibri', size: 12, bold: true, color: { argb: 'FFFFFFFF' } },
+  fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F5597' } },
+  alignment: { horizontal: 'center', wrapText: true },
+  border: { bottom: { style: 'thin', color: { argb: 'FF000000' } } },
+});
+ws.getCell('B1').numFmt = '#,##0.00';
+ws.getColumn('B').width = 14;
+```
+
+Styles are values: assign a new object to change one, do not mutate `getStyle()` results. Equal styles share one entry in `styles.xml`, so styling a million cells with the same object is cheap. For hot loops intern once and pass the index: `const xf = wb.styles.intern(style); ws.setCell(r, c, v, xf)`.
+
+## Tables
+
+```ts
+addTable(ws, {
+  name: 'Sales',
+  columns: ['Region', { name: 'Units', totalsRowFunction: 'sum' }],
+  rows: [['North', 120], ['South', 80]],
+  totalsRow: true,
+  style: { theme: 'TableStyleMedium2', showRowStripes: true },
+});
+```
+
+Writes the header, data and totals cells (`SUBTOTAL` formulas) and the table part. `ref`/`topLeft` position it; `calculatedColumnFormula`, `headerStyle`/`dataStyle`/`totalsStyle` (per table or per column) are supported. Existing tables are read into `ws.tables` and can be edited.
+
+## Notes (comments)
+
+```ts
+addNote(ws, 'B2', 'Check this value');
+addNote(ws, 'B3', { text: 'Approved', author: 'Ann', visible: true, width: 200, height: 60 });
+addNote(ws, 'B4', { richText: [{ text: 'Important', font: { bold: true } }] });
+```
+
+These are classic notes (legacy comments with a VML box). Threaded comments in existing files are preserved, not modelled.
+
+## Pictures
+
+```ts
+const id = addImage(wb, { data: pngBytes, extension: 'png' }); // or { base64: '...' }
+placeImage(ws, id, 'D2:F6');                                    // stretch over a range
+placeImage(ws, id, { tl: 'H2', ext: { width: 120, height: 80 } }, { description: 'Logo' });
+ws.backgroundImage = id;                                        // sheet background
+```
+
+## Conditional formatting
+
+```ts
+addConditionalFormatting(ws, 'B2:B20', [
+  { type: 'cellIs', operator: 'greaterThan', formulae: [100], style: { font: { bold: true } } },
+]);
+addConditionalFormatting(ws, 'C2:C20', [
+  { type: 'colorScale', colors: [{ argb: 'FFF8696B' }, { argb: 'FF63BE7B' }] },
+]);
+addConditionalFormatting(ws, 'D2:D20', [{ type: 'dataBar', color: { argb: 'FF638EC6' } }]);
+```
+
+## Data validation
+
+```ts
+addDataValidation(ws, { sqref: 'A2:A20', type: 'list', values: ['North', 'South', 'East'] });
+addDataValidation(ws, {
+  sqref: 'B2:B20',
+  type: 'whole',
+  operator: 'between',
+  formula1: 0,
+  formula2: 1000,
+  showErrorMessage: true,
+  errorTitle: 'Units',
+  error: 'Enter a whole number from 0 to 1000',
+});
+```
+
+## Defined names, print area and titles
+
+```ts
+addDefinedName(wb, 'Rate', '0.2');
+addDefinedName(wb, 'Totals', 'Data!B2:B20');
+setPrintArea(ws, 'A1:D50');
+setPrintTitles(ws, { rows: '1:1' });
+getPrintArea(ws); // ['A1:D50']
+```
+
+## Print setup and headers/footers
+
+```ts
+ws.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+ws.headerFooter = { oddHeader: '&CMonthly report', oddFooter: '&LPage &P of &N' };
+```
+
+## Sheet protection
+
+```ts
+ws.protection = { password: 's3cret', formatCells: false, insertRows: false };
+```
+
+`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
+
+## Round-trip preservation
+
+`readXlsx` keeps what the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, themes, custom XML, unknown worksheet elements, ...) and `writeXlsx`/`xlsxStream` write it back, so loading a file, editing cells and saving does not strip it.
+
+```ts
+const wb = readXlsx(bytes);                 // preserveUnknown defaults to true
+listPreservedParts(wb);                     // [{ path: 'xl/charts/chart1.xml', contentType: '...' }, ...]
+wb.getWorksheet('Data')!.setCell('A1', 'edited');
+const out = writeXlsx(wb);                  // charts and pivots are still there
+```
+
+- `readXlsx(bytes, { preserveUnknown: false })` drops them (and does not retain the input buffer).
+- Kept parts stay compressed inside the input buffer until written: do not mutate `bytes` after reading.
+- Parts reachable only from removed or renamed sheets are dropped. Delete `wb.preserved` / `ws.preserved` to drop content explicitly.
+- `createXlsxWriter` starts from a new private workbook and never carries preserved content.
+
+## Streaming with features
+
+The streaming writer exposes metadata-only sheets, so sheet-level features work as long as they do not need the cells:
+
+```ts
+const w = createXlsxWriter({ sink });
+const s = w.addWorksheet('Data', { columns: [{ header: 'Region', key: 'region' }], freeze: 1 });
+s.worksheet.dataValidations = [{ sqref: 'A2:A1000', type: 'list', values: ['North', 'South'] }];
+for (const r of rows) s.addRow(r);
+await s.commit();
+await w.end();
+```
+
+`addTable` writes cells into a worksheet that holds them, so use it with the buffered `Workbook`/`writeXlsx` path.
+
+## Encryption
+
+See [`xlsxkit/crypto` in api.md](./api.md#crypto):
+
+```ts
+const encrypted = await encryptXlsx(writeXlsx(wb), 'hunter2');
+const wb2 = readXlsx(await decryptXlsx(encrypted, 'hunter2'));
+```
+
+## Lite: opt-in features
+
+```ts
+import { Workbook, addTable, readXlsx, tablesReader, tablesWriter, writeXlsx } from 'xlsxkit/lite';
+
+const wb = new Workbook();
+addTable(wb.addWorksheet('Data'), { name: 'T', columns: ['Region', 'Units'], rows: [['N', 1]] });
+const bytes = writeXlsx(wb, { features: [tablesWriter] });
+const back = readXlsx(bytes, { features: [tablesReader] });
+```
+
+Without a feature enabled, writing its field throws, and reading keeps its XML raw and writes it back unchanged. Details and size numbers: [bundle-size.md](./bundle-size.md).
