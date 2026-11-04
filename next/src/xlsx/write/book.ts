@@ -86,7 +86,13 @@ export function bookParts(
       book.sheets.map((s) => s.sheetId),
     );
     extra.push(...pres.frags);
-    info = { ...book, prAttrs: pb?.prAttrs, calcAttrs: pb?.calcAttrs, extraSheets: pres.sheets };
+    info = {
+      ...book,
+      prAttrs: pb?.prAttrs,
+      calcAttrs: pb?.calcAttrs,
+      extraSheets: pres.sheets,
+      at: pres.at,
+    };
     const root = new RelList(4);
     for (const r of pres.root) {
       const t = r.target;

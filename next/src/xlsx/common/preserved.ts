@@ -50,7 +50,10 @@ export interface PresWrite {
     ids: readonly number[],
   ): {
     readonly frags: [number, string, number][];
-    readonly sheets: string;
+    /** Kept non-worksheet `<sheet>`s by position (see BookInfo.extraSheets). */
+    readonly sheets: string[];
+    /** Worksheet index → position in `<sheets>`. */
+    readonly at: number[] | undefined;
     readonly root: PRel[];
   };
 }
@@ -131,12 +134,18 @@ export interface PSheet {
   readonly w: PresWrite;
 }
 
-/** A non-worksheet sheet (chartsheet, dialogsheet, macrosheet) kept in `<sheets>`. */
+/**
+ * A non-worksheet sheet (chartsheet, dialogsheet, macrosheet) kept in `<sheets>`. Tab order:
+ * written right after the worksheet it followed in the file (`prev`), or, when that one is gone,
+ * right before the one it preceded (`next`), else last.
+ */
 export interface PForeignSheet {
   readonly name: string;
   readonly sheetId: number;
   readonly state: string;
   readonly rel: PRel;
+  readonly prev: Worksheet | undefined;
+  readonly next: Worksheet | undefined;
 }
 
 export interface PBook {

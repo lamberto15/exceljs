@@ -325,7 +325,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   wb.definedNames = modelNames(wbh.definedNames, sheetMap);
   for (const f of readers) f.book?.(pctx);
-  pres?.book(wb, wbPath, wbXml, wbh.sheets, filter, stylesXml, dxfMap, named);
+  pres?.book(wb, wbPath, wbXml, wbh.sheets, filter, stylesXml, dxfMap, named, sheetMap);
   return wb;
 }
 

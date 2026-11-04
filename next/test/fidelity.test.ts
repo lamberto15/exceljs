@@ -472,3 +472,106 @@ describe('fidelity: form controls on a sheet with notes (legacy VML merge)', () 
     expect(text(z, SHEET1)).toContain('<control shapeId="1026"');
   });
 });
+
+// ---------------------------------------------------------------- tab order
+
+describe('fidelity: chartsheets keep their tab position', () => {
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const CS = (n: number): string =>
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<chartsheet xmlns="${NS}"><sheetPr/><sheetViews><sheetView workbookViewId="0" zoomScale="${100 + n}"/></sheetViews><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></chartsheet>`;
+
+  /** Data, C1 (chartsheet), Other (selected), C2; names scoped by file position. */
+  function src(): Uint8Array {
+    const wb = new Workbook();
+    const d = wb.addWorksheet('Data');
+    d.addRow(['a', 'b']);
+    d.addRow([1, 2]);
+    d.autoFilter = 'A1:B2';
+    const o = wb.addWorksheet('Other');
+    o.addRow(['x']);
+    o.views = [{ state: 'normal', tabSelected: true }];
+    const b = writeXlsx(wb);
+    const z = unzipSync(b);
+    const ct = 'application/vnd.openxmlformats-officedocument.spreadsheetml.chartsheet+xml';
+    return patch(b, {
+      'xl/workbook.xml': text(z, 'xl/workbook.xml')
+        .replace(
+          /(<sheet name="Data"[^>]*\/>)(<sheet name="Other"[^>]*\/>)/,
+          '$1<sheet name="C1" sheetId="7" r:id="rIdC1"/>$2<sheet name="C2" sheetId="8" state="hidden" r:id="rIdC2"/>',
+        )
+        .replace(
+          '</definedNames>',
+          '<definedName name="Local" localSheetId="2">Other!$A$1</definedName><definedName name="OnChart" localSheetId="1">Data!$A$1</definedName></definedNames>',
+        )
+        .replace(/ activeTab="1"/, ' activeTab="2"'),
+      'xl/_rels/workbook.xml.rels': text(z, 'xl/_rels/workbook.xml.rels').replace(
+        '</Relationships>',
+        `<Relationship Id="rIdC1" Type="${REL}/chartsheet" Target="chartsheets/sheet1.xml"/><Relationship Id="rIdC2" Type="${REL}/chartsheet" Target="chartsheets/sheet2.xml"/></Relationships>`,
+      ),
+      'xl/chartsheets/sheet1.xml': CS(1),
+      'xl/chartsheets/sheet2.xml': CS(2),
+      '[Content_Types].xml': text(z, '[Content_Types].xml').replace(
+        '</Types>',
+        `<Override PartName="/xl/chartsheets/sheet1.xml" ContentType="${ct}"/><Override PartName="/xl/chartsheets/sheet2.xml" ContentType="${ct}"/></Types>`,
+      ),
+    });
+  }
+
+  const order = (out: Uint8Array): string[] =>
+    [...text(unzipSync(out), 'xl/workbook.xml').matchAll(/<sheet name="([^"]+)"/g)].map(
+      (m) => m[1]!,
+    );
+  const names = (out: Uint8Array): Record<string, string> =>
+    Object.fromEntries(
+      [
+        ...text(unzipSync(out), 'xl/workbook.xml').matchAll(
+          /<definedName name="([^"]+)" localSheetId="(\d+)"/g,
+        ),
+      ].map((m) => [m[1]!, m[2]!]),
+    );
+
+  it('interleaved order, activeTab and sheet-scoped names follow the file positions', async () => {
+    const s = src();
+    expect(order(s)).toEqual(['Data', 'C1', 'Other', 'C2']);
+    const wb = readXlsx(s);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Data', 'Other']);
+    expect(wb.definedNames.find((n) => n.name === 'Local')!.localSheetId).toBe(1);
+    const out = writeXlsx(wb);
+    checkPackage(unzipSync(out));
+    expect(order(out)).toEqual(['Data', 'C1', 'Other', 'C2']);
+    const w = text(unzipSync(out), 'xl/workbook.xml');
+    expect(w).toContain('activeTab="2"');
+    expect(w).toContain('<sheet name="C2" sheetId="8" state="hidden"');
+    expect(names(out)).toEqual({ '_xlnm._FilterDatabase': '0', Local: '2' });
+    // stable
+    expect(order(trip(out))).toEqual(['Data', 'C1', 'Other', 'C2']);
+    expect(names(trip(out))).toEqual(names(out));
+    const x = await exceljsLoads(out);
+    expect(x.worksheets.map((ws) => ws.name)).toEqual(['Data', 'Other']);
+  });
+
+  it('a worksheet added by the user goes last; chartsheets keep their neighbours', () => {
+    const wb = readXlsx(src());
+    wb.addWorksheet('New');
+    wb.worksheets[2]!.views = [{ state: 'normal', tabSelected: true }];
+    wb.worksheets[1]!.views = [];
+    const out = writeXlsx(wb);
+    checkPackage(unzipSync(out));
+    expect(order(out)).toEqual(['Data', 'C1', 'Other', 'C2', 'New']);
+    expect(text(unzipSync(out), 'xl/workbook.xml')).toContain('activeTab="4"');
+  });
+
+  it('removed neighbours: after the previous worksheet, else before the next one, else last', () => {
+    const a = readXlsx(src());
+    a.removeWorksheet('Data');
+    expect(order(writeXlsx(a))).toEqual(['C1', 'Other', 'C2']);
+    const b = readXlsx(src());
+    b.removeWorksheet('Other');
+    expect(order(writeXlsx(b))).toEqual(['Data', 'C1', 'C2']);
+  });
+
+  it('chart-sheet.xlsx (real file): the chartsheet stays the first tab', () => {
+    expect(order(trip(fixture('chart-sheet.xlsx')))).toEqual(['Chart1', 'Sheet1']);
+  });
+});

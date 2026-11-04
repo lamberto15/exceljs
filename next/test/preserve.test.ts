@@ -128,9 +128,11 @@ describe('preserve: real fixtures', () => {
     }
     expect(z['xl/chartsheets/sheet1.xml']).toBeDefined();
     expect(text(z, 'xl/chartsheets/sheet1.xml')).not.toContain('tabSelected');
+    // original tab order: the chartsheet comes first; the active tab is still the worksheet
     expect(text(z, 'xl/workbook.xml')).toMatch(
-      /<sheet name="Sheet1" sheetId="1" r:id="rId1"\/><sheet name="Chart1" sheetId="9" r:id="rId\d+"\/>/,
+      /<sheet name="Chart1" sheetId="9" r:id="rId\d+"\/><sheet name="Sheet1" sheetId="1" r:id="rId1"\/>/,
     );
+    expect(text(z, 'xl/workbook.xml')).toContain('activeTab="1"');
     // a new worksheet gets an id no kept sheet uses
     const wb2 = readXlsx(src);
     wb2.addWorksheet('New');

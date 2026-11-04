@@ -39,7 +39,10 @@ export interface BookInfo {
   /** Preserved (round-trip) pieces: raw workbookPr / calcPr attributes, extra `<sheet>`s. */
   readonly prAttrs?: string | undefined;
   readonly calcAttrs?: string | undefined;
-  readonly extraSheets?: string | undefined;
+  /** Kept non-worksheet `<sheet>`s placed before worksheet i (index = sheets.length: last). */
+  readonly extraSheets?: readonly string[] | undefined;
+  /** Worksheet index → position in `<sheets>` (activeTab, localSheetId); identity if absent. */
+  readonly at?: readonly number[] | undefined;
 }
 
 export const sheetPath = (i: number): string => `xl/worksheets/sheet${i + 1}.xml`;
@@ -133,12 +136,15 @@ function definedNameXml(
  * order with the built-ins (slot 18 = extLst children, wrapped in one <extLst>).
  */
 export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []): string {
+  const at = b.at;
+  const tab = at ? at[b.activeTab]! : b.activeTab;
+  const x = b.extraSheets;
   const parts: [number, string][] = [
     [2, `<workbookPr${b.date1904 ? ' date1904="1"' : ''}${b.prAttrs ?? ''}/>`],
     [
       4,
       `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="12300"${
-        b.activeTab > 0 ? ` firstSheet="0" activeTab="${b.activeTab}"` : ''
+        tab > 0 ? ` firstSheet="0" activeTab="${tab}"` : ''
       }/></bookViews>`,
     ],
   ];
@@ -156,7 +162,7 @@ export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []
   }
   for (let i = 0; i < b.sheets.length; i++) {
     const sh = b.sheets[i]!;
-    sheets += `<sheet name="${escapeAttr(sh.name)}" sheetId="${sh.sheetId}"${
+    sheets += `${x?.[i] ?? ''}<sheet name="${escapeAttr(sh.name)}" sheetId="${sh.sheetId}"${
       sh.state !== 'visible' ? ` state="${sh.state}"` : ''
     } r:id="rId${i + 1}"/>`;
     if (
@@ -171,7 +177,13 @@ export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []
       );
     }
   }
-  parts.push([5, `${sheets}${b.extraSheets ?? ''}</sheets>`]);
+  parts.push([5, `${sheets}${x?.[b.sheets.length] ?? ''}</sheets>`]);
+  // scopes are worksheet indices: positions in <sheets> when kept chartsheets are interleaved
+  if (at)
+    names = names.replace(
+      /(<definedName name="[^"]*" localSheetId=")(\d+)/g,
+      (_, p, i) => p + at[+i],
+    );
   if (names) parts.push([8, `<definedNames>${names}</definedNames>`]);
   parts.push([
     9,

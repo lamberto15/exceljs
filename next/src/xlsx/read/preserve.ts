@@ -441,7 +441,8 @@ export class Preserver {
     filter: Set<string> | undefined,
     stylesXml: string | undefined,
     dxfMap: Uint32Array | undefined,
-    named?: IdMaps,
+    named: IdMaps | undefined,
+    sheetMap: ReadonlyMap<number, number>,
   ): void {
     const rels = this.pkg.relsOf(wbPath);
     const frags: [number, number, string][] = [];
@@ -500,7 +501,13 @@ export class Preserver {
     );
     const names = new Set(wb.worksheets.map((w) => w.name.toLowerCase()));
     const sheets: PForeignSheet[] = [];
-    for (const e of entries) {
+    /** The loaded worksheet of file sheet index j. */
+    const wsAt = (j: number): Worksheet | undefined => {
+      const k = sheetMap.get(j);
+      return k === undefined ? undefined : wb.worksheets[k];
+    };
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]!;
       const r = e.rId !== undefined ? rels?.get(e.rId) : undefined;
       if (!r || r.external || relTypeIs(r.type, 'worksheet') || !SHEETISH.test(r.type)) continue;
       const lower = e.name.toLowerCase();
@@ -511,11 +518,17 @@ export class Preserver {
       const data = p.data;
       (p as { data: () => Uint8Array }).data = () =>
         new TextEncoder().encode(decodePart(data()).replace(/ tabSelected="(1|true)"/g, ''));
+      let prev: Worksheet | undefined;
+      let next: Worksheet | undefined;
+      for (let j = i - 1; j >= 0 && !prev; j--) prev = wsAt(j);
+      for (let j = i + 1; j < entries.length && !next; j++) next = wsAt(j);
       sheets.push({
         name: e.name,
         sheetId: e.sheetId,
         state: e.state,
         rel: { type: r.type, target: p },
+        prev,
+        next,
       });
     }
     const implicit: number[] = [];

@@ -272,23 +272,40 @@ function presBook(
   }
   const pb = wb.preserved;
   const frags: [number, string, number][] = [];
-  let sheets = '';
+  const ws = wb.worksheets;
+  const n = ws.length;
+  const sheets: string[] = [];
+  let at: number[] | undefined;
   if (pb) {
     const from = 'xl/workbook.xml';
     for (const f of pb.frags) frags.push([f.slot, fillRels(f.xml, pb.rels, from, add), f.order]);
     for (const k of pb.implicit) addPRel(pb.rels[k]!, from, add);
     const used = new Set(ids);
     let next = Math.max(0, ...ids, ...pb.sheets.map((s) => s.sheetId));
+    const count: number[] = [];
     for (const s of foreign(wb, pb)) {
       const id = used.has(s.sheetId) ? ++next : s.sheetId;
       used.add(id);
-      sheets += `<sheet name="${escapeAttr(s.name)}" sheetId="${id}"${
+      // original neighbours: after the previous worksheet, else before the next one, else last
+      const p = s.prev ? ws.indexOf(s.prev) : -1;
+      const q = s.next ? ws.indexOf(s.next) : -1;
+      const pos = p >= 0 ? p + 1 : q >= 0 ? q : n;
+      count[pos] = (count[pos] ?? 0) + 1;
+      sheets[pos] = `${sheets[pos] ?? ''}<sheet name="${escapeAttr(s.name)}" sheetId="${id}"${
         s.state !== 'visible' ? ` state="${s.state}"` : ''
       } r:id="${addPRel(s.rel, from, add)}"/>`;
     }
+    if (count.length) {
+      at = [];
+      let k = 0;
+      for (let i = 0; i < n; i++) {
+        k += count[i] ?? 0;
+        at.push(i + k);
+      }
+    }
     if (pb.mainCt) pkg.overrides.push(['xl/workbook.xml', pb.mainCt]);
   }
-  return { frags, sheets, root: pb ? [...pb.root] : [] };
+  return { frags, sheets, at, root: pb ? [...pb.root] : [] };
 }
 
 /** The writer-side hooks (attached to kept data by readXlsx; see the header). */
