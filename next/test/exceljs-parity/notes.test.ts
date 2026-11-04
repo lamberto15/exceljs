@@ -7,8 +7,7 @@ import { exceljsLoad, streamWrite } from './helpers.js';
 
 const texts = [
   {
-    // 🚫 font scheme ('minor') is not modelled
-    font: { size: 12, color: { argb: 'FFFF6600' }, name: 'Calibri' },
+    font: { size: 12, color: { argb: 'FFFF6600' }, name: 'Calibri', scheme: 'minor' as const },
     text: 'seven',
   },
 ];

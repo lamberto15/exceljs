@@ -108,12 +108,8 @@ describe('exceljs parity: styles', () => {
     };
     const ws = readXlsx(Uint8Array.from(Buffer.from(b64, 'base64'))).worksheets[0]!;
     const a1 = ws.getValue('A1') as { richText: { text: string; font?: object }[] };
-    // 🚫 font family / scheme are not modelled; everything else matches
     expect(a1).toEqual({
-      richText: expected.richText.map((r) => {
-        const { family: _f, scheme: _s, ...f } = r.font;
-        return { text: r.text, font: f };
-      }),
+      richText: expected.richText.map((r) => ({ text: r.text, font: r.font })),
     });
     // ➖ no `cell.text`: the plain text is the concatenated runs
     expect(a1.richText.map((r) => r.text).join('')).toBe(ws.getValue('A2'));
@@ -216,7 +212,46 @@ describe('exceljs parity: styles', () => {
   it.skip('gradient fills (angle / path) — not supported: Fill is pattern-only', () => {});
 
   // exceljs: spec/integration/workbook/workbook.spec.js — "xlsx file" (font family / outline)
-  it.skip('font family, scheme, charset, outline — not modelled (dropped on read/write)', () => {});
+  it.skip('font charset, outline, shadow, condense, extend — not modelled (dropped on read/write)', () => {});
+
+  it('font family and scheme survive edit + save of an Excel file (gold.xlsx)', async () => {
+    const wb = readXlsx(fixture('gold.xlsx'));
+    const ws = wb.getWorksheet('Values')!;
+    expect(ws.getStyle('B6').font).toMatchObject({ name: 'Calibri', family: 2, scheme: 'minor' });
+    ws.setCell('C1', 'edited', { font: { bold: true } }); // partial font: completed from the default
+    ws.setCell('C2', 'arial', { font: { name: 'Arial' } }); // own name: no inherited scheme
+    const bytes = writeXlsx(wb);
+    const xml = partText(bytes, 'xl/styles.xml')!;
+    const fonts = /<fonts[^>]*>(.*?)<\/fonts>/s.exec(xml)![1]!.split('</font>').filter(Boolean);
+    expect(fonts[0]).toBe(
+      '<font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/>',
+    );
+    expect(fonts.filter((f) => f.includes('<scheme val="minor"/>')).length).toBe(fonts.length - 1);
+    const ws2 = readXlsx(bytes).getWorksheet('Values')!;
+    expect(ws2.getStyle('C1').font).toEqual({
+      name: 'Calibri',
+      size: 11,
+      bold: true,
+      family: 2,
+      scheme: 'minor',
+    });
+    expect(ws2.getStyle('C2').font).toEqual({ name: 'Arial', size: 11 });
+    const x = (await exceljsLoad(bytes)).getWorksheet('Values')!;
+    expect(x.getCell('C1').font).toMatchObject({ bold: true, family: 2, scheme: 'minor' });
+  });
+
+  it('font family / scheme are part of the style identity', () => {
+    const wb = new Workbook();
+    const a = wb.styles.intern({ font: { name: 'Cambria', family: 1, scheme: 'major' } });
+    const b = wb.styles.intern({ font: { name: 'Cambria', family: 1 } });
+    expect(a).not.toBe(b);
+    expect(wb.styles.get(a).font).toEqual({
+      name: 'Cambria',
+      size: 11,
+      family: 1,
+      scheme: 'major',
+    });
+  });
 
   describe('regressions found by the parity port', () => {
     // exceljs: spec/utils/data/styles.json — alignments "Rotate -15..-90" and badAlignments
@@ -242,6 +277,28 @@ describe('exceljs parity: styles', () => {
       const x = (await exceljsLoad(bytes)).getWorksheet('s')!;
       expect(x.getCell('A1').alignment.textRotation).toBe(-45);
       expect(x.getCell('A5').alignment.textRotation).toBe('vertical');
+    });
+
+    // exceljs: spec/utils/data/styles.json — alignments "Middle Centre" / "Vertical Text"
+    it('accepts the ExcelJS aliases vertical: "middle" and textRotation: "vertical"', async () => {
+      const wb = new Workbook();
+      const ws = wb.addWorksheet('s');
+      ws.setCell('A1', 'x', { alignment: { horizontal: 'center', vertical: 'middle' } });
+      ws.setCell('A2', 'x', { alignment: { textRotation: 'vertical' } });
+      ws.setCell('A3', 'x', { alignment: { vertical: 'center' } });
+      expect(ws.getStyle('A1').alignment).toEqual({ horizontal: 'center', vertical: 'center' });
+      expect(ws.getStyleIndex('A3')).not.toBe(ws.getStyleIndex('A1'));
+      expect(ws.getStyle('A2').alignment).toEqual({ textRotation: 255 });
+      const bytes = writeXlsx(wb);
+      const xml = partText(bytes, 'xl/styles.xml')!;
+      expect(xml).not.toContain('middle');
+      expect(xml).not.toContain('textRotation="vertical"');
+      const ws2 = readXlsx(bytes).getWorksheet('s')!;
+      expect(ws2.getStyle('A1').alignment).toEqual({ horizontal: 'center', vertical: 'center' });
+      expect(ws2.getStyle('A2').alignment).toEqual({ textRotation: 255 });
+      const x = (await exceljsLoad(bytes)).getWorksheet('s')!;
+      expect(x.getCell('A1').alignment.vertical).toBe('middle');
+      expect(x.getCell('A2').alignment.textRotation).toBe('vertical');
     });
 
     // exceljs: spec/utils/data/styles.json — badAlignments "Indent -1"

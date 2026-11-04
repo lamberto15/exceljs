@@ -97,10 +97,10 @@ Styles are **plain, immutable-by-convention objects**. They are interned into th
 ```ts
 interface Style {
   numFmt?: string;            // 'yyyy-mm-dd', '#,##0.00', ...
-  font?: Font;                // name, size, bold, italic, underline, strike, color, vertAlign
+  font?: Font;                // name, size, bold, italic, underline, strike, color, vertAlign, family, scheme
   fill?: Fill;                // { type: 'pattern', pattern, fgColor?, bgColor? }
   border?: Border;            // top/left/bottom/right/diagonal: { style?, color? }
-  alignment?: Alignment;      // horizontal, vertical, wrapText, shrinkToFit, indent, textRotation
+  alignment?: Alignment;      // horizontal, vertical, wrapText, shrinkToFit, indent, textRotation (Excel encoding; -45, 'vertical', vertical: 'middle' accepted)
   protection?: Protection;    // locked, hidden
 }
 type Color = { argb?: 'FFFF0000'; theme?: number; tint?: number; indexed?: number };

@@ -214,7 +214,13 @@ describe('StyleRegistry', () => {
     ]);
     const st = s.get(x);
     expect(st.numFmt).toBe('yyyy-mm-dd');
-    expect(st.font).toEqual({ name: 'Calibri', size: 11, italic: true });
+    expect(st.font).toEqual({
+      name: 'Calibri',
+      size: 11,
+      italic: true,
+      family: 2,
+      scheme: 'minor',
+    });
     expect(s.intern({ ...st })).toBe(x);
     expect(s.isDateXf(x)).toBe(true);
     expect(s.isDateXf(y)).toBe(false);

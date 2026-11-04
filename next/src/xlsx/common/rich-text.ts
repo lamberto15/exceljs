@@ -45,6 +45,8 @@ export function fontBody(f: Font, nameTag: 'name' | 'rFont'): string {
   if (f.size !== undefined) s += `<sz val="${f.size}"/>`;
   if (f.color) s += `<color${colorAttrs(f.color)}/>`;
   if (f.name !== undefined) s += `<${nameTag} val="${escapeAttr(f.name)}"/>`;
+  if (f.family !== undefined) s += `<family val="${f.family}"/>`;
+  if (f.scheme !== undefined) s += `<scheme val="${f.scheme}"/>`;
   return s;
 }
 
@@ -119,6 +121,12 @@ export function fontChild(f: Mutable<Font>, ln: string, a: XmlAttrs): void {
     }
     case 'vertAlign':
       if (a.val === 'superscript' || a.val === 'subscript') f.vertAlign = a.val;
+      break;
+    case 'family':
+      if (a.val !== undefined && +a.val >= 0) f.family = +a.val;
+      break;
+    case 'scheme':
+      if (a.val === 'major' || a.val === 'minor' || a.val === 'none') f.scheme = a.val;
       break;
   }
 }

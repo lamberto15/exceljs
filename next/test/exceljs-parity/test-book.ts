@@ -4,10 +4,10 @@
 // Substitutions (see docs/exceljs-parity.md):
 // - JSON objects as cell values: exceljs stringifies them; turbosheet rejects them, the caller
 //   stores JSON.stringify(...) (➖).
-// - Fonts: `family` / `outline` are not modelled (dropped); `underline: true` reads back as
+// - Fonts: `outline` is not modelled (dropped); `underline: true` reads back as
 //   'single' (🚫 / ➖).
-// - Alignment: exceljs `vertical: 'middle'` is OOXML 'center'; negative rotations are stored in
-//   Excel's encoding (-45 → 135); 'vertical' text is 255 (➖).
+// - Alignment: exceljs values are passed as-is (`vertical: 'middle'`, `textRotation: 'vertical'`
+//   and negative rotations are accepted); they read back in OOXML terms ('center', 255, -45 → 135).
 // - Gradient fills are not modelled (🚫): row 8 only checks the pattern fills.
 // - `{ sharedFormula }` values are not written (➖): C9:E9 are plain formulas.
 // - Merged cells: slave cells read null (exceljs returns the master value) (➖).
@@ -41,9 +41,9 @@ export const pageSetupJson: any = utilData('page-setup');
 export const headerFooter: any = utilData('header-footer');
 // biome-ignore-end lint/suspicious/noExplicitAny: untyped ExcelJS JSON fixtures
 
-/** exceljs font → turbosheet font (family/outline are not modelled). */
+/** exceljs font → turbosheet font (outline is not modelled). */
 export function font(f: Record<string, unknown>): Font {
-  const { family: _family, outline: _outline, ...rest } = f;
+  const { outline: _outline, ...rest } = f;
   return rest as Font;
 }
 
@@ -54,7 +54,7 @@ export function fontBack(f: Record<string, unknown>): Font {
   return o as Font;
 }
 
-/** exceljs alignment → turbosheet alignment. */
+/** exceljs alignment → how turbosheet stores it ('middle' → 'center', 'vertical' → 255). */
 export function alignment(a: Record<string, unknown>): Alignment {
   const o = { ...a } as Record<string, unknown>;
   if (o.vertical === 'middle') o.vertical = 'center';
@@ -142,7 +142,7 @@ function cells(checkBadAlignments: boolean): CellSpec[] {
     out.push({
       ref: `${String.fromCharCode(65 + i)}6`,
       value: a.text,
-      style: { alignment: alignment(a.alignment as Record<string, unknown>) },
+      style: { alignment: a.alignment as Alignment }, // exceljs spelling, as-is
     });
   });
   if (checkBadAlignments) {

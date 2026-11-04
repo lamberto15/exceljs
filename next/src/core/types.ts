@@ -97,6 +97,10 @@ export interface Font {
   readonly strike?: boolean | undefined;
   readonly color?: Color | undefined;
   readonly vertAlign?: 'superscript' | 'subscript' | undefined;
+  /** Font family class (OOXML `<family>`: 1 roman, 2 swiss, 3 modern, 4 script, 5 decorative). */
+  readonly family?: number | undefined;
+  /** Theme font scheme: 'minor' / 'major' make Excel use the theme's body / heading font. */
+  readonly scheme?: 'major' | 'minor' | 'none' | undefined;
 }
 
 export type BorderStyle =
@@ -145,11 +149,24 @@ export interface Alignment {
     | 'centerContinuous'
     | 'distributed'
     | undefined;
-  readonly vertical?: 'top' | 'center' | 'bottom' | 'justify' | 'distributed' | undefined;
+  /** `'middle'` is accepted as an ExcelJS alias of `'center'` (stored as 'center'). */
+  readonly vertical?:
+    | 'top'
+    | 'center'
+    | 'bottom'
+    | 'justify'
+    | 'distributed'
+    | 'middle'
+    | undefined;
   readonly wrapText?: boolean | undefined;
   readonly shrinkToFit?: boolean | undefined;
   readonly indent?: number | undefined;
-  readonly textRotation?: number | undefined;
+  /**
+   * Degrees in Excel's encoding: 1..90 counter-clockwise, 91..180 clockwise (= -1..-90), 255 =
+   * vertical (stacked) text. Negative degrees and the ExcelJS alias `'vertical'` are accepted
+   * and stored in that encoding (-45 → 135, 'vertical' → 255).
+   */
+  readonly textRotation?: number | 'vertical' | undefined;
 }
 
 export interface Protection {

@@ -49,7 +49,13 @@ export interface NumFmt {
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
-const DEFAULT_FONT: Font = { name: 'Calibri', size: 11, color: { theme: 1 } };
+const DEFAULT_FONT: Font = {
+  name: 'Calibri',
+  size: 11,
+  color: { theme: 1 },
+  family: 2,
+  scheme: 'minor',
+};
 const FIRST_CUSTOM_NUMFMT = 164;
 
 // ---- canonical keys + normalizers ------------------------------------------
@@ -72,6 +78,8 @@ function normColor(c: Color | undefined): Color | undefined {
 
 function normFont(f: Font, base: Font): Font {
   const o: Mutable<Font> = {};
+  // family / scheme describe the font name: only inherited along with the default name
+  const fb = f.name === undefined ? base : f;
   const name = f.name ?? base.name;
   const size = f.size ?? base.size;
   if (name !== undefined) o.name = name;
@@ -83,13 +91,17 @@ function normFont(f: Font, base: Font): Font {
   const color = normColor(f.color);
   if (color) o.color = color;
   if (f.vertAlign) o.vertAlign = f.vertAlign;
+  const family = f.family ?? fb.family;
+  const scheme = f.scheme ?? fb.scheme;
+  if (family !== undefined) o.family = family;
+  if (scheme !== undefined) o.scheme = scheme;
   return o;
 }
 
 function fontKey(f: Font): string {
   return `${f.name ?? ''}|${f.size ?? ''}|${f.bold ? 1 : 0}${f.italic ? 1 : 0}${f.strike ? 1 : 0}|${
     f.underline ?? ''
-  }|${f.vertAlign ?? ''}|${colorKey(f.color)}`;
+  }|${f.vertAlign ?? ''}|${colorKey(f.color)}|${f.family ?? ''}|${f.scheme ?? ''}`;
 }
 
 function normFill(f: Fill): Fill {
@@ -146,9 +158,11 @@ function borderKey(b: Border): string {
 
 /**
  * Rotation in Excel's encoding: 1..90 counter-clockwise, 91..180 = -1..-90 (clockwise), 255 =
- * vertical text. Negative degrees (-90..-1) are converted (-45 → 135); anything else is dropped.
+ * vertical text (alias 'vertical'). Negative degrees (-90..-1) are converted (-45 → 135); anything
+ * else is dropped.
  */
-function textRotation(r: number | undefined): number | undefined {
+function textRotation(r: number | 'vertical' | undefined): number | undefined {
+  if (r === 'vertical') return 255;
   if (!r) return undefined;
   const v = r < 0 ? 90 - r : r;
   return (v > 0 && v <= 180) || v === 255 ? v : undefined;
@@ -162,8 +176,9 @@ function normAlignment(a: Alignment | undefined): Alignment | undefined {
     o.horizontal = a.horizontal;
     any = true;
   }
-  if (a.vertical !== undefined && a.vertical !== 'bottom') {
-    o.vertical = a.vertical;
+  const vertical = a.vertical === 'middle' ? 'center' : a.vertical; // ExcelJS alias
+  if (vertical !== undefined && vertical !== 'bottom') {
+    o.vertical = vertical;
     any = true;
   }
   if (a.wrapText) {
