@@ -115,6 +115,46 @@ describe('comments', () => {
     );
   });
 
+  it('derives the VML anchor from actual column widths and row heights', () => {
+    const anchorOf = (setup: (ws: ReturnType<Workbook['addWorksheet']>) => void): string => {
+      const wb = new Workbook();
+      const ws = wb.addWorksheet('S');
+      ws.setCell('B2', 'x');
+      setup(ws);
+      addNote(ws, 'B2', { text: 'n', width: 200, height: 100 });
+      const vml = parts(writeXlsx(wb)).get('xl/drawings/vmlDrawing1.vml') as string;
+      return /<x:Anchor>([^<]*)<\/x:Anchor>/.exec(vml)![1]!;
+    };
+    // defaults: 64 x 20 px cells (15 + 200 = 215 = 3 cols + 23; 10 + 100 = 110 = 5 rows + 10)
+    expect(anchorOf(() => {})).toBe('2, 15, 0, 10, 5, 23, 5, 10');
+    // column C = 20 chars = 140 px, row 1 = 30pt = 40 px
+    expect(
+      anchorOf((ws) => {
+        ws.getColumn('C').width = 20;
+        ws.setRowProps(1, { height: 30 });
+      }),
+    ).toBe('2, 15, 0, 10, 4, 11, 4, 10');
+    // hidden columns / rows take no room
+    expect(
+      anchorOf((ws) => {
+        ws.getColumn('C').hidden = true;
+        ws.setRowProps(1, { hidden: true });
+      }),
+    ).toBe('2, 15, 0, 10, 6, 23, 6, 10');
+  });
+
+  it('positions the VML box with the actual widths (margin-left/top)', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    ws.setCell('C3', 'x');
+    ws.getColumn('A').width = 20; // 140 px
+    ws.setRowProps(1, { height: 30 }); // 40 px
+    addNote(ws, 'C3', 'hi');
+    const vml = parts(writeXlsx(wb)).get('xl/drawings/vmlDrawing1.vml') as string;
+    // left = A(140) + B(64) + C(64) + 15 = 283 px; top = row 1 (40 px) + 10 = 50 px (box sits a row above)
+    expect(vml).toContain('margin-left:212.25pt;margin-top:37.5pt');
+  });
+
   it('round-trips through ours in every writer', async () => {
     for (const [name, buf] of await allWriters()) {
       const wb = readXlsx(buf);

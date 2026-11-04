@@ -9,8 +9,8 @@
 // Model: `ws.comments` is a plain array of `Note` (one per cell; `addNote` replaces an existing
 // note on the same cell). An array (not a Map) keeps the model plain data / JSON friendly and in
 // file order; look one up with `ws.comments?.find((n) => n.ref === 'B2')`.
-// Box size is in pixels; the VML anchor is derived from it assuming default column widths /
-// row heights (64 x 20 px). On read, visibility and size come from the VML part when present
+// Box size is in pixels; the VML anchor is derived from it and the sheet's actual column widths /
+// row heights (defaults: 64 x 20 px). On read, visibility and size come from the VML part when present
 // (a missing VML part is tolerated). Excel 365 threaded comments (xl/threadedComments) are not
 // modelled: Excel also writes a legacy note for each thread ("[Threaded comment] ..."), which
 // is what is read here; the threaded part itself is ignored (and not written back).
@@ -82,7 +82,42 @@ function commentsXml(notes: readonly Note[], cells: string[]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<comments xmlns="${NS_MAIN}"><authors>${a}</authors><commentList>${list}</commentList></comments>`;
 }
 
+/** Column width in characters → pixels (Calibri 11, max digit width 7 px; Excel's formula). */
+const colWidthPx = (chars: number): number =>
+  Math.trunc(((256 * chars + Math.trunc(128 / 7)) / 256) * 7);
+
+const MAX_WALK = 1 << 20;
+
+/** Walk `size` px from offset `off` into item `i`; returns the item and offset where it ends. */
+function walk(i: number, size: number, px: (i: number) => number): [number, number] {
+  let rest = size;
+  for (let n = 0; n < MAX_WALK; n++) {
+    const p = px(i);
+    if (rest < p) break;
+    rest -= p;
+    i++;
+  }
+  return [i, Math.round(rest)];
+}
+
+/** Pixels from the sheet origin to the start of item `i`. */
+function offset(i: number, px: (i: number) => number): number {
+  let s = 0;
+  for (let k = 0; k < i; k++) s += px(k);
+  return s;
+}
+
 function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): string {
+  const cols = c.ws.columnData;
+  const rows = c.ws.rowData;
+  const colPx = (i: number): number => {
+    const d = cols[i];
+    return d?.hidden ? 0 : colWidthPx(d?.width ?? 9.140625);
+  };
+  const rowPx = (i: number): number => {
+    const d = rows[i];
+    return d?.hidden ? 0 : d?.height ? Math.round((d.height * 96) / 72) : 20;
+  };
   // shape ids come in blocks of 1024 per <o:idmap> entry, unique within the package
   const blocks: number[] = [];
   for (let k = 0; k * 1023 < notes.length; k++) blocks.push(c.nextIndex('vmlShapeBlock'));
@@ -94,13 +129,14 @@ function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): stri
     const h = n.height ?? H;
     const id = blocks[(i / 1023) | 0]! * 1024 + (i % 1023) + 1;
     const vis = n.visible ? 'visible' : 'hidden';
-    // anchor: LeftCol, LeftOff(px), TopRow, TopOff, RightCol, RightOff, BottomRow, BottomOff
+    // anchor: LeftCol, LeftOff(px), TopRow, TopOff, RightCol, RightOff, BottomRow, BottomOff;
+    // the box starts one column right of the cell, one row above it (like Excel's own notes)
     const l = col + 1;
     const t = Math.max(row - 1, 0);
-    const r = l + Math.floor((15 + w) / 64);
-    const b = t + Math.floor((10 + h) / 20);
-    const anchor = `${l}, 15, ${t}, 10, ${r}, ${Math.round((15 + w) % 64)}, ${b}, ${Math.round((10 + h) % 20)}`;
-    s += `<v:shape id="_x0000_s${id}" type="#_x0000_t202" style="position:absolute;margin-left:${pt((col + 1) * 64 + 15)};margin-top:${pt(t * 20 + 10)};width:${pt(w)};height:${pt(h)};z-index:${i + 1};visibility:${vis}" fillcolor="#ffffe1" o:insetmode="auto"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>${anchor}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>${row}</x:Row><x:Column>${col}</x:Column>${n.visible ? '<x:Visible/>' : ''}</x:ClientData></v:shape>`;
+    const [r, ro] = walk(l, 15 + w, colPx);
+    const [b, bo] = walk(t, 10 + h, rowPx);
+    const anchor = `${l}, 15, ${t}, 10, ${r}, ${ro}, ${b}, ${bo}`;
+    s += `<v:shape id="_x0000_s${id}" type="#_x0000_t202" style="position:absolute;margin-left:${pt(offset(l, colPx) + 15)};margin-top:${pt(offset(t, rowPx) + 10)};width:${pt(w)};height:${pt(h)};z-index:${i + 1};visibility:${vis}" fillcolor="#ffffe1" o:insetmode="auto"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>${anchor}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>${row}</x:Row><x:Column>${col}</x:Column>${n.visible ? '<x:Visible/>' : ''}</x:ClientData></v:shape>`;
   }
   return `${s}</xml>`;
 }
