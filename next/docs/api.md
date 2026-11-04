@@ -25,6 +25,8 @@ new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: bo
 | `images` | Pictures stored once per workbook (see [Pictures](#pictures)). |
 | `preserved` | Opaque round-trip data kept by `readXlsx`. Delete it to drop unmodelled content. |
 
+
+Document properties (plain fields, written to docProps and read back): `title`, `subject`, `keywords`, `description`, `category`, `contentStatus`, `company`, `manager`, plus `creator`, `lastModifiedBy`, `created`, `modified`. `fontMetrics(font)` → `{ mdw, rowPt }` (Excel's digit width in px and default row height for a default font).
 ## Worksheet
 
 | Member | Description |
@@ -271,7 +273,7 @@ In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; 
 
 ### Print setup and protection
 
-`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. Page breaks: `ws.rowBreaks` / `ws.colBreaks` (manual breaks after these 1-based rows / columns). `ws.ignoredErrors: IgnoredError[]` (`sqref` + `evalError`, `twoDigitTextYear`, `numberStoredAsText`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`; feature `ignoredErrorsWriter` / `ignoredErrorsReader`). `setSheetStyle(ws, style)` formats the whole sheet (all cells, rows, columns). `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
+`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. Page breaks: `ws.rowBreaks` / `ws.colBreaks` (manual breaks after these 1-based rows / columns). `ws.ignoredErrors: IgnoredError[]` (`sqref` + `evalError`, `twoDigitTextYear`, `numberStoredAsText`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`; feature `ignoredErrorsWriter` / `ignoredErrorsReader`). `setSheetStyle(ws, style)` formats the whole sheet (all cells, rows, columns). `protectSheet(ws, { password?, editable?: range | range[], allow?: { sort, autoFilter, formatCells, ... } })` unlocks editable ranges and protects the sheet. `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
 
 ### Custom features
 

@@ -53,6 +53,18 @@ export interface WorksheetFeatureFields {
 }
 
 export interface WorkbookFeatureFields {
+  /** Document properties (File > Info / Properties), written to docProps/core.xml & app.xml. */
+  title?: string | undefined;
+  subject?: string | undefined;
+  /** Tags; Excel shows them comma / semicolon separated. */
+  keywords?: string | undefined;
+  /** Comments. */
+  description?: string | undefined;
+  category?: string | undefined;
+  /** Status, e.g. "Draft". */
+  contentStatus?: string | undefined;
+  company?: string | undefined;
+  manager?: string | undefined;
   /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
   images?: WorkbookImage[] | undefined;
   /**

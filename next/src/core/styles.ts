@@ -60,6 +60,27 @@ const DEFAULT_FONT: Font = {
 };
 const FIRST_CUSTOM_NUMFMT = 164;
 
+/** [max digit width per pt, default row height per pt] of common fonts (Excel, approximate). */
+const METRICS: Record<string, [number, number]> = {
+  calibri: [0.64, 15 / 11],
+  arial: [0.7, 1.275],
+  'times new roman': [0.6, 1.3125],
+  verdana: [0.78, 1.3],
+  tahoma: [0.7, 1.3],
+  'courier new': [0.75, 1.3],
+  aptos: [0.66, 1.3636],
+};
+
+/**
+ * Excel's maximum digit width (px; 1 width unit = this many pixels) and default row height (pt)
+ * for a workbook default font. Calibri 11 = 7 px / 15 pt; other fonts are approximations.
+ */
+export function fontMetrics(f: Font): { mdw: number; rowPt: number } {
+  const size = f.size ?? 11;
+  const [w, h] = METRICS[(f.name ?? 'calibri').toLowerCase()] ?? METRICS.calibri!;
+  return { mdw: Math.max(1, Math.round(size * w)), rowPt: Math.round((size * h) / 0.75) * 0.75 };
+}
+
 // ---- canonical keys + normalizers ------------------------------------------
 
 function colorKey(c: Color | undefined): string {

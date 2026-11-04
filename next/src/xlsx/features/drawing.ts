@@ -5,6 +5,7 @@
 // emitters; the writer runs the emitter once per sheet however many features list it.
 
 import { decodeAddr, decodeRange } from '../../core/address.js';
+import { fontMetrics } from '../../core/styles.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { escapeAttr } from '../../xml/index.js';
 import type { CellPosition, ImageAnchor, ImageSize } from './images.js';
@@ -25,14 +26,17 @@ export type AnchorInput =
   | { tl: string | CellPosition; ext: ImageSize }
   | { tl: string | CellPosition; br: string | CellPosition };
 
-/** Column width in pixels (Excel's conversion for the default font, 7 px per character). */
+/** Column width in pixels: width units x the default font's max digit width (7 px for Calibri 11). */
 export function colPx(ws: Worksheet | undefined, c: number): number {
-  return Math.trunc((ws?.columnData[c]?.width ?? 9.140625) * 7 + 0.5);
+  const mdw = ws ? fontMetrics(ws.workbook.styles.defaultFont).mdw : 7;
+  return Math.trunc((ws?.columnData[c]?.width ?? 9.140625) * mdw + 0.5);
 }
 
-/** Row height in pixels (points * 4/3; default 15 pt). */
+/** Row height in pixels (points * 4/3; default: the default font's row height, 15 pt for Calibri 11). */
 export function rowPx(ws: Worksheet | undefined, r: number): number {
-  return Math.round(((ws?.rowData[r]?.height || 15) * 4) / 3);
+  const pt =
+    ws?.rowData[r]?.height || (ws ? fontMetrics(ws.workbook.styles.defaultFont).rowPt : 15);
+  return Math.round((pt * 4) / 3);
 }
 
 /** A whole-cell position with pixel offsets (fractional col / row resolved). */

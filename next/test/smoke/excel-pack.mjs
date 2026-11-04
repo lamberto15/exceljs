@@ -29,6 +29,7 @@ import {
   insertColumns,
   insertRows,
   placeImage,
+  protectSheet,
   readXlsx,
   setCheckbox,
   setPrintArea,
@@ -872,6 +873,26 @@ for (const [file, what] of [
     '23-sort-template-lists.xlsx',
     writeXlsx(wb),
     `"Data": rows sorted by Score (ann 1, bob 2, cara 3); D2:D10 has a dropdown with 60 choices (from the hidden "_lists" sheet). "Invoice": A1 "Invoice for ACME" (bold), items bolt 3 / nut 5 / gear 1 in rows 4-6, B7 = SUM(B4:B6) = 9. No repair prompt.`,
+  );
+}
+
+// 24: document properties, protectSheet with editable ranges, Arial default font
+{
+  const wb = new Workbook({ defaultFont: { name: 'Arial', size: 10 } });
+  wb.title = 'Turbosheet properties';
+  wb.subject = 'Excel check';
+  wb.keywords = 'turbosheet, check';
+  wb.company = 'ACME';
+  wb.manager = 'Jane';
+  const ws = wb.addWorksheet('Protected');
+  ws.addRow(['Locked label', 'Editable']);
+  ws.addRow(['also locked', 1]);
+  ws.autoFilter = 'A1:B2';
+  protectSheet(ws, { editable: ['B2:B20', 'D:D'], allow: { sort: true, autoFilter: true } });
+  save(
+    '24-properties-protection.xlsx',
+    writeXlsx(wb),
+    `File > Properties: title "Turbosheet properties", subject, keywords, company ACME, manager Jane. "Protected" (Arial 10, rows 12.75 pt): A1/A2 refuse edits, B2:B20 and column D accept them; the filter buttons work. No repair prompt.`,
   );
 }
 
