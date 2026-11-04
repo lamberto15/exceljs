@@ -279,6 +279,42 @@ function refAgileDecrypt(file: Uint8Array, pw: string): Buffer {
   return Buffer.concat(out).subarray(0, size);
 }
 
+function refStandardEncrypt(zip: Uint8Array, pw: string, bits = 128, flags = 0x24, algId = 0x660e) {
+  const salt = randomBytes(16);
+  let h = H('SHA1', salt, Buffer.from(pw, 'utf16le'));
+  for (let i = 0; i < 50000; i++) h = H('SHA1', u32le(i), h);
+  h = H('SHA1', h, u32le(0));
+  const x = (c: number) => {
+    const b = Buffer.alloc(64, c);
+    for (let i = 0; i < 20; i++) b[i]! ^= h[i]!;
+    return H('SHA1', b);
+  };
+  const key = Buffer.concat([x(0x36), x(0x5c)]).subarray(0, bits / 8);
+  const verifier = randomBytes(16);
+  const csp = Buffer.from('Microsoft Enhanced RSA and AES Cryptographic Provider\0', 'utf16le');
+  const header = Buffer.concat([
+    Buffer.from(new Uint32Array([flags, 0, algId, 0x8004, bits, 0x18, 0, 0]).buffer),
+    csp,
+  ]);
+  const info = Buffer.concat([
+    Buffer.from([4, 0, 2, 0]),
+    Buffer.from(new Uint32Array([flags, header.length]).buffer),
+    header,
+    u32le(16),
+    salt,
+    aes(true, 'ecb', key, null, verifier),
+    u32le(20),
+    aes(true, 'ecb', key, null, padRef(H('SHA1', verifier))),
+  ]);
+  const size = Buffer.alloc(8);
+  size.writeBigUInt64LE(BigInt(zip.length));
+  const pkg = Buffer.concat([size, aes(true, 'ecb', key, null, padRef(zip))]);
+  return writeCfb([
+    ['EncryptionInfo', info],
+    ['EncryptedPackage', pkg],
+  ]);
+}
+
 describe('crypto primitives', () => {
   it('sync SHA-1/256/384/512 match node:crypto', () => {
     for (const n of [0, 1, 3, 55, 56, 63, 64, 111, 112, 127, 128, 129, 300, 1000]) {
@@ -441,6 +477,23 @@ describe('agile encryption', () => {
       `agile SHA-512 x100000, 1 MB: encrypt ${enc.toFixed(0)} ms, decrypt ${dec.toFixed(0)} ms`,
     );
     expect(enc).toBeLessThan(5000);
+  });
+});
+
+describe('standard encryption (read)', () => {
+  it('decrypts AES-128 / AES-256 standard files', async () => {
+    for (const bits of [128, 256]) {
+      const z = bytes(5000 + bits, bits);
+      const f = refStandardEncrypt(z, 'Password1234_', bits, 0x24, bits === 128 ? 0x660e : 0x6610);
+      expect(isEncrypted(f)).toBe(true);
+      expect(await decryptXlsx(f, 'Password1234_')).toEqual(z);
+      await expect(decryptXlsx(f, 'nope')).rejects.toBeInstanceOf(WrongPasswordError);
+    }
+  });
+
+  it('rejects RC4 CryptoAPI with UnsupportedEncryptionError', async () => {
+    const f = refStandardEncrypt(bytes(32), 'pw', 128, 0x04, 0x6801);
+    await expect(decryptXlsx(f, 'pw')).rejects.toBeInstanceOf(UnsupportedEncryptionError);
   });
 });
 

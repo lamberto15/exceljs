@@ -8,6 +8,7 @@
 import { DEFAULT_LIMITS, type Limits } from '../core/types.js';
 import { agileDecrypt, agileEncrypt, type EncryptOptions } from './agile.js';
 import { isCfb, readCfb, writeCfb } from './cfb.js';
+import { standardDecrypt } from './standard.js';
 import { concat, IntegrityError, UnsupportedEncryptionError, utf16 } from './util.js';
 
 export type { EncryptOptions } from './agile.js';
@@ -55,6 +56,8 @@ export async function decryptXlsx(
     const o = { ...opts, maxBytes };
     return agileDecrypt(new TextDecoder().decode(info.subarray(8)), pkg, password, o);
   }
+  if (minor === 2 && major >= 2 && major <= 4)
+    return standardDecrypt(info, pkg, password, maxBytes);
   throw new UnsupportedEncryptionError(`Unsupported EncryptionInfo version ${major}.${minor}`);
 }
 
