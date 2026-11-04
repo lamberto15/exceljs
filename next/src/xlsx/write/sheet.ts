@@ -371,6 +371,9 @@ const OWNED: readonly string[] = [
   'protection:sheet-protection',
   'pageSetup:print-setup',
   'headerFooter:print-setup',
+  'rowBreaks:print-setup',
+  'colBreaks:print-setup',
+  'ignoredErrors:ignored-errors',
 ];
 
 function checkFeatures(ws: Worksheet, plan: SheetPlan): void {

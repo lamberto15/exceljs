@@ -15,6 +15,7 @@ import {
   conditionalFormattingWriter,
 } from './conditional-formatting.js';
 import { dataValidationReader, dataValidationWriter } from './data-validation.js';
+import { ignoredErrorsReader, ignoredErrorsWriter } from './ignored-errors.js';
 import { imagesReader, imagesWriter } from './images.js';
 import { printSetupReader, printSetupWriter } from './print-setup.js';
 import { sheetProtectionReader, sheetProtectionWriter } from './sheet-protection.js';
@@ -27,6 +28,7 @@ export const WRITERS: readonly FeatureWriter[] = [
   commentsWriter,
   conditionalFormattingWriter,
   dataValidationWriter,
+  ignoredErrorsWriter,
   imagesWriter,
   printSetupWriter,
   sheetProtectionWriter,
@@ -38,6 +40,7 @@ export const READERS: readonly FeatureReader[] = [
   commentsReader,
   conditionalFormattingReader,
   dataValidationReader,
+  ignoredErrorsReader,
   imagesReader,
   printSetupReader,
   sheetProtectionReader,

@@ -50,6 +50,14 @@ ws.getColumn('B').width = 14;
 
 Styles are values: assign a new object to change one, do not mutate `getStyle()` results. Equal styles share one entry in `styles.xml`, so styling a million cells with the same object is cheap. For hot loops intern once and pass the index: `const xf = wb.styles.intern(style); ws.setCell(r, c, v, xf)`.
 
+Excel-like defaults:
+
+- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
+- **Line breaks**: text containing `\n` gets `alignment.wrapText` merged into its style, as when typing Alt+Enter in Excel (line breaks only show in wrapped cells).
+- **Hyperlinks**: a hyperlink cell stored without a style gets Excel's hyperlink look (underlined, theme hyperlink color); pass a style to choose your own.
+- **Whole sheet**: `setSheetStyle(ws, style)` formats every cell, like selecting all and formatting: existing cells, row styles and all columns get the style's properties merged over theirs, and cells created later inherit it. See [sheet protection](#sheet-protection) for unlocking all cells.
+- **Ignored errors**: hide Excel's green error triangles, e.g. "number stored as text" on a column of IDs: `ws.ignoredErrors = [{ sqref: 'A2:A1000', numberStoredAsText: true }]` (also `evalError`, `twoDigitTextYear`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`).
+
 ## Column auto-fit
 
 ```ts
@@ -221,6 +229,8 @@ getPrintArea(ws); // ['A1:D50']
 ```ts
 ws.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 ws.headerFooter = { oddHeader: '&CMonthly report', oddFooter: '&LPage &P of &N' };
+ws.rowBreaks = [40, 80]; // manual page breaks after rows 40 and 80
+ws.colBreaks = [6];      // and after column F
 ```
 
 ## Sheet protection
@@ -229,7 +239,7 @@ ws.headerFooter = { oddHeader: '&CMonthly report', oddFooter: '&LPage &P of &N' 
 ws.protection = { password: 's3cret', formatCells: false, insertRows: false };
 ```
 
-`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
+`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). To protect a sheet but keep most cells editable, unlock everything and lock the few cells that matter: `setSheetStyle(ws, { protection: { locked: false } })`, then `ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } })`. Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
 
 ## Round-trip preservation
 

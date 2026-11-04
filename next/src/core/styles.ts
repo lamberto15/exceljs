@@ -248,6 +248,7 @@ export class StyleRegistry {
   private readonly _styleCache: (Style | undefined)[] = [];
   private readonly _dateXf: (boolean | undefined)[] = [];
   private readonly _withFmt = new Map<string, number>();
+  private readonly _withWrap = new Map<number, number>();
   private readonly _dxfs: Style[] = [];
   private readonly _dxfIdx = new Map<string, number>();
 
@@ -429,7 +430,11 @@ export class StyleRegistry {
     return id;
   }
 
-  /** Reader hook: replace font 0 (the workbook default font). */
+  /**
+   * Replace font 0, the workbook default font (Excel's "Normal" style; readers use it for the
+   * file's font). Set it before styling cells: fonts interned earlier were completed with the
+   * previous default's name and size. See also `new Workbook({ defaultFont })`.
+   */
   setDefaultFont(font: Font): void {
     const f = normFont(font, {});
     this._fontIdx.delete(fontKey(this._fonts[0]!));
@@ -465,6 +470,21 @@ export class StyleRegistry {
     if (out === undefined) {
       out = this.internXf({ ...rec, numFmtId: this.numFmtId(code) });
       this._withFmt.set(key, out);
+    }
+    return out;
+  }
+
+  /**
+   * xf with `alignment.wrapText` on (cached).
+   * Used for text with line breaks, which Excel only shows wrapped.
+   */
+  withWrap(xf: number): number {
+    const rec = this._xfs[xf];
+    if (!rec || rec.alignment?.wrapText) return xf;
+    let out = this._withWrap.get(xf);
+    if (out === undefined) {
+      out = this.internXf({ ...rec, alignment: { ...rec.alignment, wrapText: true } });
+      this._withWrap.set(xf, out);
     }
     return out;
   }

@@ -28,6 +28,7 @@ import {
   readXlsx,
   setPrintArea,
   setPrintTitles,
+  setSheetStyle,
   spliceRows,
   Workbook,
   writeXlsx,
@@ -720,6 +721,27 @@ for (const [file, what] of [
     '18-table-rows-outline.xlsx',
     writeXlsx(wb),
     `"Tables": table Orders A1:D6 with items a, b, c, d (two appended), Amount = Qty*Price on every row (90 and 160 for c and d), totals row 6 (Qty 10), column A wider; "below the table" moved to A10. "Outline": rows 2-5 grouped (level 1), rows 3-4 a collapsed level-2 group (hidden, + button on row 5); columns B-D grouped and collapsed (hidden, + button above E). Expanding shows the data. No repair prompt.`,
+  );
+}
+
+// 19: Excel-like polish: default font, wrap for line breaks, hyperlink look, ignored errors,
+// page breaks, whole-sheet style (unlocked) + protection
+{
+  const wb = new Workbook({ defaultFont: { name: 'Arial', size: 10 } });
+  const ws = wb.addWorksheet('Polish');
+  ws.addRow(['ID', 'Note', 'Link']);
+  for (let i = 1; i <= 60; i++)
+    ws.addRow([String(10000 + i), i === 1 ? 'first line\nsecond line' : `row ${i}`]);
+  ws.setCell('C2', { text: 'example.com', hyperlink: 'https://example.com' });
+  ws.ignoredErrors = [{ sqref: 'A2:A61', numberStoredAsText: true }];
+  ws.rowBreaks = [30];
+  setSheetStyle(ws, { protection: { locked: false } });
+  ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } });
+  ws.protection = { sheet: true };
+  save(
+    '19-polish.xlsx',
+    writeXlsx(wb),
+    `"Polish": whole sheet in Arial 10 (Home > Font shows Arial for empty cells too); B2 shows two lines (wrapped); C2 is blue underlined and opens example.com; column A IDs have no green "number stored as text" triangles; Page Break Preview shows a manual break after row 30; the sheet is protected but every cell except A1 can be edited (A1 refuses edits). No repair prompt.`,
   );
 }
 

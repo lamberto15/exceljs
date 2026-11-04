@@ -2,12 +2,18 @@
 
 import type { WorkbookFeatureFields } from './features.js';
 import { StyleRegistry } from './styles.js';
-import type { Color, DefinedName } from './types.js';
+import type { Color, DefinedName, Font } from './types.js';
 import { type SheetState, Worksheet } from './worksheet.js';
 
 export interface WorkbookOptions {
   /** Use the 1904 date system. Set before storing dates (serials are stored, not Dates). */
   date1904?: boolean | undefined;
+  /**
+   * Default font of the workbook (Excel's "Normal" style), e.g. `{ name: 'Arial', size: 10 }`:
+   * unstyled cells use it and partial fonts are completed with its name and size.
+   * Default: Calibri 11 (theme font).
+   */
+  defaultFont?: Font | undefined;
 }
 
 export interface WorksheetOptions {
@@ -40,6 +46,9 @@ export class Workbook {
 
   constructor(options: WorkbookOptions = {}) {
     this.date1904 = options.date1904 === true;
+    const f = options.defaultFont;
+    // no `scheme`: a theme scheme would make Excel show the theme font instead of `name`
+    if (f) this.styles.setDefaultFont({ size: 11, color: { theme: 1 }, family: 2, ...f });
   }
 
   /** Worksheets in tab order. */

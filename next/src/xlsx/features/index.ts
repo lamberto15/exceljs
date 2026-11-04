@@ -57,6 +57,11 @@ export {
 } from './defined-names.js';
 export { type AnchorInput, drawingEmitter } from './drawing.js';
 export {
+  type IgnoredError,
+  ignoredErrorsReader,
+  ignoredErrorsWriter,
+} from './ignored-errors.js';
+export {
   addImage,
   type CellPosition,
   type ImageAnchor,
