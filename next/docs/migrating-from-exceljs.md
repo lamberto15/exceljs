@@ -159,7 +159,7 @@ const rows = parseCsv(text, { parseNumbers: true });
 const csv = writeCsv(rows, { escapeFormulas: true });
 ```
 
-To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `turbosheet/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))`.
+To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `turbosheet/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))` (empty fields leave cells empty, like ExcelJS).
 
 ## Behavior differences to watch for
 

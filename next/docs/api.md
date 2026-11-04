@@ -265,8 +265,8 @@ Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bo
 ```ts
 sheetToObjects(ws, { header?: number | string[], range?, defval?, raw? }): Record<string, unknown>[]
 sheetToArrays(ws, { range?, raw? }): unknown[][]
-objectsToSheet(ws, rows, { header?: string[], writeHeader?: boolean }): Worksheet
-arraysToSheet(ws, rows): Worksheet
+objectsToSheet(ws, rows, { header?: string[], writeHeader?: boolean, emptyAs?: 'empty' | 'string' }): Worksheet
+arraysToSheet(ws, rows, { emptyAs?: 'empty' | 'string' }): Worksheet   // '' → no cell by default
 sheetToNdjson(ws, opts?): AsyncGenerator<string>        // one JSON object + "\n" per row
 toJsonValue(cellValue): unknown
 ```
