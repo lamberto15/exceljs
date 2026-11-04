@@ -22,6 +22,7 @@ import {
   createXlsxWriter,
   deleteRows,
   duplicateRow,
+  fillTemplate,
   fitImage,
   groupColumns,
   groupRows,
@@ -33,6 +34,7 @@ import {
   setPrintArea,
   setPrintTitles,
   setSheetStyle,
+  sortRange,
   spliceRows,
   Workbook,
   writeXlsx,
@@ -832,6 +834,44 @@ for (const [file, what] of [
     '22-dynamic-copy.xlsx',
     writeXlsx(wb),
     `"Dynamic": D1:D4 spill 1,1,2,3 (=SORT(B1:B4), no "@" in the formula bar), E1:E3 spill cara, ann, bob (=UNIQUE), F1:F3 spill 1,2,3 (=SEQUENCE(3)), G1 = 7; A8:B11 is a copy of A1:B4; column B values came from nested keys. "Copy" sheet: the same, with working spills. No repair prompt.`,
+  );
+}
+
+// 23: long dropdown list (hidden _lists sheet), sorted range, filled template
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow(['Name', 'Score']);
+  for (const [n, v] of [
+    ['cara', 3],
+    ['ann', 1],
+    ['bob', 2],
+  ])
+    ws.addRow([n, v]);
+  sortRange(ws, 'A1:B4', { col: 'B' }, { header: true });
+  addDataValidation(ws, {
+    sqref: 'D2:D10',
+    type: 'list',
+    values: Array.from({ length: 60 }, (_, i) => `Choice number ${i + 1}`),
+  });
+  const t = wb.addWorksheet('Invoice');
+  t.setCell('A1', 'Invoice for {{customer}}', { font: { bold: true } });
+  t.addRow([]);
+  t.addRow(['Item', 'Qty']);
+  t.addRow(['{{items[].name}}', '{{items[].qty}}']);
+  t.addRow(['Total', { formula: 'SUM(B4:B4)' }]);
+  fillTemplate(wb, {
+    customer: 'ACME',
+    items: [
+      { name: 'bolt', qty: 3 },
+      { name: 'nut', qty: 5 },
+      { name: 'gear', qty: 1 },
+    ],
+  });
+  save(
+    '23-sort-template-lists.xlsx',
+    writeXlsx(wb),
+    `"Data": rows sorted by Score (ann 1, bob 2, cara 3); D2:D10 has a dropdown with 60 choices (from the hidden "_lists" sheet). "Invoice": A1 "Invoice for ACME" (bold), items bolt 3 / nut 5 / gear 1 in rows 4-6, B7 = SUM(B4:B6) = 9. No repair prompt.`,
   );
 }
 

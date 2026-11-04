@@ -14,7 +14,9 @@
 // (a literal list reads as formula1 '"Yes,No"'). Validations are always written in the classic
 // form: Excel 2010+ accepts cross-sheet list sources there; the x14 form is read only.
 
+import { encodeCol } from '../../core/address.js';
 import { dateToSerial } from '../../core/dates.js';
+import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { addXlfn, stripXlfn } from '../common/xlfn.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot, type SubtreeHandler } from './types.js';
@@ -53,8 +55,9 @@ export interface DataValidation {
   formula2?: DataValidationFormula | undefined;
   /**
    * Write-only convenience for type 'list': literal items, written as formula1 '"a,b,c"'
-   * (takes precedence over formula1). Items may not contain commas; the joined list may not
-   * exceed Excel's 255-character limit (use a range formula for longer lists).
+   * (takes precedence over formula1). `addDataValidation` moves lists Excel cannot hold
+   * literally (over 255 characters, or items with commas) to a hidden sheet "_lists" and points
+   * formula1 at them; set directly on the model such lists throw at write time.
    */
   values?: readonly string[] | undefined;
   allowBlank?: boolean | undefined;
@@ -99,12 +102,36 @@ function formula(v: DataValidationFormula, type: DataValidationType, date1904: b
   return addXlfn(v.charCodeAt(0) === 61 ? v.slice(1) : v); // drop a leading "="
 }
 
-/** Add a validation to the sheet (validates `values`); returns it. */
+const LISTS = '_lists';
+
+/** Items of a list Excel cannot store literally go into a column of the hidden "_lists" sheet. */
+function listRange(wb: Workbook, values: readonly string[]): string {
+  const ls = wb.getWorksheet(LISTS) ?? wb.addWorksheet(LISTS, { state: 'hidden' });
+  const c = ls.columnCount + 1;
+  values.forEach((v, i) => {
+    ls.setCell(i + 1, c, v);
+  });
+  const col = encodeCol(c - 1);
+  return `'${LISTS}'!$${col}$1:$${col}$${Math.max(values.length, 1)}`;
+}
+
+/**
+ * Add a validation to the sheet; returns the stored validation. A `values` list longer than
+ * Excel's 255-character limit, or with commas in items, is written to the hidden sheet "_lists"
+ * and referenced by formula1 instead.
+ */
 export function addDataValidation(ws: Worksheet, dv: DataValidation): DataValidation {
-  if (dv.values) listFormula(dv.values);
+  let out = dv;
+  if (dv.values) {
+    const v = dv.values;
+    if (v.some((x) => x.includes(',')) || v.join(',').length > MAX_LIST) {
+      const { values: _, ...rest } = dv;
+      out = { ...rest, formula1: listRange(ws.workbook, v) };
+    }
+  }
   ws.dataValidations ??= [];
-  ws.dataValidations.push(dv);
-  return dv;
+  ws.dataValidations.push(out);
+  return out;
 }
 
 function emit(ws: Worksheet, date1904: boolean): string {

@@ -250,16 +250,15 @@ describe('data validation', () => {
     ]);
   });
 
-  it('enforces Excel list limits with a clear error', () => {
+  it('Excel list limits: addDataValidation moves long / comma lists to _lists; the writer refuses them on the model', () => {
     const ws = new Workbook().addWorksheet('S');
     const long = Array.from({ length: 60 }, (_, i) => `item${i}`);
-    expect(() => addDataValidation(ws, { sqref: 'A1', type: 'list', values: long })).toThrow(
-      /at most 255.*range formula/,
+    expect(addDataValidation(ws, { sqref: 'A1', type: 'list', values: long }).formula1).toBe(
+      "'_lists'!$A$1:$A$60",
     );
-    expect(() => addDataValidation(ws, { sqref: 'A1', type: 'list', values: ['a,b'] })).toThrow(
-      /comma/,
+    expect(addDataValidation(ws, { sqref: 'A1', type: 'list', values: ['a,b'] }).formula1).toBe(
+      "'_lists'!$B$1:$B$1",
     );
-    expect(ws.dataValidations).toBeUndefined();
     // set directly: the writer still refuses
     ws.dataValidations = [{ sqref: 'A1', type: 'list', values: long }];
     expect(() => writeXlsx(ws.workbook)).toThrow(/at most 255/);

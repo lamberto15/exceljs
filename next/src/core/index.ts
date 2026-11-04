@@ -16,6 +16,7 @@ export {
   type EstimateWidthOptions,
   estimateColumnWidths,
 } from './autofit.js';
+export { actualRowCount, getRows, getSheetValues, lastRow } from './compat.js';
 export { copyRange, copyWorksheet } from './copy.js';
 export { dateToSerial, serialToDate } from './dates.js';
 export type { WorkbookFeatureFields, WorksheetFeatureFields } from './features.js';
@@ -28,6 +29,7 @@ export {
 } from './numfmt.js';
 export { SharedStrings } from './sharedstrings.js';
 export { setCheckbox, setSheetStyle } from './sheet-style.js';
+export { type SortKey, type SortOptions, sortRange } from './sort.js';
 export {
   deleteColumns,
   deleteRows,
@@ -43,6 +45,7 @@ export {
   spliceRows,
 } from './structure.js';
 export { type NumFmt, StyleRegistry, type Xf } from './styles.js';
+export { type FillTemplateOptions, fillTemplate } from './template.js';
 export * from './types.js';
 export { Workbook, type WorkbookOptions, type WorksheetOptions } from './workbook.js';
 export {

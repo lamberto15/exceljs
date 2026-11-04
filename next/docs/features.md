@@ -6,6 +6,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Styles and number formats](#styles-and-number-formats)
 - [Column auto-fit](#column-auto-fit)
 - [Inserting and deleting rows and columns](#inserting-and-deleting-rows-and-columns)
+- [Sorting and templates](#sorting-and-templates)
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
@@ -122,6 +123,21 @@ Outline groups: `groupRows(ws, 2, 5)` / `groupColumns(ws, 'B', 'D')` put rows / 
 
 Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, threaded comments, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
 
+## Sorting and templates
+
+```ts
+import { fillTemplate, sortRange } from 'turbosheet';
+
+sortRange(ws, 'A1:D100', [{ col: 'C', desc: true }, { col: 'A' }], { header: true });
+
+// template: A1 "Invoice for {{customer.name}}", row 4 "{{items[].name}}" | "{{items[].qty}}", B6 =SUM(B4:B4)
+fillTemplate(wb, { customer: { name: 'ACME' }, items: [{ name: 'bolt', qty: 3 }, { name: 'nut', qty: 5 }] });
+```
+
+`sortRange` orders the rows of a range like Excel (numbers and dates, then text case-insensitively, then booleans, then errors; blanks last in both directions; ties keep their order). Only the range's cells move; formulas in moved rows shift with them, references from outside keep their positions. Merged cells inside the range throw.
+
+`fillTemplate` replaces `{{path}}` placeholders in text cells, keeping styles: a cell holding only a placeholder gets the typed value (number, date, ...), mixed text gets text. A row with `{{items[].field}}` placeholders is repeated for each element of `items` (rows below move down, formulas in the row adjust, and ranges ending at the row, like the `SUM(B4:B4)` total, grow over the copies); an empty array removes the row. Options: `sheets`, `missing` (text for unknown paths).
+
 ## Tables
 
 ```ts
@@ -222,6 +238,8 @@ addConditionalFormatting(ws, 'D2:D20', [{ type: 'dataBar', color: { argb: 'FF638
 ```
 
 ## Data validation
+
+Lists longer than Excel's 255-character limit, or with commas in items, are written by `addDataValidation` to a hidden sheet `_lists` and referenced from there, so the dropdown still works.
 
 ```ts
 addDataValidation(ws, { sqref: 'A2:A20', type: 'list', values: ['North', 'South', 'East'] });
