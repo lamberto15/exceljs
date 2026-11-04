@@ -19,9 +19,8 @@ Docs-only, test-only and CI changes do not need one (`pnpm changeset --empty` if
 ## How a release happens
 
 1. PRs with changesets land on `next`.
-2. A maintainer runs the workflow by hand (GitHub, Actions, **next-release**, Run workflow on `next`).
-   It is manual-only on purpose so nothing reaches npm by accident; to automate it later add a
-   `push` trigger. It runs `typecheck`, `test`, `build`, `size`, then the Changesets action:
+2. The **next-release** workflow runs on every push to `next` (and can be run by hand). It runs
+   `typecheck`, `test`, `build`, `size`, then the Changesets action:
    - with pending changesets it opens (or updates) a **"chore(release): version packages"** PR that
      bumps `package.json` and writes `CHANGELOG.md`;
    - when that PR is merged there are no pending changesets and the version is not on npm, so the action
@@ -38,7 +37,10 @@ Publishing uses **npm trusted publishing (OIDC)**: GitHub Actions proves its ide
 is no npm token secret, and provenance is attached automatically. Requirements: npm CLI >= 11.5.1 (the
 workflow upgrades npm) and Node >= 22.14 (the workflow uses Node 24).
 
-- An npm account with **2FA enabled**.
+- An npm account with **2FA enabled** (a passkey works; a local `npm publish` then needs
+  `--auth-type=web` in an interactive terminal).
+- Optional repo secret **`RELEASE_PAT`** (fine-grained PAT, Contents + Pull requests read/write, this
+  repo only) so the "Version Packages" PR triggers CI; without it the workflow uses `GITHUB_TOKEN`.
 - Settings, Actions, General, Workflow permissions: **Read and write**, and tick "Allow GitHub Actions
   to create and approve pull requests" (for the version PR).
 - The repository must be public (it is) for provenance.
@@ -63,8 +65,8 @@ git tag turbosheet@0.1.0 && git push origin turbosheet@0.1.0
 ```
 
 Then configure the trusted publisher (above). From 0.2.0 on, every release goes through changesets and
-the **next-release** workflow (Actions, next-release, Run workflow), which publishes over OIDC with
-provenance via `scripts/publish-if-new.mjs` (skips versions already on npm).
+the **next-release** workflow, which publishes over OIDC with provenance via `pnpm run release`
+(`changeset publish`, which skips versions already on npm).
 
 ## Deprecating or fixing a bad release
 
