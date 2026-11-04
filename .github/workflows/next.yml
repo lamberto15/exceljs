@@ -57,5 +57,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-calc
           node test/smoke/generate.mjs out
-          for f in out/*.xlsx; do soffice --headless --convert-to csv --outdir out/csv "$f"; done
-          test "$(ls out/csv | wc -l)" -eq "$(ls out/*.xlsx | wc -l)"
+          node test/smoke/excel-pack.mjs out/pack
+          rm out/pack/*encrypted*.xlsx
+          for f in out/*.xlsx out/pack/*.xlsx; do soffice --headless --convert-to csv --outdir out/csv "$f"; done
+          test "$(ls out/csv | wc -l)" -eq "$(ls out/*.xlsx out/pack/*.xlsx | wc -l)"
