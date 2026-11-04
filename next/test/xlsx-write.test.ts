@@ -244,7 +244,8 @@ async function checkOracle(buf: Uint8Array, streaming: boolean): Promise<void> {
 
   // formulas
   expect(ws.getCell('A5').value).toEqual({ formula: 'A2+A3', result: 3 });
-  expect(ws.getCell('B5').value).toEqual({ formula: 'CONCAT("a","b")', result: 'ab' });
+  // exceljs shows the file text: future functions carry the _xlfn. prefix Excel needs
+  expect(ws.getCell('B5').value).toEqual({ formula: '_xlfn.CONCAT("a","b")', result: 'ab' });
   expect(ws.getCell('C5').value).toEqual({ formula: 'TRUE()', result: true });
   expect(ws.getCell('D5').value).toEqual({ formula: '1/0', result: { error: '#DIV/0!' } });
   expect((ws.getCell('E5').value as ExcelJS.CellFormulaValue).formula).toBe('SUM(A2:A3)');

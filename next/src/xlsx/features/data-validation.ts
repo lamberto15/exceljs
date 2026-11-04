@@ -16,6 +16,7 @@
 
 import { dateToSerial } from '../../core/dates.js';
 import type { Worksheet } from '../../core/worksheet.js';
+import { addXlfn, stripXlfn } from '../common/xlfn.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot, type SubtreeHandler } from './types.js';
 import { attrs, bool, escapeText } from './util.js';
 
@@ -95,7 +96,7 @@ function formula(v: DataValidationFormula, type: DataValidationType, date1904: b
     return String(type === 'time' ? n - Math.floor(n) : n);
   }
   if (typeof v === 'number') return String(v);
-  return v.charCodeAt(0) === 61 ? v.slice(1) : v; // drop a leading "="
+  return addXlfn(v.charCodeAt(0) === 61 ? v.slice(1) : v); // drop a leading "="
 }
 
 /** Add a validation to the sheet (validates `values`); returns it. */
@@ -195,7 +196,7 @@ function handler(ws: Worksheet): SubtreeHandler {
         cur = undefined;
       } else if (cap === name && cur) {
         if (name === 'sqref') cur.sqref = text;
-        else cur[cap] = text;
+        else cur[cap] = stripXlfn(text);
         cap = undefined;
       }
     },

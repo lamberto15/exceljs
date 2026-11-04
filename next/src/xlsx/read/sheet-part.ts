@@ -12,6 +12,7 @@ import type { CellValue, ErrorCode, Formula, Hyperlink, RichText } from '../../c
 import { CellKind, type Worksheet, type WorksheetView } from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import type { Relationship } from '../common/r-opc.js';
+import { stripXlfn } from '../common/xlfn.js';
 import type { SheetReadCtx, SheetReader, SubtreeHandler } from '../features/types.js';
 import { translateFormula } from './formula.js';
 import { type StringItem, StringItemBuilder } from './strings-part.js';
@@ -575,7 +576,7 @@ export class SheetHandler implements XmlHandler {
   }
 
   private formulaText(): string | undefined {
-    const text = this.fText!;
+    const text = stripXlfn(this.fText!);
     if (this.fType === 'shared' && this.fSi !== undefined) {
       if (text !== '') {
         this.shared.set(this.fSi, { formula: text, r: this.cRow, c: this.cCol });

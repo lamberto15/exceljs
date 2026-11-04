@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encryptXlsx } from '../../dist/crypto.js';
+import { evaluate } from '../../dist/formula.js';
 import {
   addChart,
   addConditionalFormatting,
@@ -500,6 +501,112 @@ for (const [file, what] of [
     '14-charts.xlsx',
     writeXlsx(wb),
     'seven charts on "Chart Data" (clustered column, stacked bar, line with a red series + a smooth markerless one and axis titles, pie with % labels, doughnut, scatter y=x² without legend, stacked area), each titled with its type and showing the Jan–Jun data.',
+  );
+}
+
+// 16 — formulas computed by turbosheet/formula (cached values) ------------------------------------
+{
+  const wb = new Workbook();
+  const data = wb.addWorksheet('Data');
+  data.addRow(['Product', 'Region', 'Qty', 'Price', 'Date']);
+  const rows = [
+    ['Apples', 'North', 5, 1.2, Date.UTC(2024, 0, 15)],
+    ['Bananas', 'South', 12, 0.5, Date.UTC(2024, 1, 29)],
+    ['Cherries', 'North', 3, 4.75, Date.UTC(2024, 2, 1)],
+    ['Dates', 'East', 8, 3.1, Date.UTC(2023, 11, 31)],
+    ['Elderberries', 'South', 0, 6, Date.UTC(2024, 5, 30)],
+  ];
+  for (const [p, r, q, pr, d] of rows) data.addRow([p, r, q, pr, new Date(d)]);
+  addDefinedName(wb, 'Qty', 'Data!$C$2:$C$6');
+  addDefinedName(wb, 'Rate', '0.2');
+  const ws = wb.addWorksheet('Formulas');
+  ws.columns = [
+    { header: 'What', width: 26 },
+    { header: 'Formula', width: 58 },
+    { header: 'Excel computes', width: 22 },
+    { header: 'turbosheet computed', width: 22 },
+    { header: 'Match', width: 8 },
+  ];
+  for (let c = 1; c <= 5; c++) ws.setStyle(1, c, header);
+  const formulas = [
+    ['arithmetic, precedence', '-2^2+10/4*3-1'],
+    ['15-digit result', '0.1+0.2'],
+    ['concatenation', '"Total: "&SUM(Data!C2:C6)&" units"'],
+    ['SUM / defined name', 'SUM(Qty)*(1+Rate)'],
+    ['SUMIF wildcard', 'SUMIF(Data!A2:A6,"*e*",Data!C2:C6)'],
+    ['SUMIFS', 'SUMIFS(Data!C2:C6,Data!B2:B6,"North",Data!C2:C6,">3")'],
+    ['SUMPRODUCT', 'SUMPRODUCT(Data!C2:C6,Data!D2:D6)'],
+    ['AVERAGEIF', 'AVERAGEIF(Data!B2:B6,"South",Data!D2:D6)'],
+    [
+      'COUNTIF / COUNTIFS',
+      'COUNTIF(Data!B2:B6,"<>North")+COUNTIFS(Data!C2:C6,">0",Data!D2:D6,"<5")',
+    ],
+    [
+      'COUNT / COUNTA / COUNTBLANK',
+      'COUNT(Data!A1:E6)&"/"&COUNTA(Data!A1:E6)&"/"&COUNTBLANK(Data!F1:F6)',
+    ],
+    ['MIN / MAX / AVERAGE', 'MAX(Data!D2:D6)-MIN(Data!D2:D6)+AVERAGE(Data!C2:C6)'],
+    ['ROUND family', 'ROUND(2.345,2)+ROUNDUP(-3.14159,1)+ROUNDDOWN(31415.92654,-2)'],
+    ['INT / MOD / ABS / POWER / SQRT', 'INT(-8.9)+MOD(-3,2)+ABS(-4)+POWER(2,10)+SQRT(16)'],
+    ['PRODUCT', 'PRODUCT(Data!C2:C4)'],
+    [
+      'IF / AND / OR / NOT / XOR',
+      'IF(AND(Data!C2>1,OR(Data!B2="x",NOT(FALSE))),XOR(TRUE,FALSE),"no")',
+    ],
+    ['IFS / SWITCH', 'IFS(Data!C3>10,"big",TRUE,"small")&SWITCH(Data!B4,"North","-N","-?")'],
+    ['IFERROR / IFNA', 'IFERROR(1/0,"div0")&IFNA(MATCH("zz",Data!A2:A6,0),"-none")'],
+    ['VLOOKUP exact', 'VLOOKUP("Cherries",Data!A2:D6,4,FALSE)'],
+    ['VLOOKUP approximate', 'VLOOKUP(7,{0,"low";5,"mid";10,"high"},2)'],
+    ['HLOOKUP', 'HLOOKUP("Qty",Data!A1:E6,3,FALSE)'],
+    ['XLOOKUP not found', 'XLOOKUP("Figs",Data!A2:A6,Data!C2:C6,"missing")'],
+    ['INDEX / MATCH', 'INDEX(Data!A2:E6,MATCH("Dates",Data!A2:A6,0),2)'],
+    ['XMATCH next larger', 'XMATCH(4,Data!D2:D6,1)'],
+    ['CHOOSE / ROW / COLUMNS', 'CHOOSE(2,"a","b","c")&ROW(Data!C4)&COLUMNS(Data!A1:E1)'],
+    [
+      'text functions',
+      'PROPER(LOWER("hELLO wORLD"))&"|"&TRIM("  a   b ")&"|"&LEFT("abc",2)&RIGHT("abc",1)&MID("abcdef",3,2)',
+    ],
+    ['SUBSTITUTE / REPLACE', 'SUBSTITUTE("a-b-c","-","+",2)&REPLACE("2009",3,2,"10")'],
+    [
+      'FIND / SEARCH / LEN',
+      'FIND("M","Miriam McGovern",3)+SEARCH("margin","Profit Margin")+LEN("hello")',
+    ],
+    ['TEXTJOIN / CONCAT', 'TEXTJOIN(", ",TRUE,Data!A2:A4)&CONCAT("-",UPPER("x"))'],
+    ['TEXT number formats', 'TEXT(1234.567,"0")&" "&TEXT(0.256,"0%")&" "&TEXT(5,"000")'],
+    [
+      'TEXT date formats',
+      'TEXT(Data!E2,"yyyy-mm-dd")&" "&TEXT(Data!E3,"dd/mm/yyyy")&" "&TEXT(Data!E4,"mmm d, yyyy")',
+    ],
+    ['VALUE / EXACT / REPT', 'VALUE("1000")+EXACT("a","A")+LEN(REPT("ab",3))'],
+    ['DATE / YEAR / MONTH / DAY', 'DATE(YEAR(Data!E3),MONTH(Data!E3)+1,DAY(Data!E3))'],
+    ['WEEKDAY / EDATE / EOMONTH', 'WEEKDAY(Data!E2)+EDATE(Data!E2,1)-EOMONTH(Data!E2,0)'],
+    ['DATEDIF / DAYS', 'DATEDIF(Data!E5,Data!E6,"M")+DAYS(Data!E6,Data!E5)'],
+    [
+      'IS functions',
+      'ISBLANK(Data!F1)&ISNUMBER(Data!C2)&ISTEXT(Data!A2)&ISERROR(1/0)&ISNA(NA())&ISERR(NA())',
+    ],
+    ['error result', 'Data!A2+1'],
+    ['implicit intersection', 'Data!C2:C6*2'],
+    ['comparison rules', '("a"<"B")&(1<"0")&("z"<FALSE)'],
+  ];
+  formulas.forEach(([what, f], i) => {
+    const r = i + 2;
+    ws.addRow([
+      what,
+      `=${f}`,
+      { formula: f },
+      null,
+      { formula: `IF(ISERROR(C${r}),ISERROR(D${r}),IFERROR(C${r}=D${r},FALSE))` },
+    ]);
+  });
+  evaluate(wb);
+  // copy turbosheet's results into the static column D, then re-evaluate the Match column
+  for (let i = 0; i < formulas.length; i++) ws.setCell(i + 2, 4, ws.getValue(i + 2, 3).result);
+  evaluate(wb);
+  save(
+    '16-formulas.xlsx',
+    writeXlsx(wb),
+    `"Formulas" sheet: ${formulas.length} formulas whose cached values were computed by turbosheet/formula. Values shown before Excel recalculates match after pressing Ctrl+Alt+F9: column D is turbosheet's result as a plain value, so after recalculation column C (Excel) must equal D and the Match column must be TRUE on every row (all 38). Future functions (XOR, IFS, SWITCH, IFNA, XLOOKUP, XMATCH, TEXTJOIN, CONCAT, DAYS) must not show #NAME?. The examples avoid currency and thousands/decimal separators; TEXT date codes (yyyy, mmm) assume an English Excel UI.`,
   );
 }
 

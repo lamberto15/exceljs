@@ -1,10 +1,10 @@
 # API reference
 
-Generated from the 0.1.0 type declarations (`dist/*.d.ts`). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json` and `turbosheet/crypto` are separate entries.
+Generated from the 0.1.0 type declarations (`dist/*.d.ts`). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json`, `turbosheet/crypto` and `turbosheet/formula` are separate entries.
 
 Conventions: **rows and columns in the public API are 1-based** (like Excel); columns may be given as a number or a letter (`3` or `'C'`). Cell addresses are A1 strings (`'B3'`). The low-level helpers in `address` (`decodeAddr`, `decodeRange`, `encodeAddr`, `encodeRange`, `encodeCol`, `decodeCol`) are **0-based** and ranges are `{ top, left, bottom, right }`.
 
-Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, columns](#rows-cells-columns) - [CellValue](#cellvalue) - [Style](#style) - [Writing](#writing) - [Reading](#reading) - [Streaming writer](#streaming-writer) - [Features](#features) - [CSV](#csv) - [JSON](#json) - [Crypto](#crypto) - [Errors](#errors) - [Addresses and dates](#addresses-and-dates)
+Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, columns](#rows-cells-columns) - [CellValue](#cellvalue) - [Style](#style) - [Writing](#writing) - [Reading](#reading) - [Streaming writer](#streaming-writer) - [Features](#features) - [CSV](#csv) - [JSON](#json) - [Crypto](#crypto) - [Formula](#formula) - [Errors](#errors) - [Addresses and dates](#addresses-and-dates)
 
 ## Workbook
 
@@ -84,7 +84,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | --- | --- |
 | number, string, boolean | as is |
 | `Date` | stored as a serial using the workbook date system (UTC based, the Excel 1900 leap-year bug is honored). Number cells with a date format read back as `Date`. |
-| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`. `result` is the cached value written to the file; **turbosheet does not evaluate formulas**. For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
+| `Formula` | `{ formula: 'SUM(A1:A2)', result?: number \| string \| boolean \| CellError, array?: 'A1:B3' }`. No leading `=`, no `_xlfn.` prefix: writers add it to functions newer than Excel 2007 (`XLOOKUP`, `IFS`, `STDEV.S`, ...; also in defined names, validations, conditional formats and table formulas) and readers remove it. `result` is the cached value written to the file; the core does not evaluate formulas (see [`turbosheet/formula`](#formula)). For date-formatted formula cells `result` is the serial (use `serialToDate(result, wb.date1904)`). |
 | `RichText` | `{ richText: [{ text, font? }, ...] }` |
 | `Hyperlink` | `{ text, hyperlink, tooltip? }` |
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
@@ -285,6 +285,22 @@ encryptXlsx(zipBytes, password, { cipher?: 'AES-128'|'AES-192'|'AES-256', hash?:
 
 Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. `decryptXlsx` reads agile and standard (Excel 2007) encryption; `encryptXlsx` writes agile. `verifyIntegrity` defaults to true; `maxSpinCount` defaults to 10,000,000.
 
+## Formula
+
+`import { ... } from 'turbosheet/formula'` (synchronous; details, semantics and the function list: [formula.md](./formula.md))
+
+```ts
+evaluate(wb, opts?): EvaluationReport             // computes every formula cell, stores Formula.result
+evaluateCell(wb, sheet, 'D10', opts?): FormulaResult | null
+evaluateFormula(wb, 'SUM(A1:A9)', { sheet?, address?, array?, now? }?): FormulaResult | FormulaResult[][]
+parseFormula(text): FormulaNode                   // throws FormulaParseError { position, formula }
+createEvaluator({ functions?, now? }): Evaluator  // per-instance functions: .registerFunction(name, impl)
+supportedFunctions(): string[]
+toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v)   // helpers for custom functions
+```
+
+`EvaluateOptions`: `sheets`, `writeResults` (default `true` for `evaluate`, `false` for `evaluateCell`), `maxIterations` (default 0: circular references give `#REF!`), `maxChange` (0.001), `onUnsupported(name, address)`, `now`. `EvaluationReport`: `evaluated`, `circular` (addresses), `unsupported` (function names), `errors` (`{ address, message }`), `results` (`Map` when not writing). A formula never makes evaluation throw: errors become `CellError` results. `FormulaResult` = `number | string | boolean | CellError`; dates are serials in the workbook's date system.
+
 ## Errors
 
 | Class | Thrown by | Meaning |
@@ -295,6 +311,7 @@ Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. 
 | `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
 | `CsvError` | `turbosheet/csv` | Option or size-limit problem. |
+| `FormulaParseError` (extends `SyntaxError`) | `parseFormula`, `evaluateFormula` | Formula text that does not parse; `position` is the 0-based offset. `evaluate` reports such cells instead of throwing. |
 
 In `turbosheet/lite`, writing a feature field whose writer is not enabled throws (for example ``Worksheet 'Data': ws.tables is set but the 'tables' feature is not enabled; pass features: [tablesWriter]``) instead of dropping data silently.
 

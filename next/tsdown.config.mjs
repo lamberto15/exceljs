@@ -3,7 +3,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: {
     index: 'src/index.ts', lite: 'src/lite.ts', csv: 'src/csv/index.ts', json: 'src/json/index.ts',
-    crypto: 'src/crypto/index.ts',
+    crypto: 'src/crypto/index.ts', formula: 'src/formula/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

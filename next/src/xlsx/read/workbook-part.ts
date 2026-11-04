@@ -3,6 +3,7 @@
 import type { DefinedName } from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
+import { stripXlfn } from '../common/xlfn.js';
 import { attrBool, attrLocal } from './xml-util.js';
 
 export interface SheetEntry {
@@ -49,7 +50,7 @@ export class WorkbookHandler implements XmlHandler {
 
   close(name: string): void {
     if (this.dn && localName(name) === 'definedName') {
-      this.definedNames.push({ ...this.dn, value: this.dnText });
+      this.definedNames.push({ ...this.dn, value: stripXlfn(this.dnText) });
       this.dn = undefined;
     }
   }

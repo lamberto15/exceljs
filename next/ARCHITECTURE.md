@@ -1,6 +1,7 @@
 # Architecture & module contracts
 
-Single published package, subpath exports for tree-shaking (`.`, `./lite`, `./csv`, `./json`, `./crypto`).
+Single published package, subpath exports for tree-shaking (`.`, `./lite`, `./csv`, `./json`, `./crypto`,
+`./formula`).
 `.` is batteries-included (every XLSX feature on); `./lite` is the same API with features opt-in
 (`options.features`, see "src/xlsx" below and `docs/bundle-size.md`). The build is unbundled
 (tsdown `unbundle`: one dist file per source module) so consumer bundlers can drop whole unused
@@ -126,6 +127,33 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
   `w` hooks readXlsx attaches to the kept data, so write-only bundles never include it. Features
   disabled at read time (`./lite`) are not claimed, so their content falls through to
   preservation and round-trips raw. See "Round-trip preservation" in the features README.
+
+## src/formula — formula parser and evaluator (`./formula`)
+```ts
+export function parseFormula(text: string): FormulaNode;      // throws FormulaParseError
+export function evaluate(wb, opts?): EvaluationReport;        // also evaluateCell / evaluateFormula
+export function createEvaluator({ functions?, now? }): Evaluator;
+```
+- `parser.ts`: hand-written Pratt parser (Excel precedence: `:` > unary > `%` > `^` > `* /` > `+ -` >
+  `&` > comparisons; left-associative). Nodes are plain objects with 0-based coordinates.
+- `evaluator.ts`: `Evaluator` (function table + parse cache keyed by formula text) and a per-call
+  `Run`: indexes the formula cells of every sheet (node ids are contiguous per sheet and sorted by
+  row, then column, so a cell's id is two binary searches away), collects static references per
+  parsed formula, and runs an iterative Tarjan SCC over the nodes reachable from the roots —
+  each SCC is evaluated as soon as it is popped, which is dependencies-first. Singleton SCCs are
+  computed; cycles get `#REF!` (or iterate with `maxIterations`). A reference reached only
+  dynamically is evaluated on demand (re-entry = circular). Results are stored at the end
+  (`{ ...formula, result }` in the slot; array formulas also fill their area via `setCellRaw`).
+- Values (`values.ts`): scalars (`null` = blank, `CellError` objects), `FormulaRange` (lazy
+  reference, reads through the run) and `FormulaArray`. `EvalContext.operand` dereferences
+  (implicit intersection unless in array mode); function arguments stay references. Built-ins
+  throw `CellError`s; the call boundary turns them into results.
+- Ranges: `Run.each` walks `rowData` directly (formula cells advance a node-id cursor in step with
+  the slots); single-column ranges of 16+ rows go through a per-run dense column cache, which
+  lookups also use (plus an exact-match index built on the second lookup into the same lane).
+  The cache is bypassed while iterating cycles.
+- Imports only `core/dates.ts` from the core (and core types), never the Worksheet code
+  (`CellKind` values are inlined), so it adds nothing to the core bundles.
 
 ## src/crypto — password-protected files (`./crypto`, MS-OFFCRYPTO)
 ```ts

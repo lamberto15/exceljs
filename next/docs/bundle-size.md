@@ -60,15 +60,28 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 30.90 KB |
-| read+write                     | root `*`                                                       | 64 KB | 60.42 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 20.01 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.35 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24 KB | 23.56 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 31.73 KB |
+| read+write                     | root `*`                                                       | 64 KB | 62.52 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 20.74 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 38.37 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24.5 KB | 24.34 KB |
 | lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.03 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 24 KB | 23.3 KB  |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 24.5 KB | 23.97 KB |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
+| formula                        | `./formula` `*`                                                | 16.5 KB | 16 KB  |
+
+`./formula` is a separate entry, so it costs nothing unless imported (the core bundles above did
+not change when it was added). Its budget covers the whole evaluator, because `evaluate` reaches
+every built-in through the function table: parser (~2.3 KB), engine (dependency graph, cycles,
+array formulas, ~5 KB), coercion and comparison rules incl. date / number text parsing (~1.8 KB),
+the `TEXT` number/date formatter (~2 KB) and 87 functions (~6 KB). The 15 KB target was missed by
+about 1 KB; 16.5 KB leaves room for fixes without letting it grow unnoticed.
+
+Every writer carries the future-function table (`src/xlsx/common/xlfn.ts`, about 0.6 KB): functions
+added after Excel 2007 must be stored as `_xlfn.XLOOKUP(...)` or Excel shows #NAME?. Only the ~100
+undotted names are listed (every dotted built-in except ERROR.TYPE is a future function). This is
+why the two "lite write + ..." limits moved from 24 KB to 24.5 KB.
 
 The root write-only limit is 32 KB (was 30 KB): the root may grow as features are added, because
 lite is the small path. The lite write-only limit is what guards against regressions in the core

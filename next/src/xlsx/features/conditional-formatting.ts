@@ -29,6 +29,7 @@ import { decodeRange, encodeAddr } from '../../core/address.js';
 import type { Color, Style } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import type { XmlAttrs } from '../../xml/index.js';
+import { addXlfn, stripXlfn } from '../common/xlfn.js';
 import {
   type FeatureReader,
   type FeatureWriter,
@@ -395,7 +396,7 @@ function formulas(fs: readonly (string | number)[] | undefined): string {
   let s = '';
   for (const f of fs ?? []) {
     const v = typeof f === 'number' ? String(f) : f.charCodeAt(0) === 61 ? f.slice(1) : f;
-    s += `<formula>${escapeText(v)}</formula>`;
+    s += `<formula>${escapeText(addXlfn(v))}</formula>`;
   }
   return s;
 }
@@ -675,7 +676,7 @@ function mainHandler(ctx: SheetReadCtx, sqref: string): SubtreeHandler {
     },
     close(name) {
       if (name === cap) {
-        if (cap === 'formula') fs.push(text);
+        if (cap === 'formula') fs.push(stripXlfn(text));
         else id = text.trim();
         cap = undefined;
         return;

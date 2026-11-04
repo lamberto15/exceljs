@@ -6,6 +6,7 @@ import type { Alignment, Border, BorderEdge, DefinedName, Fill, Style } from '..
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { colorAttrs, fontBody, tElem } from '../common/rich-text.js';
+import { addXlfn } from '../common/xlfn.js';
 
 export { colorAttrs, fontBody, tElem };
 
@@ -128,7 +129,7 @@ function definedNameXml(
 ): string {
   return `<definedName name="${escapeAttr(name)}"${sheet !== undefined ? ` localSheetId="${sheet}"` : ''}${
     comment ? ` comment="${escapeAttr(comment)}"` : ''
-  }${hidden ? ' hidden="1"' : ''}>${escapeText(value)}</definedName>`;
+  }${hidden ? ' hidden="1"' : ''}>${escapeText(addXlfn(value))}</definedName>`;
 }
 
 /**

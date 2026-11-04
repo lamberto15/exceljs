@@ -136,6 +136,19 @@ sheetToObjects(ws); // [{ name: 'Ann', age: 31 }, { name: 'Bob', age: 42 }]
 for await (const line of sheetToNdjson(ws)) process.stdout.write(line); // one JSON object per row
 ```
 
+### Formulas
+
+```ts
+import { evaluate, evaluateFormula } from 'turbosheet/formula';
+
+ws.setCell('C2', { formula: 'A2*B2' });
+const report = evaluate(wb); // fills Formula.result of every formula, in dependency order
+// report.circular, report.unsupported list what could not be computed
+evaluateFormula(wb, 'SUMIF(A:A,">10")'); // ad-hoc
+```
+
+Results are written as cached values, so files open with correct numbers in viewers that do not recalculate. Supported functions and semantics: [docs/formula.md](./docs/formula.md).
+
 ### Password-protected files
 
 ```ts
@@ -150,7 +163,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Formula evaluation (`turbosheet/formula`: 87 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
@@ -176,6 +189,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 - [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
 - [docs/benchmarks.md](./docs/benchmarks.md): benchmark methodology and results
 - [CONTRIBUTING.md](./CONTRIBUTING.md): development setup and PR flow
+- [docs/formula.md](./docs/formula.md): formula evaluation (`turbosheet/formula`)
 - [ARCHITECTURE.md](./ARCHITECTURE.md): internals; [RELEASING.md](./RELEASING.md): release process
 
 ## Entry points
@@ -187,6 +201,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 | `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
 | `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
+| `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 16 KB                    |
 
 Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook, writeXlsx }` and `*`). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
 
