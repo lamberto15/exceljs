@@ -106,7 +106,10 @@ export function bookParts(
         extra.map((e) => [e[0], e[1]]),
       ),
     },
-    { path: 'xl/styles.xml', data: stylesXml(wb.styles, pb?.tableStyles, pb?.stylesTail) },
+    {
+      path: 'xl/styles.xml',
+      data: stylesXml(wb.styles, pb?.tableStyles, pb?.stylesTail, pb?.named),
+    },
   );
   if (sst) out.push({ path: 'xl/sharedStrings.xml', data: sharedStringsXml(sst) });
   out.push(

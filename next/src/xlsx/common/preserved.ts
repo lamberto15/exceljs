@@ -146,6 +146,8 @@ export interface PBook {
   /** styles.xml pieces: raw `<tableStyles>` (dxfIds remapped) and `<colors>` + `<extLst>`. */
   readonly tableStyles: string | undefined;
   readonly stylesTail: string;
+  /** Named cell styles: raw `<cellStyleXfs>` (ids remapped) and `<cellStyles>`. */
+  readonly named: readonly [string, string] | undefined;
   /** Part-family numbers taken by preserved content (e.g. "vmlShapeBlock1"). */
   readonly reserve: readonly string[];
   /** Writer hooks. */

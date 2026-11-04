@@ -2,8 +2,9 @@
 // Produces `xfMap`: file cellXfs index → registry xf index (cells use `xfMap[s]`).
 // dxfs (differential formats for conditional formatting / tables) → `dxfMap` (file dxf index →
 // registry dxf index, see `applyDxfs`).
-// Not read (yet): cellStyleXfs / cellStyles (named styles),
-// gradient fills (mapped to no fill), indexedColors / mruColors overrides.
+// Named styles (cellStyleXfs / cellStyles) are not modelled: with `apply(reg, true)` the cellXfs
+// keep their `xfId` and read/preserve.ts keeps both lists raw (ids remapped through
+// fontMap / fillMap / borderMap). Not read (yet): gradient fills (mapped to no fill), indexedColors / mruColors overrides.
 
 import type { StyleRegistry } from '../../core/styles.js';
 import type {
@@ -29,6 +30,7 @@ interface RawXf {
   fontId: number;
   fillId: number;
   borderId: number;
+  xfId: number;
   alignment?: Alignment;
   protection?: Protection;
 }
@@ -43,6 +45,13 @@ export class StylesHandler implements XmlHandler {
   readonly borders: Border[] = [];
   readonly xfs: RawXf[] = [];
   readonly dxfs: Style[] = [];
+  /** File font / fill / border index → registry index (set by `apply`). */
+  readonly fontMap: number[] = [];
+  readonly fillMap: number[] = [];
+  readonly borderMap: number[] = [];
+  /** cellStyleXfs / cellStyles entries (named styles beyond "Normal" when either is > 1). */
+  styleXfs = 0;
+  cellStyles = 0;
   private dxf: Mutable<Style> | undefined;
   private dxfPart = '';
 
@@ -66,6 +75,10 @@ export class StylesHandler implements XmlHandler {
       return;
     }
     if (this.depth < 2) return;
+    if (this.depth === 3) {
+      if (ln === 'xf' && this.section === 'cellStyleXfs') this.styleXfs++;
+      else if (ln === 'cellStyle') this.cellStyles++;
+    }
     switch (this.section) {
       case 'numFmts':
         if (ln === 'numFmt' && a.numFmtId !== undefined && a.formatCode !== undefined) {
@@ -111,6 +124,7 @@ export class StylesHandler implements XmlHandler {
             fontId: a.fontId !== undefined ? +a.fontId : 0,
             fillId: a.fillId !== undefined ? +a.fillId : 0,
             borderId: a.borderId !== undefined ? +a.borderId : 0,
+            xfId: a.xfId !== undefined ? +a.xfId || 0 : 0,
           };
         } else if (this.xf && ln === 'alignment') {
           const al: Mutable<Alignment> = {};
@@ -263,22 +277,25 @@ export class StylesHandler implements XmlHandler {
     return out;
   }
 
-  /** Register everything into the registry; returns file xf index → registry xf index. */
-  apply(reg: StyleRegistry): Uint32Array {
+  /**
+   * Register everything into the registry; returns file xf index → registry xf index.
+   * `named`: keep each xf's named-style link (`xfId`), when the named styles are kept too.
+   */
+  apply(reg: StyleRegistry, named = false): Uint32Array {
     for (const nf of this.numFmts) reg.registerNumFmt(nf.id, nf.code);
-    const fontMap: number[] = [];
+    const fontMap = this.fontMap;
     for (let i = 0; i < this.fonts.length; i++) {
       if (i === 0) {
         reg.setDefaultFont(this.fonts[0]!);
         fontMap[0] = 0;
       } else fontMap[i] = reg.addFont(this.fonts[i]!);
     }
-    const fillMap: number[] = [];
+    const fillMap = this.fillMap;
     for (let i = 0; i < this.fills.length; i++) {
       const f = this.fills[i];
       fillMap[i] = f ? reg.addFill(f) : 0;
     }
-    const borderMap: number[] = [];
+    const borderMap = this.borderMap;
     for (let i = 0; i < this.borders.length; i++) borderMap[i] = reg.addBorder(this.borders[i]!);
     const out = new Uint32Array(Math.max(this.xfs.length, 1));
     for (let i = 0; i < this.xfs.length; i++) {
@@ -290,6 +307,7 @@ export class StylesHandler implements XmlHandler {
         borderId: borderMap[x.borderId] ?? 0,
         alignment: x.alignment,
         protection: x.protection,
+        xfId: named ? x.xfId : 0,
       });
     }
     return out;

@@ -288,8 +288,8 @@ function dxfXml(d: Style, reg: StyleRegistry): string {
   return `${s}</dxf>`;
 }
 
-function xfXml(x: Xf): string {
-  let s = `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}" borderId="${x.borderId}" xfId="0"`;
+function xfXml(x: Xf, named: unknown): string {
+  let s = `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}" borderId="${x.borderId}" xfId="${(named && x.xfId) || 0}"`;
   if (x.numFmtId) s += ' applyNumberFormat="1"';
   if (x.fontId) s += ' applyFont="1"';
   if (x.fillId) s += ' applyFill="1"';
@@ -307,8 +307,16 @@ function xfXml(x: Xf): string {
   return `${s}</xf>`;
 }
 
-/** styles.xml; `tableStyles` / `tail` (colors, extLst): preserved raw pieces. */
-export function stylesXml(reg: StyleRegistry, tableStyles?: string, tail = ''): string {
+/**
+ * styles.xml; `tableStyles` / `tail` (colors, extLst) / `named` (cellStyleXfs, cellStyles):
+ * preserved raw pieces. Xf `xfId`s are written only with the named styles they refer to.
+ */
+export function stylesXml(
+  reg: StyleRegistry,
+  tableStyles?: string,
+  tail = '',
+  named?: readonly [string, string],
+): string {
   let s = `${XML_DECL}<styleSheet xmlns="${NS_MAIN}">`;
   const nf = reg.numFmts;
   if (nf.length > 0) {
@@ -324,10 +332,9 @@ export function stylesXml(reg: StyleRegistry, tableStyles?: string, tail = ''): 
   for (const f of reg.fills) s += fillXml(f);
   s += `</fills><borders count="${reg.borders.length}">`;
   for (const b of reg.borders) s += borderXml(b);
-  s += `</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${reg.xfs.length}">`;
-  for (const x of reg.xfs) s += xfXml(x);
-  s +=
-    '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>';
+  s += `</borders>${named?.[0] ?? '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'}<cellXfs count="${reg.xfs.length}">`;
+  for (const x of reg.xfs) s += xfXml(x, named);
+  s += `</cellXfs>${named?.[1] ?? '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'}`;
   const dx = reg.dxfs;
   s += `<dxfs count="${dx.length}">`;
   for (const d of dx) s += dxfXml(d, reg);
