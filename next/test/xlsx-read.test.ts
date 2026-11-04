@@ -1,4 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import type { CellValue } from '../src/core/types.js';
@@ -376,13 +378,13 @@ describe('readXlsx: exceljs round-trip', () => {
 
 // ---------------------------------------------------------------- real-world fixtures
 
-const SPEC = new URL('../../spec/', import.meta.url).pathname;
+const SPEC = fileURLToPath(new URL('../../spec/', import.meta.url));
 
 function findXlsx(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   for (const f of readdirSync(dir)) {
-    const p = `${dir}${dir.endsWith('/') ? '' : '/'}${f}`;
+    const p = join(dir, f);
     if (statSync(p).isDirectory()) out.push(...findXlsx(p));
     else if (f.endsWith('.xlsx')) out.push(p);
   }
@@ -393,6 +395,13 @@ function findXlsx(dir: string): string[] {
 const EXPECTED_ERRORS: Record<string, RegExp> = {
   'invalid-xml.xlsx': /text data outside of root element/,
 };
+
+/**
+ * Fixtures exceljs itself cannot load in reasonable time, so the exceljs comparison is skipped.
+ * test-issue-1842: a whole-column data validation that exceljs expands cell by cell (its bug
+ * #1842) — it throws after seconds on fast machines and runs for many minutes on CI runners.
+ */
+const EXCELJS_ORACLE_SKIP = new Set(['test-issue-1842.xlsx']);
 
 function exceljsValue(v: ExcelJS.CellValue): unknown {
   if (v === null || v === undefined) return null;
@@ -439,8 +448,8 @@ describe('real-world fixtures', () => {
     expect(files.length).toBeGreaterThan(20);
   });
   for (const file of files) {
-    const base = file.slice(file.lastIndexOf('/') + 1);
-    const rel = file.slice(SPEC.length);
+    const base = basename(file);
+    const rel = relative(SPEC, file).replaceAll('\\', '/');
     it(`parses ${rel}`, { timeout: 60_000 }, async () => {
       const buf = new Uint8Array(readFileSync(file));
       const expected = EXPECTED_ERRORS[base];
@@ -464,6 +473,7 @@ describe('real-world fixtures', () => {
       }
 
       // compare with exceljs' own reading
+      if (EXCELJS_ORACLE_SKIP.has(base)) return;
       const ex = new ExcelJS.Workbook();
       try {
         // biome-ignore lint/suspicious/noExplicitAny: exceljs typings want a Node Buffer
