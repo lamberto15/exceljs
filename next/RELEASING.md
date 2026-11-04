@@ -19,14 +19,15 @@ Docs-only, test-only and CI changes do not need one (`pnpm changeset --empty` if
 ## How a release happens
 
 1. PRs with changesets land on `next`.
-2. The workflow runs on every push to `next`: it runs `typecheck`, `test`, `build`, `size`, then the
-   Changesets action:
+2. A maintainer runs the workflow by hand (GitHub, Actions, **next-release**, Run workflow on `next`).
+   It is manual-only on purpose so nothing reaches npm by accident; to automate it later add a
+   `push` trigger. It runs `typecheck`, `test`, `build`, `size`, then the Changesets action:
    - with pending changesets it opens (or updates) a **"chore(release): version packages"** PR that
      bumps `package.json` and writes `CHANGELOG.md`;
    - when that PR is merged there are no pending changesets and the version is not on npm, so the action
      runs `pnpm release` (`changeset publish`), which publishes to npm with `--access public` and
      provenance (`NPM_CONFIG_PROVENANCE=true`, `id-token: write`) and creates the git tag.
-3. Pushes with no changesets and a version already on npm do nothing.
+3. Runs with no changesets and a version already on npm do nothing.
 
 Checks before merging the version PR: `CHANGELOG.md` reads well, `pnpm build && pnpm size` is green,
 `npm pack --dry-run` lists only `dist/`, `README.md`, `LICENSE`, `CHANGELOG.md`, `package.json`.

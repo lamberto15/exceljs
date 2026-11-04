@@ -1,14 +1,13 @@
 name: next-release
 
-# On every push to `next` that touches the library:
+# Manual trigger only (Actions > next-release > Run workflow), so nothing reaches npm by accident:
 #  - pending changesets (next/.changeset/*.md)  -> opens/updates the "Version Packages" PR
 #  - no pending changesets, version not on npm  -> builds, tests and publishes with provenance
-# Requires the repository secret NPM_TOKEN (see next/RELEASING.md).
+# Requires the repository secret NPM_TOKEN (see next/RELEASING.md). To automate later, add:
+#   push: { branches: [next], paths: ['next/**'] }
 
 on:
-  push:
-    branches: [next]
-    paths: ['next/**', '.github/workflows/next-release.yml']
+  workflow_dispatch:
 
 concurrency:
   group: next-release
