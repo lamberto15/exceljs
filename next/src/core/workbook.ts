@@ -77,7 +77,16 @@ export class Workbook {
   removeWorksheet(ws: string | number | Worksheet): void {
     const target = ws instanceof Worksheet ? ws : this.getWorksheet(ws);
     const i = target ? this._sheets.indexOf(target) : -1;
-    if (i >= 0) this._sheets.splice(i, 1);
+    if (i < 0) return;
+    this._sheets.splice(i, 1);
+    // sheet-scoped names are keyed by tab index: drop the removed sheet's, shift later ones
+    const names: DefinedName[] = [];
+    for (const d of this.definedNames) {
+      const s = d.localSheetId;
+      if (s === undefined || s < i) names.push(d);
+      else if (s > i) names.push({ ...d, localSheetId: s - 1 });
+    }
+    this.definedNames = names;
   }
 
   /** @internal Validate a sheet name (Excel rules) and uniqueness. */
