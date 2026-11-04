@@ -52,6 +52,8 @@ export interface SheetCtx extends SheetWriteCtx {
   tabSelected: boolean;
   /** Emitters of this write (built-in + enabled features). */
   readonly plan: SheetPlan;
+  /** The package being written (shared by the sheets of one write). */
+  readonly pkg: PackageParts;
 }
 
 export interface NewSheetCtx {
@@ -87,8 +89,13 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
     addPart: (path, data, ct) => pkg.addPart(path, data, ct),
     addDefault: (ext, ct) => pkg.addDefault(ext, ct),
     nextIndex: (f) => pkg.nextIndex(f),
+    pkg,
   };
 }
+
+/** Functions whose results spill (dynamic arrays): such formulas get the metadata by default. */
+const SPILL =
+  /(?:^|[^\w.])(?:_xlfn\.(?:_xlws\.)?)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
 
 // ---- caches (module level; contents are deterministic, so sharing is safe) -------------
 
@@ -151,8 +158,14 @@ function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string 
         break;
     }
   }
-  const fa = f.array ? ` t="array" ref="${escapeAttr(f.array)}"` : '';
-  return `<c r="${ref}"${s}${t}><f${fa}>${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
+  const dyn = f.dynamic ?? (f.array === undefined && SPILL.test(f.formula));
+  if (dyn) ctx.pkg.dynamicArrays = true;
+  const fa = dyn
+    ? ` t="array" ref="${escapeAttr(f.array ?? ref)}"`
+    : f.array
+      ? ` t="array" ref="${escapeAttr(f.array)}"`
+      : '';
+  return `<c r="${ref}"${s}${t}${dyn ? ' cm="1"' : ''}><f${fa}>${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
 }
 
 /**
@@ -174,6 +187,10 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
   }
   if (row.outlineLevel > 0) {
     out += ` outlineLevel="${row.outlineLevel}"`;
+    props = true;
+  }
+  if (row.collapsed) {
+    out += ' collapsed="1"';
     props = true;
   }
   if (row.xf !== 0) {
@@ -256,6 +273,7 @@ function sameCol(a: Column, b: Column): boolean {
     a.width === b.width &&
     a.hidden === b.hidden &&
     a.outlineLevel === b.outlineLevel &&
+    a.collapsed === b.collapsed &&
     a.styleIndex === b.styleIndex
   );
 }
@@ -265,14 +283,16 @@ function colsXml(cols: readonly (Column | undefined)[]): string {
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
     if (!c) continue;
-    if (c.width === undefined && !c.hidden && !c.outlineLevel && !c.styleIndex) continue;
+    if (c.width === undefined && !c.hidden && !c.outlineLevel && !c.collapsed && !c.styleIndex) {
+      continue;
+    }
     let j = i;
     while (j + 1 < cols.length && cols[j + 1] && sameCol(c, cols[j + 1]!)) j++;
     s += `<col min="${i + 1}" max="${j + 1}" width="${c.width ?? 9.140625}"${
       c.width !== undefined ? ' customWidth="1"' : ''
     }${c.hidden ? ' hidden="1"' : ''}${c.outlineLevel ? ` outlineLevel="${c.outlineLevel}"` : ''}${
-      c.styleIndex ? ` style="${c.styleIndex}"` : ''
-    }/>`;
+      c.collapsed ? ' collapsed="1"' : ''
+    }${c.styleIndex ? ` style="${c.styleIndex}"` : ''}/>`;
     i = j;
   }
   return s ? `<cols>${s}</cols>` : '';
@@ -364,6 +384,9 @@ const OWNED: readonly string[] = [
   'protection:sheet-protection',
   'pageSetup:print-setup',
   'headerFooter:print-setup',
+  'rowBreaks:print-setup',
+  'colBreaks:print-setup',
+  'ignoredErrors:ignored-errors',
 ];
 
 function checkFeatures(ws: Worksheet, plan: SheetPlan): void {

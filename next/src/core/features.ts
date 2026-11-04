@@ -12,6 +12,7 @@ import type { Note } from '../xlsx/features/comments.js';
 import type { ConditionalFormatting } from '../xlsx/features/conditional-formatting.js';
 
 import type { DataValidation } from '../xlsx/features/data-validation.js';
+import type { IgnoredError } from '../xlsx/features/ignored-errors.js';
 import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
@@ -22,6 +23,12 @@ export interface WorksheetFeatureFields {
   pageSetup?: PageSetup | undefined;
   /** Print header & footer (features/print-setup). */
   headerFooter?: HeaderFooter | undefined;
+  /** Manual page breaks after these 1-based rows (features/print-setup). */
+  rowBreaks?: number[] | undefined;
+  /** Manual page breaks after these 1-based columns (features/print-setup). */
+  colBreaks?: number[] | undefined;
+  /** Excel error checks to switch off for ranges (features/ignored-errors). */
+  ignoredErrors?: IgnoredError[] | undefined;
   /** Cell notes (legacy comments), one per cell (features/comments; see addNote). */
   comments?: Note[] | undefined;
   /** Pictures placed on the sheet (features/images; see placeImage). */

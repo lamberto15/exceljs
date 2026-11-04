@@ -5,6 +5,7 @@
 // emitters; the writer runs the emitter once per sheet however many features list it.
 
 import { decodeAddr, decodeRange } from '../../core/address.js';
+import type { Worksheet } from '../../core/worksheet.js';
 import { escapeAttr } from '../../xml/index.js';
 import type { CellPosition, ImageAnchor, ImageSize } from './images.js';
 import type { DrawingWriteCtx, SheetEmitter, SheetWriteCtx } from './types.js';
@@ -13,19 +14,52 @@ import { attrs, fillRels, presDrawing } from './util.js';
 
 /**
  * Anchor as users pass it (placeImage, addChart): a range ("B2:D6" covers those cells), a
- * top-left cell + pixel size, or an explicit {@link ImageAnchor}.
+ * top-left cell + pixel size, top-left + bottom-right corners, or an explicit
+ * {@link ImageAnchor}. Positions may be fractional like in ExcelJS (`{ col: 1.5, row: 2.25 }`:
+ * halfway into column B, a quarter into row 3), converted with the sheet's column widths and
+ * row heights.
  */
-export type AnchorInput = string | ImageAnchor | { tl: string | CellPosition; ext: ImageSize };
+export type AnchorInput =
+  | string
+  | ImageAnchor
+  | { tl: string | CellPosition; ext: ImageSize }
+  | { tl: string | CellPosition; br: string | CellPosition };
 
-/** Normalize an {@link AnchorInput}. */
-export function toAnchor(anchor: AnchorInput): ImageAnchor {
+/** Column width in pixels (Excel's conversion for the default font, 7 px per character). */
+export function colPx(ws: Worksheet | undefined, c: number): number {
+  return Math.trunc((ws?.columnData[c]?.width ?? 9.140625) * 7 + 0.5);
+}
+
+/** Row height in pixels (points * 4/3; default 15 pt). */
+export function rowPx(ws: Worksheet | undefined, r: number): number {
+  return Math.round(((ws?.rowData[r]?.height || 15) * 4) / 3);
+}
+
+/** A whole-cell position with pixel offsets (fractional col / row resolved). */
+function cellPos(p: string | CellPosition, ws: Worksheet | undefined): CellPosition {
+  if (typeof p === 'string') return decodeAddr(p);
+  const c = Math.floor(p.col);
+  const r = Math.floor(p.row);
+  if (c === p.col && r === p.row) return p;
+  const q: CellPosition = { ...p, col: c, row: r };
+  if (c !== p.col) q.colOff = (p.colOff ?? 0) + (p.col - c) * colPx(ws, c);
+  if (r !== p.row) q.rowOff = (p.rowOff ?? 0) + (p.row - r) * rowPx(ws, r);
+  return q;
+}
+
+/** Normalize an {@link AnchorInput} (`ws` sizes fractional positions; default sizes without). */
+export function toAnchor(anchor: AnchorInput, ws?: Worksheet): ImageAnchor {
   if (typeof anchor === 'string') {
     const r = decodeRange(anchor);
     return { from: { col: r.left, row: r.top }, to: { col: r.right + 1, row: r.bottom + 1 } };
   }
   if ('tl' in anchor) {
-    const tl = anchor.tl;
-    return { from: typeof tl === 'string' ? decodeAddr(tl) : tl, ext: anchor.ext };
+    const from = cellPos(anchor.tl, ws);
+    return 'br' in anchor ? { from, to: cellPos(anchor.br, ws) } : { from, ext: anchor.ext };
+  }
+  if ('from' in anchor) {
+    const from = cellPos(anchor.from, ws);
+    return 'to' in anchor ? { from, to: cellPos(anchor.to, ws) } : { from, ext: anchor.ext };
   }
   return anchor;
 }

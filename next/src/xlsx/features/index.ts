@@ -57,12 +57,20 @@ export {
 } from './defined-names.js';
 export { type AnchorInput, drawingEmitter } from './drawing.js';
 export {
+  type IgnoredError,
+  ignoredErrorsReader,
+  ignoredErrorsWriter,
+} from './ignored-errors.js';
+export {
   addImage,
   type CellPosition,
+  type FitImageOptions,
+  fitImage,
   type ImageAnchor,
   type ImageExtension,
   type ImagePlacement,
   type ImageSize,
+  imageSize,
   imagesReader,
   imagesWriter,
   type PlaceImageOptions,
@@ -83,12 +91,16 @@ export {
   sheetProtectionWriter,
 } from './sheet-protection.js';
 export {
+  type AddTableColumn,
   type AddTableOptions,
   addTable,
+  addTableRows,
+  getTable,
   type Table,
   type TableColumn,
   type TableStyle,
   type TotalsRowFunction,
+  tableRows,
   tablesReader,
   tablesWriter,
 } from './tables.js';

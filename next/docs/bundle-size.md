@@ -26,7 +26,8 @@ Each feature has a write half and a read half, so a write-only bundle never cont
 | charts                 | `ws.charts`                          | `chartsWriter`                | — (read charts are kept raw)  |
 | conditional formatting | `ws.conditionalFormatting`           | `conditionalFormattingWriter` | `conditionalFormattingReader` |
 | data validation        | `ws.dataValidations`                 | `dataValidationWriter`        | `dataValidationReader`        |
-| print setup            | `ws.pageSetup`, `ws.headerFooter`    | `printSetupWriter`            | `printSetupReader`            |
+| print setup            | `ws.pageSetup`, `ws.headerFooter`, `ws.rowBreaks`, `ws.colBreaks` | `printSetupWriter` | `printSetupReader` |
+| ignored errors         | `ws.ignoredErrors`                   | `ignoredErrorsWriter`         | `ignoredErrorsReader`         |
 | sheet protection       | `ws.protection` (pulls SHA-512)      | `sheetProtectionWriter`       | `sheetProtectionReader`       |
 | default theme part     | —                                    | `themeWriter`                 | — (a file's theme is kept raw) |
 
@@ -60,16 +61,16 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 33 KB | 31.86 KB |
-| read+write                     | root `*`                                                       | 68 KB | 66.85 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 22 KB | 20.97 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 38.94 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 25.5 KB | 24.49 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.22 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 25.5 KB | 24.24 KB |
-| csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
-| crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
-| formula                        | `./formula` `*`                                                | 16.5 KB | 16 KB  |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 34 KB | 33.51 KB |
+| read+write                     | root `*`                                                       | 72 KB | 70.85 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 23 KB | 22.22 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 41 KB | 40.23 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 27 KB | 26.03 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.63 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 26.5 KB | 25.64 KB |
+| csv                            | `./csv` `*`                                                    | 5 KB | 2.38 KB |
+| crypto                         | `./crypto` `*`                                                 | 8 KB | 7.18 KB |
+| formula                        | `./formula` `*`                                                | 16.5 KB | 16.02 KB |
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
 bundles that don't import them.

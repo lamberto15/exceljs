@@ -27,6 +27,8 @@ export interface SheetContext {
   readonly xfMap: Uint32Array | undefined;
   readonly styles: StyleRegistry;
   readonly date1904: boolean;
+  /** Row mode: Dates by local wall clock. */
+  readonly localDates?: boolean | undefined;
   /** The sheet's relationships (hyperlink targets). */
   readonly rels?: Map<string, Relationship> | undefined;
   /** Feature readers by element path ("pageSetup", "sheetPr/pageSetUpPr"); DOM mode only. */
@@ -95,6 +97,7 @@ interface ColRange {
   width: number | undefined;
   hidden: boolean;
   outlineLevel: number;
+  collapsed: boolean;
   xf: number;
 }
 
@@ -126,6 +129,8 @@ export class SheetHandler implements XmlHandler {
   private readonly ctx: SheetContext;
   private readonly ws: Worksheet | undefined;
   private readonly onRow: RowCallback | undefined;
+  /** Row mode: merged ranges seen (A1 refs). */
+  readonly merges: string[] = [];
   private readonly strings: readonly StringItem[];
   private readonly xfMap: Uint32Array | undefined;
   private readonly styles: StyleRegistry;
@@ -146,6 +151,8 @@ export class SheetHandler implements XmlHandler {
   private hasV = false;
   private fText: string | undefined;
   private fType: string | undefined;
+  /** The cell has cell metadata (cm): a dynamic-array formula. */
+  private cMeta = false;
   private fRef: string | undefined;
   private fSi: string | undefined;
   private inIs = false;
@@ -280,7 +287,10 @@ export class SheetHandler implements XmlHandler {
       }
       return;
     }
-    if (this.ws === undefined) return;
+    if (this.ws === undefined) {
+      if (ln === 'mergeCell' && a.ref) this.merges.push(a.ref);
+      return;
+    }
     switch (ln) {
       case 'col':
         if (d === 3) this.addCol(a);
@@ -385,6 +395,7 @@ export class SheetHandler implements XmlHandler {
         if (c.width !== undefined) col.width = c.width;
         if (c.hidden) col.hidden = true;
         if (c.outlineLevel) col.outlineLevel = c.outlineLevel;
+        if (c.collapsed) col.collapsed = true;
         if (c.xf) col.styleIndex = c.xf;
       }
     }
@@ -404,13 +415,15 @@ export class SheetHandler implements XmlHandler {
     const ht = a.ht;
     const hidden = a.hidden !== undefined && attrBool(a.hidden);
     const ol = a.outlineLevel !== undefined ? +a.outlineLevel : 0;
+    const collapsed = a.collapsed !== undefined && attrBool(a.collapsed);
     const height = ht !== undefined && attrBool(a.customHeight) ? +ht : 0;
     const s = a.s !== undefined && attrBool(a.customFormat) ? this.xf(a.s) : 0;
-    if ((height || hidden || ol || s) && this.row >= 0) {
+    if ((height || hidden || ol || collapsed || s) && this.row >= 0) {
       this.ws!.setRowProps(this.row + 1, {
         height: height > 0 ? height : undefined,
         hidden,
         outlineLevel: ol,
+        collapsed,
         styleIndex: s,
       });
     }
@@ -456,6 +469,7 @@ export class SheetHandler implements XmlHandler {
     this.cRow = this.row;
     this.col = this.cCol;
     this.cType = a.t;
+    this.cMeta = a.cm !== undefined;
     const s = a.s;
     this.cXf = s !== undefined && s !== '0' ? this.xf(s) : 0;
     this.hasV = false;
@@ -562,6 +576,7 @@ export class SheetHandler implements XmlHandler {
         const f: Mutable<Formula> = { formula };
         if (kind !== CellKind.Empty) f.result = this.resultOf(kind, num, obj);
         if (this.fType === 'array' && this.fRef) f.array = this.fRef;
+        if (this.cMeta) f.dynamic = true;
         kind = CellKind.Formula;
         num = 0;
         obj = f;
@@ -620,7 +635,7 @@ export class SheetHandler implements XmlHandler {
       case CellKind.Number:
         return num;
       case CellKind.Date:
-        return serialToDate(num, this.ctx.date1904);
+        return serialToDate(num, this.ctx.date1904, this.ctx.localDates);
       case CellKind.Boolean:
         return num !== 0;
       case CellKind.Error:
@@ -643,9 +658,12 @@ export class SheetHandler implements XmlHandler {
       width: width !== undefined && width - width === 0 ? width : undefined,
       hidden: attrBool(a.hidden),
       outlineLevel: a.outlineLevel !== undefined ? +a.outlineLevel || 0 : 0,
+      collapsed: attrBool(a.collapsed),
       xf: a.style !== undefined ? this.xf(a.style) : 0,
     };
-    if (rec.width === undefined && !rec.hidden && !rec.outlineLevel && !rec.xf) return;
+    if (rec.width === undefined && !rec.hidden && !rec.outlineLevel && !rec.collapsed && !rec.xf) {
+      return;
+    }
     this.cols.push(rec);
   }
 

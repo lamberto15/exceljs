@@ -13,7 +13,7 @@
 //   deleted or reduced to one cell), conditional formatting and data validation ranges and their
 //   formulas, tables (rows inserted inside a table extend it and get its calculated columns;
 //   columns inserted inside one become new table columns), notes, picture and chart anchors,
-//   `autoFilter`, formula-cell hyperlinks kept from a read file.
+//   `autoFilter`, page breaks, ignored-error ranges, formula-cell hyperlinks kept from a read file.
 // - Not adjusted: content kept raw from a read file (`ws.preserved`: charts read from a file,
 //   pivot tables, sparklines, threaded comments, ...), hyperlink targets ("#Sheet!A1"),
 //   `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external references.
@@ -36,9 +36,9 @@ import {
   MAX_ROWS,
 } from './address.js';
 import type { CellValue, DefinedName, Formula, Style } from './types.js';
-import { CellKind, Column, RowData, type Worksheet } from './worksheet.js';
+import { CellKind, Column, RowData, type RowObject, type Worksheet } from './worksheet.js';
 
-type RowValues = readonly CellValue[] | Readonly<Record<string, CellValue>>;
+type RowValues = readonly CellValue[] | RowObject;
 
 /** Private Worksheet / Column state this module rewires (runtime-visible TS privates). */
 interface WsState {
@@ -484,6 +484,23 @@ function edit(ws: Worksheet, rows: boolean, at: number, n: number): void {
       return dv.sqref !== '';
     });
   }
+  const brk = rows ? 'rowBreaks' : 'colBreaks';
+  const breaks = ws[brk];
+  if (breaks) {
+    // a break after row / column N moves with N and goes when N is deleted
+    const out: number[] = [];
+    for (const b of breaks) {
+      const p = mapPoint(e, b - 1);
+      if (p >= 0) out.push(p + 1);
+    }
+    ws[brk] = out;
+  }
+  if (ws.ignoredErrors) {
+    ws.ignoredErrors = ws.ignoredErrors.filter((x) => {
+      x.sqref = shiftSqref(e, x.sqref);
+      return x.sqref !== '';
+    });
+  }
   if (ws.comments) {
     ws.comments = ws.comments.filter((c) => {
       c.ref = shiftRefs(c.ref, e.name, e);
@@ -492,7 +509,7 @@ function edit(ws: Worksheet, rows: boolean, at: number, n: number): void {
   }
   if (ws.images) for (const p of ws.images) p.anchor = shiftAnchor(e, p.anchor, p.editAs);
   if (ws.charts)
-    for (const c of ws.charts) c.anchor = shiftAnchor(e, toAnchor(c.anchor), undefined);
+    for (const c of ws.charts) c.anchor = shiftAnchor(e, toAnchor(c.anchor, ws), undefined);
   const links = ws.preserved?.links;
   if (links) {
     const kept = [];
@@ -637,6 +654,7 @@ function moveCols(e: Edit): void {
     nc.width = c.width;
     nc.hidden = c.hidden;
     nc.outlineLevel = c.outlineLevel;
+    nc.collapsed = c.collapsed;
     const a = c as unknown as ColState;
     const b = nc as unknown as ColState;
     b._key = a._key;
@@ -917,6 +935,7 @@ function cloneRow(src: RowData, r0: number): RowData {
   row.height = src.height;
   row.hidden = src.hidden;
   row.outlineLevel = src.outlineLevel;
+  row.collapsed = src.collapsed;
   row.xf = src.xf;
   if (src.obj !== undefined) {
     const dr = r0 - src.index;
@@ -954,4 +973,48 @@ export function duplicateRow(ws: Worksheet, rowNum: number, count: number, inser
     if (src) s._rows[r0 + k] = cloneRow(src, r0 + k);
     for (const m of rowMerges) ws.addMergeRaw({ ...m, top: r0 + k, bottom: r0 + k });
   }
+}
+
+export interface GroupOptions {
+  /** Collapse the group: hide its rows / columns and flag the summary row / column. */
+  collapsed?: boolean | undefined;
+}
+
+/**
+ * Group rows `from`..`to` (1-based, inclusive) one outline level deeper (max 7), like Excel's
+ * Data > Group. The summary row is the one below the group (Excel's default).
+ */
+export function groupRows(
+  ws: Worksheet,
+  from: number,
+  to: number,
+  options: GroupOptions = {},
+): void {
+  check(true, from - 1, to - from + 2);
+  for (let r = from; r <= to; r++) {
+    const level = Math.min(7, (ws.rowData[r - 1]?.outlineLevel ?? 0) + 1);
+    ws.setRowProps(
+      r,
+      options.collapsed ? { outlineLevel: level, hidden: true } : { outlineLevel: level },
+    );
+  }
+  if (options.collapsed) ws.setRowProps(to + 1, { collapsed: true });
+}
+
+/** Group columns `from`..`to` (numbers or letters) one outline level deeper; see groupRows. */
+export function groupColumns(
+  ws: Worksheet,
+  from: number | string,
+  to: number | string,
+  options: GroupOptions = {},
+): void {
+  const a = colArg(from);
+  const b = colArg(to);
+  check(false, a - 1, b - a + 2);
+  for (let c = a; c <= b; c++) {
+    const col = ws.getColumn(c);
+    col.outlineLevel = Math.min(7, col.outlineLevel + 1);
+    if (options.collapsed) col.hidden = true;
+  }
+  if (options.collapsed) ws.getColumn(b + 1).collapsed = true;
 }

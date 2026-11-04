@@ -482,8 +482,10 @@ describe('preserve: unknown worksheet elements', () => {
   it('preserveUnknown: false drops them', async () => {
     const wb = readXlsx(await withSheetXml(), { preserveUnknown: false });
     const s = text(unzipSync(writeXlsx(wb)), 'xl/worksheets/sheet1.xml');
-    expect(s).not.toContain('rowBreaks');
     expect(s).not.toContain('codeName');
+    // page breaks and ignored errors are model data now (print-setup / ignored-errors features)
+    expect(s).toContain('<rowBreaks');
+    expect(s).toContain('<ignoredErrors>');
     expect(s).not.toContain('FAKE');
   });
 });

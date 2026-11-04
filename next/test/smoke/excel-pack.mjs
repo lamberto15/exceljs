@@ -16,15 +16,23 @@ import {
   addImage,
   addNote,
   addTable,
+  addTableRows,
+  copyRange,
+  copyWorksheet,
   createXlsxWriter,
   deleteRows,
   duplicateRow,
+  fitImage,
+  groupColumns,
+  groupRows,
   insertColumns,
   insertRows,
   placeImage,
   readXlsx,
+  setCheckbox,
   setPrintArea,
   setPrintTitles,
+  setSheetStyle,
   spliceRows,
   Workbook,
   writeXlsx,
@@ -673,6 +681,157 @@ for (const [file, what] of [
     '17-structure-edits.xlsx',
     writeXlsx(wb),
     `Rows/columns inserted, deleted, duplicated and spliced after building the sheet. "Data": table Sales is A1:E6 with columns Item, Qty, Column5, Price, Total (items a, ins, c, d, e; Total = Qty*Price on every row, also "ins"). G1 = 19 (SUM(B2:B6)), G2 = 160 (B5*D5 → item d), G7 = 190 (prices); merged block I1:J2; bold CF on Qty >= 3; note on A4 (item c); rows 9-11 "dup" 7 with D = 14 (D10 = B10*2, D11 = B11*2); row 12 "spliced". "Summary": A1 = 19, A2 = 3 (item c's Qty), A3 = 19 (defined name QtyCol), A4 = 50; the chart shows a, ins, c, d, e. No repair prompt.`,
+  );
+}
+
+// 18: table rows appended, outline groups (collapsed)
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Tables');
+  addTable(ws, {
+    name: 'Orders',
+    columns: [
+      { name: 'Item', width: 16, totalsRowLabel: 'Total' },
+      { name: 'Qty', totalsRowFunction: 'sum' },
+      { name: 'Price' },
+      {
+        name: 'Amount',
+        calculatedColumnFormula: 'Orders[[#This Row],[Qty]]*Orders[[#This Row],[Price]]',
+      },
+    ],
+    rows: [
+      ['a', 1, 10],
+      ['b', 2, 20],
+    ],
+    totalsRow: true,
+  });
+  ws.setCell('A8', 'below the table');
+  addTableRows(ws, 'Orders', [['c', 3, 30], { Item: 'd', Qty: 4, Price: 40 }]);
+  const g = wb.addWorksheet('Outline');
+  g.addRow(['Region', 'Q1', 'Q2', 'Q3', 'Total']);
+  for (const r of ['N', 'S', 'E', 'W'])
+    g.addRow([r, 1, 2, 3, { formula: `SUM(B${g.rowCount + 1}:D${g.rowCount + 1})` }]);
+  g.addRow([
+    'All',
+    { formula: 'SUM(B2:B5)' },
+    { formula: 'SUM(C2:C5)' },
+    { formula: 'SUM(D2:D5)' },
+    { formula: 'SUM(E2:E5)' },
+  ]);
+  groupRows(g, 2, 5);
+  groupRows(g, 3, 4, { collapsed: true });
+  groupColumns(g, 'B', 'D', { collapsed: true });
+  save(
+    '18-table-rows-outline.xlsx',
+    writeXlsx(wb),
+    `"Tables": table Orders A1:D6 with items a, b, c, d (two appended), Amount = Qty*Price on every row (90 and 160 for c and d), totals row 6 (Qty 10), column A wider; "below the table" moved to A10. "Outline": rows 2-5 grouped (level 1), rows 3-4 a collapsed level-2 group (hidden, + button on row 5); columns B-D grouped and collapsed (hidden, + button above E). Expanding shows the data. No repair prompt.`,
+  );
+}
+
+// 19: Excel-like polish: default font, wrap for line breaks, hyperlink look, ignored errors,
+// page breaks, whole-sheet style (unlocked) + protection
+{
+  const wb = new Workbook({ defaultFont: { name: 'Arial', size: 10 } });
+  const ws = wb.addWorksheet('Polish');
+  ws.addRow(['ID', 'Note', 'Link']);
+  for (let i = 1; i <= 60; i++)
+    ws.addRow([String(10000 + i), i === 1 ? 'first line\nsecond line' : `row ${i}`]);
+  ws.setCell('C2', { text: 'example.com', hyperlink: 'https://example.com' });
+  ws.ignoredErrors = [{ sqref: 'A2:A61', numberStoredAsText: true }];
+  ws.rowBreaks = [30];
+  setSheetStyle(ws, { protection: { locked: false } });
+  ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } });
+  ws.protection = { sheet: true };
+  save(
+    '19-polish.xlsx',
+    writeXlsx(wb),
+    `"Polish": whole sheet in Arial 10 (Home > Font shows Arial for empty cells too); B2 shows two lines (wrapped); C2 is blue underlined and opens example.com; column A IDs have no green "number stored as text" triangles; Page Break Preview shows a manual break after row 30; the sheet is protected but every cell except A1 can be edited (A1 refuses edits). No repair prompt.`,
+  );
+}
+
+// 20: reported ExcelJS bugs that corrupt files there: fitToPage + outline + tab color (exceljs#1348),
+// a note inside a table (exceljs#1369), a headerless table (exceljs#1615)
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Sweep', { tabColor: { argb: 'FF00B050' } });
+  addTable(ws, {
+    name: 'WithNote',
+    columns: ['a', 'b'],
+    rows: [
+      [1, 2],
+      [3, 4],
+    ],
+  });
+  addNote(ws, 'B2', 'note inside a table');
+  addTable(ws, {
+    name: 'NoHeader',
+    topLeft: 'D1',
+    columns: ['x', 'y'],
+    rows: [
+      [5, 6],
+      [7, 8],
+    ],
+    headerRow: false,
+  });
+  for (let r = 6; r <= 10; r++) ws.setCell(r, 1, r);
+  groupRows(ws, 7, 9, { collapsed: true });
+  ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  ws.headerFooter = {
+    differentFirst: true,
+    firstHeader: '&CFirst page',
+    oddHeader: '&COther pages',
+  };
+  save(
+    '20-bug-sweep.xlsx',
+    writeXlsx(wb),
+    `"Sweep" (green tab): table WithNote A1:B3 with a note on B2; headerless table NoHeader D1:E2 (no header, no filter buttons); rows 7-9 grouped and collapsed (+ on row 10); Page Layout: fit to 1 page wide, first-page header "First page", others "Other pages". Excel must not crash or repair (exceljs#1348/#1369/#1615).`,
+  );
+}
+
+// 21: in-cell checkboxes, a picture fitted into a range, fractional anchor
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Drawings');
+  ws.addRow(['Task', 'Done']);
+  ws.addRow(['write tests', true]);
+  ws.addRow(['verify in Excel', false]);
+  ws.addRow(['ship', false]);
+  setCheckbox(ws, 'B2:B4');
+  ws.setCell('C1', { formula: 'COUNTIF(B2:B4,TRUE)' });
+  ws.getColumn('E').width = 30;
+  for (let r = 2; r <= 6; r++) ws.setRowProps(r, { height: 30 });
+  const img = addImage(wb, { base64: PNG, extension: 'png' });
+  fitImage(ws, img, 'E2:E6', { upscale: true });
+  placeImage(ws, img, { tl: { col: 6.5, row: 1.5 }, ext: { width: 24, height: 24 } });
+  save(
+    '21-checkboxes-drawings.xlsx',
+    writeXlsx(wb),
+    `"Drawings": B2:B4 are in-cell checkboxes (B2 checked; Excel 365 2024+, older versions show TRUE/FALSE), C1 = 1 and changes when you tick a box; the red square fills E2:E6's height and is centered horizontally in column E; a small red square starts halfway into column G and row 2. No repair prompt.`,
+  );
+}
+
+// 22: dynamic-array formulas (no stray @), copied sheet and range, nested keys
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Dynamic');
+  ws.columns = [{ key: 'name', width: 12 }, { key: 'score.value' }];
+  for (const [n, v] of [
+    ['cara', 3],
+    ['ann', 1],
+    ['bob', 2],
+    ['ann', 1],
+  ])
+    ws.addRow({ name: n, score: { value: v } });
+  ws.setCell('D1', { formula: 'SORT(B1:B4)' });
+  ws.setCell('E1', { formula: 'UNIQUE(A1:A4)' });
+  ws.setCell('F1', { formula: 'SEQUENCE(3)' });
+  ws.setCell('G1', { formula: 'SUM(B1:B4)' });
+  copyRange(ws, 'A1:B4', ws, 'A8');
+  copyWorksheet(ws, wb, 'Copy');
+  save(
+    '22-dynamic-copy.xlsx',
+    writeXlsx(wb),
+    `"Dynamic": D1:D4 spill 1,1,2,3 (=SORT(B1:B4), no "@" in the formula bar), E1:E3 spill cara, ann, bob (=UNIQUE), F1:F3 spill 1,2,3 (=SEQUENCE(3)), G1 = 7; A8:B11 is a copy of A1:B4; column B values came from nested keys. "Copy" sheet: the same, with working spills. No repair prompt.`,
   );
 }
 

@@ -40,6 +40,8 @@ export interface Xf {
    * when it keeps the file's named styles (round-trip preservation), else 0.
    */
   readonly xfId?: number | undefined;
+  /** In-cell checkbox (xf extLst xfComplement → FeaturePropertyBag part). */
+  readonly checkbox?: boolean | undefined;
 }
 
 export interface NumFmt {
@@ -248,6 +250,7 @@ export class StyleRegistry {
   private readonly _styleCache: (Style | undefined)[] = [];
   private readonly _dateXf: (boolean | undefined)[] = [];
   private readonly _withFmt = new Map<string, number>();
+  private readonly _withWrap = new Map<number, number>();
   private readonly _dxfs: Style[] = [];
   private readonly _dxfIdx = new Map<string, number>();
 
@@ -325,6 +328,7 @@ export class StyleRegistry {
       borderId: style.border ? this.addBorder(style.border) : 0,
       alignment: style.alignment,
       protection: style.protection,
+      checkbox: style.checkbox === true || undefined,
     });
     this._byObject.set(style, xf);
     return xf;
@@ -335,7 +339,7 @@ export class StyleRegistry {
     const alignment = normAlignment(raw.alignment);
     const protection = normProtection(raw.protection);
     const named = raw.xfId;
-    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}${named ? `,${named}` : ''}`;
+    const key = `${raw.numFmtId},${raw.fontId},${raw.fillId},${raw.borderId},${alignKey(alignment)},${protKey(protection)}${named ? `,${named}` : ''}${raw.checkbox ? ',cb' : ''}`;
     const hit = this._xfIdx.get(key);
     if (hit !== undefined) return hit;
     if (
@@ -354,6 +358,7 @@ export class StyleRegistry {
     if (alignment) xf.alignment = alignment;
     if (protection) xf.protection = protection;
     if (named) xf.xfId = named;
+    if (raw.checkbox) xf.checkbox = true;
     const idx = this._xfs.length;
     this._xfs.push(xf);
     this._xfIdx.set(key, idx);
@@ -429,7 +434,11 @@ export class StyleRegistry {
     return id;
   }
 
-  /** Reader hook: replace font 0 (the workbook default font). */
+  /**
+   * Replace font 0, the workbook default font (Excel's "Normal" style; readers use it for the
+   * file's font). Set it before styling cells: fonts interned earlier were completed with the
+   * previous default's name and size. See also `new Workbook({ defaultFont })`.
+   */
   setDefaultFont(font: Font): void {
     const f = normFont(font, {});
     this._fontIdx.delete(fontKey(this._fonts[0]!));
@@ -469,6 +478,21 @@ export class StyleRegistry {
     return out;
   }
 
+  /**
+   * xf with `alignment.wrapText` on (cached).
+   * Used for text with line breaks, which Excel only shows wrapped.
+   */
+  withWrap(xf: number): number {
+    const rec = this._xfs[xf];
+    if (!rec || rec.alignment?.wrapText) return xf;
+    let out = this._withWrap.get(xf);
+    if (out === undefined) {
+      out = this.internXf({ ...rec, alignment: { ...rec.alignment, wrapText: true } });
+      this._withWrap.set(xf, out);
+    }
+    return out;
+  }
+
   /** xf index → Style (cached, shared object: do not mutate). Unknown index → {}. */
   get(xf: number): Style {
     const cached = this._styleCache[xf];
@@ -485,6 +509,7 @@ export class StyleRegistry {
       if (rec.borderId !== 0) s.border = this._borders[rec.borderId];
       if (rec.alignment) s.alignment = rec.alignment;
       if (rec.protection) s.protection = rec.protection;
+      if (rec.checkbox) s.checkbox = true;
       this._styleCache[xf] = s;
       this._byObject.set(s, xf);
     }

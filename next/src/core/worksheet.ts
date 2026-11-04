@@ -60,6 +60,9 @@
  *   not restyle existing cells; the writer emits row/column default styles as-is.
  * - Date cells whose resulting style has the General number format get 'yyyy-mm-dd', or
  *   'yyyy-mm-dd hh:mm:ss' when the value has a time part, merged into that style.
+ * - Text containing "\n" gets `alignment.wrapText` merged into its style, as when typing
+ *   Alt+Enter in Excel (line breaks only show when wrapping). Hyperlinks stored without any style get Excel's
+ *   hyperlink look (underlined, theme hyperlink color).
  */
 
 import {
@@ -134,6 +137,8 @@ export interface RowProps {
   height?: number | undefined;
   hidden?: boolean | undefined;
   outlineLevel?: number | undefined;
+  /** Outline: the group next to this row is collapsed (set on the summary row). */
+  collapsed?: boolean | undefined;
   style?: Style | undefined;
   /** Row style as an xf index of `workbook.styles` (wins over `style`; 0 = none). */
   styleIndex?: number | undefined;
@@ -179,6 +184,8 @@ export class RowData {
   height = 0;
   hidden = false;
   outlineLevel = 0;
+  /** Outline: the adjacent group is collapsed (summary row). */
+  collapsed = false;
   /** Row default style xf; 0 = none. */
   xf = 0;
 
@@ -276,7 +283,7 @@ let K = 0;
 let N = 0;
 let O: unknown;
 
-function classify(v: NonNullable<CellValue>, date1904: boolean): void {
+function classify(v: NonNullable<CellValue>, date1904: boolean, local: boolean): void {
   O = undefined;
   N = 0;
   switch (typeof v) {
@@ -302,7 +309,7 @@ function classify(v: NonNullable<CellValue>, date1904: boolean): void {
         const t = v.getTime();
         if (t - t === 0) {
           K = CellKind.Date;
-          N = dateToSerial(v, date1904);
+          N = dateToSerial(v, date1904, local);
         } else {
           K = CellKind.Error;
           O = '#VALUE!';
@@ -334,6 +341,8 @@ function classify(v: NonNullable<CellValue>, date1904: boolean): void {
   throw new TypeError(`Unsupported cell value: ${String(v)}`);
 }
 
+/** Excel's Hyperlink cell style look: underlined, theme hyperlink color. */
+const LINK_STYLE: Style = { font: { underline: 'single', color: { theme: 10 } } };
 const DATE_FMT = 'yyyy-mm-dd';
 const DATETIME_FMT = 'yyyy-mm-dd hh:mm:ss';
 
@@ -364,6 +373,23 @@ function indexMerge(idx: Map<number, CellRange[]>, m: CellRange): void {
 
 type Addr = string | number;
 
+/** A row as an object keyed by `ws.columns[].key`; values may nest for dotted keys ('a.b'). */
+export interface RowObject {
+  readonly [key: string]: CellValue | RowObject;
+}
+
+/** obj[key], or for a dotted key without an own property the nested path ("address.city"). */
+function keyed(obj: Readonly<Record<string, unknown>>, key: string): CellValue {
+  const v = obj[key];
+  if (v !== undefined || key.indexOf('.') < 0) return v as CellValue;
+  let o: unknown = obj;
+  for (const p of key.split('.')) {
+    if (o === null || typeof o !== 'object') return undefined;
+    o = (o as Record<string, unknown>)[p];
+  }
+  return o as CellValue;
+}
+
 // ---- Column ------------------------------------------------------------------------
 
 export class Column {
@@ -374,6 +400,8 @@ export class Column {
   width: number | undefined = undefined;
   hidden = false;
   outlineLevel = 0;
+  /** Outline: the adjacent group is collapsed (summary column). */
+  collapsed = false;
   private readonly _ws: Worksheet;
   private _key: string | undefined = undefined;
   private _xf = 0;
@@ -617,12 +645,10 @@ export class Worksheet {
 
   /**
    * Append a row after the last existing row. Arrays map index 0 → column A; objects map
-   * keys through `ws.columns[].key` (unknown keys ignored). Returns the 1-based row number.
+   * keys through `ws.columns[].key` (unknown keys ignored; a dotted key such as 'address.city'
+   * also reads nested objects). Returns the 1-based row number.
    */
-  addRow(
-    values: readonly CellValue[] | Readonly<Record<string, CellValue>>,
-    style?: Style | number,
-  ): number {
+  addRow(values: readonly CellValue[] | RowObject, style?: Style | number): number {
     const r0 = this._rows.length;
     if (r0 >= MAX_ROWS) throw new RangeError('Worksheet row limit reached');
     try {
@@ -636,10 +662,7 @@ export class Worksheet {
   }
 
   /** Append several rows (see addRow). */
-  addRows(
-    rows: Iterable<readonly CellValue[] | Readonly<Record<string, CellValue>>>,
-    style?: Style | number,
-  ): void {
+  addRows(rows: Iterable<readonly CellValue[] | RowObject>, style?: Style | number): void {
     const xf = style === undefined ? undefined : this._xf(style);
     for (const r of rows) this.addRow(r, xf);
   }
@@ -657,6 +680,7 @@ export class Worksheet {
       if (row.height) p.height = row.height;
       if (row.hidden) p.hidden = true;
       if (row.outlineLevel) p.outlineLevel = row.outlineLevel;
+      if (row.collapsed) p.collapsed = true;
       if (row.xf) p.style = this._styles.get(row.xf);
     }
     return p;
@@ -669,6 +693,7 @@ export class Worksheet {
     if ('height' in props) row.height = props.height ?? 0;
     if ('hidden' in props) row.hidden = props.hidden === true;
     if ('outlineLevel' in props) row.outlineLevel = props.outlineLevel ?? 0;
+    if ('collapsed' in props) row.collapsed = props.collapsed === true;
     if (props.styleIndex !== undefined) row.xf = props.styleIndex;
     else if (props.style !== undefined) row.xf = this._styles.intern(props.style);
   }
@@ -679,6 +704,15 @@ export class Worksheet {
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (row !== undefined && row.n > 0) cb(new RowView(this, r), r + 1);
+    }
+  }
+
+  /** Rows that contain cells, ascending: `for (const row of ws.rows())` (see eachRow). */
+  *rows(): Generator<RowView> {
+    const rows = this._rows;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      if (row !== undefined && row.n > 0) yield new RowView(this, r);
     }
   }
 
@@ -887,7 +921,7 @@ export class Worksheet {
       case CellKind.Boolean:
         return row.num[i] !== 0;
       case CellKind.Date:
-        return serialToDate(row.num[i]!, this.workbook.date1904);
+        return serialToDate(row.num[i]!, this.workbook.date1904, this.workbook.localDates);
       case CellKind.Error:
         return { error: row.obj![i] as ErrorCode };
       case CellKind.String:
@@ -937,11 +971,18 @@ export class Worksheet {
     return row;
   }
 
-  /** Store the classified value (K/N/O) into slot i with style xf. */
+  /**
+   * Store the classified value (K/N/O) into slot i with style xf. Like Excel: dates get a date
+   * format, text with line breaks gets wrapText, unstyled hyperlinks the hyperlink look.
+   */
   private _store(row: RowData, i: number, xf: number): void {
     row.kind[i] = K;
     row.num[i] = N;
-    row.style[i] = K === CellKind.Date ? this._dateXf(xf, N) : xf;
+    if (K === CellKind.Date) xf = this._dateXf(xf, N);
+    else if (K === CellKind.String) {
+      if ((O as string).indexOf('\n') >= 0) xf = this._styles.withWrap(xf);
+    } else if (K === CellKind.Hyperlink && xf === 0) xf = this._styles.intern(LINK_STYLE);
+    row.style[i] = xf;
     if (O !== undefined) {
       if (row.obj === undefined) row.obj = [];
       row.obj[i] = O;
@@ -954,7 +995,7 @@ export class Worksheet {
       this._clear(r0, c0, style);
       return;
     }
-    classify(value, this.workbook.date1904);
+    classify(value, this.workbook.date1904, this.workbook.localDates);
     const row = this._rows[r0] ?? this._newRow(r0, 1);
     let i = row.find(c0);
     let xf: number;
@@ -987,7 +1028,7 @@ export class Worksheet {
 
   private _fillRow(
     r0: number,
-    values: readonly CellValue[] | Readonly<Record<string, CellValue>>,
+    values: readonly CellValue[] | RowObject,
     style: Style | number | undefined,
   ): void {
     const existing = this._rows[r0];
@@ -997,13 +1038,17 @@ export class Worksheet {
         const arr = values as readonly CellValue[];
         for (let i = 0; i < arr.length; i++) if (arr[i] != null) this._set(r0, i, arr[i], style);
       } else {
-        const obj = values as Readonly<Record<string, CellValue>>;
-        for (const [k, c] of this._keyCols) if (obj[k] != null) this._set(r0, c, obj[k], style);
+        const obj = values as RowObject;
+        for (const [k, c] of this._keyCols) {
+          const v = keyed(obj, k);
+          if (v != null) this._set(r0, c, v, style);
+        }
       }
       return;
     }
     const xfArg = style === undefined ? -1 : this._xf(style);
     const d1904 = this.workbook.date1904;
+    const local = this.workbook.localDates;
     const colXf = this._colXf;
     if (Array.isArray(values)) {
       const arr = values as readonly CellValue[];
@@ -1015,23 +1060,23 @@ export class Worksheet {
       for (let c = 0; c < len; c++) {
         const v = arr[c];
         if (v === null || v === undefined) continue;
-        classify(v, d1904);
+        classify(v, d1904, local);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));
         row.n = i + 1;
       }
     } else {
-      const obj = values as Readonly<Record<string, CellValue>>;
+      const obj = values as RowObject;
       const keys = this._keyCols;
       const row = existing ?? this._newRow(r0, 0);
       if (row.col.length < keys.length) row._alloc(keys.length);
       const rowXf = row.xf;
       for (let k = 0; k < keys.length; k++) {
         const [key, c] = keys[k]!;
-        const v = obj[key];
+        const v = keyed(obj, key);
         if (v === null || v === undefined) continue;
-        classify(v, d1904);
+        classify(v, d1904, local);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));
@@ -1096,6 +1141,15 @@ export class RowView {
       if (row.kind[i] !== CellKind.Empty) {
         cb(this.worksheet._valueAt(row, i), row.col[i]! + 1, row.style[i]!);
       }
+    }
+  }
+
+  /** Non-empty cells as [1-based column, value]: `for (const [col, v] of row.cells())`. */
+  *cells(): Generator<[number, CellValue]> {
+    const row = this.data;
+    if (!row) return;
+    for (let i = 0; i < row.n; i++) {
+      if (row.kind[i] !== CellKind.Empty) yield [row.col[i]! + 1, this.worksheet._valueAt(row, i)];
     }
   }
 

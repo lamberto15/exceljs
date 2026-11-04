@@ -9,7 +9,7 @@ Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, column
 ## Workbook
 
 ```ts
-new Workbook(options?: { date1904?: boolean })
+new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: boolean })
 ```
 
 | Member | Description |
@@ -83,7 +83,13 @@ insertColumns(ws, pos, cols | count)           // pos: number or letter; cols: a
 deleteColumns(ws, start, count = 1)
 spliceColumns(ws, start, count, ...cols)
 duplicateRow(ws, rowNum, count, insert = false) // copies below rowNum: inserted, or overwriting
+groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max 7); summary row below
+groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
+
+Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the copy last; "Name (2)" by default) and `copyRange(src, 'A1:D10', dst, 'F2')` (values, styles, merges; relative refs adjusted). Column keys may be dotted paths (`key: 'address.city'` reads nested objects in `addRow`).
+
+Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.
 
 `RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
 
@@ -103,6 +109,8 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
 | `null` / `undefined` | empty |
 
+
+`Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
 ## Style
 
 Styles are **plain, immutable-by-convention objects**. They are interned into the workbook's `StyleRegistry` (one `xf` index per distinct style); objects returned by `getStyle` or `StyleRegistry.get` are shared and must not be mutated. Change a style by assigning a new object.
@@ -162,13 +170,15 @@ interface ReadOptions {
   limits?: Partial<Limits>;        // maxEntries 10_000, maxEntryBytes 1 GiB, maxTotalBytes 2 GiB, maxCompressionRatio 1000
   preserveUnknown?: boolean;       // default true: keep charts, pivots, shapes, VBA, ... and write them back
   sheets?: readonly string[];      // only load these sheets (case-insensitive)
+  localDates?: boolean;            // Dates by local wall clock instead of UTC (also xlsxRows)
+  onSheetEnd?: (info: { sheet: string; sheetIndex: number; merges: string[] }) => void; // xlsxRows: after each sheet's last row
   profile?: 'low-memory' | 'balanced' | 'max-speed';  // used by xlsxRows (low-memory re-deflates buffered sheets)
   features?: readonly FeatureReader[];  // root: added to the built-ins; /lite: the only features modelled
 }
 interface XlsxRow { sheet: string; sheetIndex: number; row: number /* 1-based */; values: CellValue[] /* 0-based by column */ }
 ```
 
-`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive (Excel's order); otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored.
+`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive (Excel's order); otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
 
 Other exports: `listPreservedParts(wb)` -> `{ path, contentType }[]` of the parts the next write will emit from the original file; `translateFormula`; `SheetEntry`.
 
@@ -202,7 +212,8 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[])` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
 | Data validation | `ws.dataValidations` | `addDataValidation(ws, dv)` | `dataValidationWriter`, `dataValidationReader` |
-| Print setup | `ws.pageSetup`, `ws.headerFooter` | (plain objects) | `printSetupWriter`, `printSetupReader` |
+| Print setup | `ws.pageSetup`, `ws.headerFooter`, `ws.rowBreaks`, `ws.colBreaks` | (plain objects) | `printSetupWriter`, `printSetupReader` |
+| Ignored errors | `ws.ignoredErrors` | (plain objects) | `ignoredErrorsWriter`, `ignoredErrorsReader` |
 | Sheet protection | `ws.protection` | `hashPassword(password, saltB64, spinCount)` | `sheetProtectionWriter`, `sheetProtectionReader` |
 | Default theme | | | `themeWriter` (write only) |
 
@@ -230,11 +241,19 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 
 ### Tables
 
-`AddTableOptions`: `name`, `displayName?`, `ref?` or `topLeft?` (default `A1`), `columns: (string | TableColumn)[]`, `rows?`, `headerRow?`, `totalsRow?`, `style?: TableStyle` (`theme` such as `TableStyleMedium2`, `showFirstColumn`, `showLastColumn`, `showRowStripes`, `showColumnStripes`), `autoFilter?`, `headerStyle?`, `dataStyle?`, `totalsStyle?`. `TableColumn`: `name`, `totalsRowFunction` (`none sum average count countNums max min stdDev var custom`), `totalsRowLabel`, `totalsRowFormula`, `calculatedColumnFormula`, `headerStyle`, `dataStyle`, `totalsStyle`. It throws on invalid names, overlaps, duplicate columns or rows that do not fit.
+`AddTableOptions`: `name`, `displayName?`, `ref?` or `topLeft?` (default `A1`), `columns: (string | AddTableColumn)[]` (`AddTableColumn` = `TableColumn` + `width?`, set on the sheet column), `rows?`, `headerRow?`, `totalsRow?`, `style?: TableStyle` (`theme` such as `TableStyleMedium2`, `showFirstColumn`, `showLastColumn`, `showRowStripes`, `showColumnStripes`), `autoFilter?`, `headerStyle?`, `dataStyle?`, `totalsStyle?`. `TableColumn`: `name`, `totalsRowFunction` (`none sum average count countNums max min stdDev var custom`), `totalsRowLabel`, `totalsRowFormula`, `calculatedColumnFormula`, `headerStyle`, `dataStyle`, `totalsStyle`. It throws on invalid names, overlaps, duplicate columns or rows that do not fit.
+
+```ts
+getTable(ws, name) -> Table                       // case-insensitive; throws when missing
+tableRows(ws, name) -> Record<string, CellValue>[] // data rows keyed by column name (values as stored)
+addTableRows(ws, name, rows)                      // append above the totals row; arrays (table column order) or objects by column name
+```
 
 ### Pictures
 
-`ImageExtension`: `png jpeg jpg gif bmp tiff svg emf wmf webp`. `placeImage` anchors: a range string (`'B2:D6'`), `{ tl: 'B2' | CellPosition, ext: { width, height } }` (pixels), or an `ImageAnchor` (`{ from, to }`, `{ from, ext }`, `{ pos, ext }`). Options: `editAs`, `hyperlink`, `tooltip`, `description`, `name`. Identical pictures are stored once. Set `ws.backgroundImage = id` for a sheet background.
+`ImageExtension`: `png jpeg jpg gif bmp tiff svg emf wmf webp`. `placeImage` anchors: a range string (`'B2:D6'`), `{ tl: 'B2' | CellPosition, ext: { width, height } }` (pixels), `{ tl, br }` (corners), or an `ImageAnchor` (`{ from, to }`, `{ from, ext }`, `{ pos, ext }`). Options: `editAs`, `hyperlink`, `tooltip`, `description`, `name`. Identical pictures are stored once. Set `ws.backgroundImage = id` for a sheet background. Positions may be fractional (`{ col: 1.5, row: 2.25 }`, sized with the sheet's widths / heights). `fitImage(ws, id, range, { padding?, upscale?, ...PlaceImageOptions })` scales a picture into a cell / range (aspect kept, centered); `imageSize(bytes)` → `{ width, height }` for PNG / JPEG / GIF.
+
+In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; a boolean value with `style.checkbox`).
 
 ### Charts
 
@@ -250,7 +269,7 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 
 ### Print setup and protection
 
-`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
+`PageSetup`: `margins`, `orientation`, `paperSize`, `scale`, `fitToPage`, `fitToWidth`, `fitToHeight`, `horizontalCentered`, `verticalCentered`, `showGridLines`, `showRowColHeaders`, `pageOrder`, `blackAndWhite`, `draft`, `cellComments`, `errors`, `firstPageNumber`, `copies`, and DPI/printer flags. Page breaks: `ws.rowBreaks` / `ws.colBreaks` (manual breaks after these 1-based rows / columns). `ws.ignoredErrors: IgnoredError[]` (`sqref` + `evalError`, `twoDigitTextYear`, `numberStoredAsText`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`; feature `ignoredErrorsWriter` / `ignoredErrorsReader`). `setSheetStyle(ws, style)` formats the whole sheet (all cells, rows, columns). `HeaderFooter`: `oddHeader`, `oddFooter`, `evenHeader`, `evenFooter`, `firstHeader`, `firstFooter`, `differentOddEven`, `differentFirst`. `SheetProtection`: `password` (hashed at write time, `spinCount` default 100000) or a precomputed `algorithmName`/`hashValue`/`saltValue`, `sheet`, `objects`, `scenarios`, `selectLockedCells`, `selectUnlockedCells`, `formatCells`, `formatColumns`, `formatRows`, `insertColumns`, `insertRows`, `insertHyperlinks`, `deleteColumns`, `deleteRows`, `sort`, `autoFilter`, `pivotTables`.
 
 ### Custom features
 

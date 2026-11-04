@@ -153,6 +153,16 @@ function setup(ws: Worksheet): Mutable<PageSetup> {
  * Write half of the print setup (ws.pageSetup, ws.headerFooter) feature. Always on in the package root; in `./lite` pass it
  * in `features` of writeXlsx / xlsxStream / createXlsxWriter.
  */
+/** `<rowBreaks>` / `<colBreaks>`: manual breaks after the given 1-based rows / columns. */
+function breaks(tag: string, list: readonly number[] | undefined, max: number): string {
+  if (!list?.length) return '';
+  const ids = [...new Set(list)].filter((n) => Number.isInteger(n) && n > 0).sort((a, b) => a - b);
+  if (!ids.length) return '';
+  let s = `<${tag} count="${ids.length}" manualBreakCount="${ids.length}">`;
+  for (const id of ids) s += `<brk id="${id}" max="${max}" man="1"/>`;
+  return `${s}</${tag}>`;
+}
+
 export const printSetupWriter: FeatureWriter = {
   name: 'print-setup',
   sheet: {
@@ -166,6 +176,8 @@ export const printSetupWriter: FeatureWriter = {
       { slot: SheetSlot.pageMargins, emit: (c) => pageMargins(c.ws) },
       { slot: SheetSlot.pageSetup, emit: (c) => pageSetup(c.ws) },
       { slot: SheetSlot.headerFooter, emit: (c) => headerFooter(c.ws) },
+      { slot: SheetSlot.rowBreaks, emit: (c) => breaks('rowBreaks', c.ws.rowBreaks, 16383) },
+      { slot: SheetSlot.colBreaks, emit: (c) => breaks('colBreaks', c.ws.colBreaks, 1048575) },
     ],
   },
 };
@@ -177,7 +189,15 @@ export const printSetupWriter: FeatureWriter = {
 export const printSetupReader: FeatureReader = {
   name: 'print-setup',
   sheet: {
-    elements: ['printOptions', 'pageMargins', 'pageSetup', 'headerFooter', 'sheetPr/pageSetUpPr'],
+    elements: [
+      'printOptions',
+      'pageMargins',
+      'pageSetup',
+      'headerFooter',
+      'sheetPr/pageSetUpPr',
+      'rowBreaks',
+      'colBreaks',
+    ],
     open(ctx, el, a): SubtreeHandler | undefined {
       const ws = ctx.ws;
       switch (el) {
@@ -223,6 +243,17 @@ export const printSetupReader: FeatureReader = {
           if (a.verticalDpi !== undefined) p.verticalDpi = n('verticalDpi');
           if (a.copies !== undefined) p.copies = n('copies');
           return undefined;
+        }
+        case 'rowBreaks':
+        case 'colBreaks': {
+          const list: number[] = [];
+          ws[el] = list;
+          return {
+            open(name, b) {
+              const id = num(b.id);
+              if (name === 'brk' && id !== undefined && id > 0) list.push(id);
+            },
+          };
         }
         case 'headerFooter': {
           const h: Mutable<HeaderFooter> = {};

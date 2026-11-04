@@ -17,6 +17,7 @@
 // original part is written back (see read/preserve.ts).
 
 import { type CellRange, decodeRange, encodeAddr, encodeRange } from '../../core/address.js';
+import { insertRows } from '../../core/structure.js';
 import type { StyleRegistry } from '../../core/styles.js';
 import type { CellValue, Style } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
@@ -91,6 +92,12 @@ export interface Table {
   totalsStyle?: Style | undefined;
 }
 
+/** A column as `addTable` takes it: a TableColumn plus the sheet column width to set. */
+export interface AddTableColumn extends TableColumn {
+  /** Width (characters) set on the sheet column; not part of the table model. */
+  width?: number | undefined;
+}
+
 export interface AddTableOptions {
   name: string;
   displayName?: string | undefined;
@@ -99,7 +106,7 @@ export interface AddTableOptions {
   /** Top-left cell (default "A1"); the range is derived from columns and rows. */
   topLeft?: string | undefined;
   /** Column names or definitions. */
-  columns: (string | TableColumn)[];
+  columns: (string | AddTableColumn)[];
   /** Data rows (arrays) written below the header; a calculated column fills missing cells. */
   rows?: readonly (readonly CellValue[])[] | undefined;
   headerRow?: boolean | undefined;
@@ -217,7 +224,13 @@ function validateWorkbook(ws: Worksheet, t: Table): void {
  * Throws on invalid names, overlaps, duplicate columns or rows that do not fit `ref`.
  */
 export function addTable(ws: Worksheet, o: AddTableOptions): Table {
-  const columns: TableColumn[] = o.columns.map((c) => (typeof c === 'string' ? { name: c } : c));
+  const widths: (number | undefined)[] = [];
+  const columns: TableColumn[] = o.columns.map((c, i) => {
+    if (typeof c === 'string') return { name: c };
+    const { width, ...col } = c;
+    widths[i] = width;
+    return col;
+  });
   const header = o.headerRow !== false;
   const totals = o.totalsRow === true;
   const rows = o.rows;
@@ -279,7 +292,84 @@ export function addTable(ws: Worksheet, o: AddTableOptions): Table {
   }
   if (ws.tables) ws.tables.push(t);
   else ws.tables = [t];
+  const left = decodeRange(ref).left;
+  widths.forEach((w, i) => {
+    if (w !== undefined) ws.getColumn(left + i + 1).width = w;
+  });
   return t;
+}
+
+/** The table named `name` on `ws` (case-insensitive); throws when there is none. */
+export function getTable(ws: Worksheet, name: string): Table {
+  const k = name.toLowerCase();
+  const t = ws.tables?.find((x) => x.name.toLowerCase() === k);
+  if (!t) throw new Error(`Worksheet '${ws.name}' has no table "${name}"`);
+  return t;
+}
+
+/** 0-based first and last data rows of a table (last < first: no data rows). */
+function dataRows(t: Table): { r: CellRange; first: number; last: number } {
+  const r = decodeRange(t.ref);
+  return {
+    r,
+    first: r.top + (t.headerRow !== false ? 1 : 0),
+    last: r.bottom - (t.totalsRow === true ? 1 : 0),
+  };
+}
+
+/**
+ * The data rows of table `name` as objects keyed by column name (header and totals rows
+ * excluded). Values are as stored: formula cells give their Formula object (`.result` holds the
+ * cached value).
+ */
+export function tableRows(ws: Worksheet, name: string): Record<string, CellValue>[] {
+  const t = getTable(ws, name);
+  const { r, first, last } = dataRows(t);
+  const out: Record<string, CellValue>[] = [];
+  for (let y = first; y <= last; y++) {
+    const o: Record<string, CellValue> = {};
+    t.columns.forEach((c, i) => {
+      o[c.name] = ws.getValue(y + 1, r.left + i + 1);
+    });
+    out.push(o);
+  }
+  return out;
+}
+
+/**
+ * Append data rows to table `name` (above its totals row): sheet rows are inserted so cells
+ * below the table move down and every reference follows (see insertRows), the table grows, and
+ * calculated columns are filled where a row gives no value. Rows are arrays (index 0 = the
+ * table's first column) or objects keyed by column name.
+ */
+export function addTableRows(
+  ws: Worksheet,
+  name: string,
+  rows: readonly (readonly CellValue[] | Readonly<Record<string, CellValue>>)[],
+): void {
+  const t = getTable(ws, name);
+  if (rows.length === 0) return;
+  const { r, last } = dataRows(t);
+  const at = last + 1; // 0-based row of the first new row
+  insertRows(ws, at + 1, rows.length);
+  if (t.totalsRow !== true) {
+    // inserted right below the table: not inside it, so extend it here
+    t.ref = encodeRange({ ...r, bottom: r.bottom + rows.length });
+    t.columns.forEach((c, i) => {
+      const f = c.calculatedColumnFormula;
+      if (f)
+        for (let k = 0; k < rows.length; k++)
+          ws.setCell(at + k + 1, r.left + i + 1, { formula: f });
+    });
+  }
+  rows.forEach((row, k) => {
+    t.columns.forEach((c, i) => {
+      const v = Array.isArray(row)
+        ? (row as readonly CellValue[])[i]
+        : (row as Record<string, CellValue>)[c.name];
+      if (v !== undefined && v !== null) ws.setCell(at + k + 1, r.left + i + 1, v);
+    });
+  });
 }
 
 // ---------------------------------------------------------------- writing

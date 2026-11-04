@@ -105,7 +105,10 @@ import { xlsxRows } from 'turbosheet';
 for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
   // row.sheet, row.row (1-based), row.values (0-based by column: values[0] is column A)
 }
+// merged ranges: xlsxRows(src, { onSheetEnd: ({ sheet, merges }) => ... })
 ```
+
+Dates: Excel dates have no time zone. turbosheet reads and writes JS `Date`s by their UTC wall clock (`new Date(Date.UTC(2024, 0, 1))` is Jan 1). If your code builds dates with `new Date(2024, 0, 1)`, use `new Workbook({ localDates: true })` and `readXlsx(buf, { localDates: true })` / `xlsxRows(src, { localDates: true })`.
 
 ### CSV
 
@@ -163,7 +166,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Formula evaluation (`turbosheet/formula`: 87 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Formula evaluation (`turbosheet/formula`: 87 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), outline groups, tables (append and read rows), notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';

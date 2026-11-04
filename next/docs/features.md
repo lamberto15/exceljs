@@ -9,6 +9,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
+- [In-cell checkboxes](#in-cell-checkboxes)
 - [Charts](#charts)
 - [Conditional formatting](#conditional-formatting)
 - [Data validation](#data-validation)
@@ -35,6 +36,12 @@ ws.setCell('C2', { error: '#N/A' });
 
 turbosheet never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
 
+
+Dynamic-array formulas (FILTER, SORT, UNIQUE, SEQUENCE, ... that spill in Excel 365) are written with Excel's dynamic-array metadata, so Excel shows `=SORT(A1:A9)` and spills it instead of turning it into `=@SORT(A1:A9)`. It is automatic for formulas using a spilling function; `{ formula, dynamic: true }` forces it, `dynamic: false` turns it off, and `array: 'C1:C9'` (without `dynamic`) still writes a legacy Ctrl+Shift+Enter array formula. Files read keep the flag.
+
+Copying: `copyWorksheet(ws)` adds a copy to the same workbook ("Data (2)"), `copyWorksheet(ws, otherWb, 'Name')` to another one (styles re-registered, pictures re-added, table names made unique, dates converted between date systems). `copyRange(src, 'A1:D10', dst, 'F2')` copies cells, styles and merges like copy-paste, adjusting relative references.
+
+Column keys may be dotted paths: with `ws.columns = [{ key: 'address.city' }]`, `ws.addRow({ address: { city: 'Oslo' } })` fills that column.
 ## Styles and number formats
 
 ```ts
@@ -49,6 +56,14 @@ ws.getColumn('B').width = 14;
 ```
 
 Styles are values: assign a new object to change one, do not mutate `getStyle()` results. Equal styles share one entry in `styles.xml`, so styling a million cells with the same object is cheap. For hot loops intern once and pass the index: `const xf = wb.styles.intern(style); ws.setCell(r, c, v, xf)`.
+
+Excel-like defaults:
+
+- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
+- **Line breaks**: text containing `\n` gets `alignment.wrapText` merged into its style, as when typing Alt+Enter in Excel (line breaks only show in wrapped cells).
+- **Hyperlinks**: a hyperlink cell stored without a style gets Excel's hyperlink look (underlined, theme hyperlink color); pass a style to choose your own.
+- **Whole sheet**: `setSheetStyle(ws, style)` formats every cell, like selecting all and formatting: existing cells, row styles and all columns get the style's properties merged over theirs, and cells created later inherit it. See [sheet protection](#sheet-protection) for unlocking all cells.
+- **Ignored errors**: hide Excel's green error triangles, e.g. "number stored as text" on a column of IDs: `ws.ignoredErrors = [{ sqref: 'A2:A1000', numberStoredAsText: true }]` (also `evalError`, `twoDigitTextYear`, `formula`, `formulaRange`, `unlockedFormula`, `emptyCellReference`, `listDataValidation`, `calculatedColumn`).
 
 ## Column auto-fit
 
@@ -103,6 +118,8 @@ An edit is validated before anything changes: one that would push cells off the 
 
 ExcelJS differences: these are functions, not methods; `spliceRows(ws, start, count, ...rows)` overwrites the first `min(count, rows.length)` rows in place (references to them stay) and deletes or inserts only the difference; `duplicateRow` adjusts the copied formulas' relative references, as a paste does; `inheritStyle` replaces the `'i'` / `'o'` style codes (and also formats empty cells, like `'i+'` / `'o+'`).
 
+Outline groups: `groupRows(ws, 2, 5)` / `groupColumns(ws, 'B', 'D')` put rows / columns one outline level deeper (Excel's *Data > Group*, max 7 levels); `{ collapsed: true }` also hides them and flags the summary row below (column to the right). Iterate with `for (const row of ws.rows())` and `for (const [col, value] of row.cells())`.
+
 Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, threaded comments, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
 
 ## Tables
@@ -117,7 +134,16 @@ addTable(ws, {
 });
 ```
 
-Writes the header, data and totals cells (`SUBTOTAL` formulas) and the table part. `ref`/`topLeft` position it; `calculatedColumnFormula`, `headerStyle`/`dataStyle`/`totalsStyle` (per table or per column) are supported. Existing tables are read into `ws.tables` and can be edited.
+Writes the header, data and totals cells (`SUBTOTAL` formulas) and the table part. `ref`/`topLeft` position it; `calculatedColumnFormula`, `headerStyle`/`dataStyle`/`totalsStyle` (per table or per column) are supported. Existing tables are read into `ws.tables` and can be edited. A column's `width` sets the sheet column width.
+
+```ts
+import { addTableRows, tableRows } from 'turbosheet';
+
+addTableRows(ws, 'Sales', [['East', 95], { Region: 'West', Units: 60 }]); // above the totals row
+tableRows(ws, 'Sales'); // [{ Region: 'North', Units: 120 }, ..., { Region: 'West', Units: 60 }]
+```
+
+`addTableRows` inserts sheet rows (cells below the table move down, references follow as with [`insertRows`](#inserting-and-deleting-rows-and-columns)), grows the table and fills calculated columns. `tableRows` returns the data rows keyed by column name; formula cells give their `Formula` object (`.result` is the cached value).
 
 ## Notes (comments)
 
@@ -136,7 +162,23 @@ const id = addImage(wb, { data: pngBytes, extension: 'png' }); // or { base64: '
 placeImage(ws, id, 'D2:F6');                                    // stretch over a range
 placeImage(ws, id, { tl: 'H2', ext: { width: 120, height: 80 } }, { description: 'Logo' });
 ws.backgroundImage = id;                                        // sheet background
+fitImage(ws, id, 'B2:C4');                                      // scaled to fit (aspect kept), centered
+placeImage(ws, id, { tl: { col: 1.5, row: 2.25 }, br: 'E8' });  // fractional positions, like ExcelJS
 ```
+
+Fractional `col` / `row` (0-based, as in ExcelJS: `1.5` = halfway into column B) are converted to cell + pixel offset with the sheet's column widths and row heights, as `fitImage` does; set widths and heights first. `fitImage` reads PNG, JPEG and GIF sizes (`imageSize(bytes)`), shrinks pictures larger than the range (`upscale: true` also grows small ones) and keeps `padding` (2 px) free.
+
+## In-cell checkboxes
+
+```ts
+import { setCheckbox } from 'turbosheet';
+
+ws.addRow(['Task', 'Done']);
+ws.addRow(['write tests', true]);
+setCheckbox(ws, 'B2:B10'); // B2 stays checked; empty cells become unchecked (FALSE)
+```
+
+Excel 365's in-cell checkboxes (2024+) are boolean cells with a checkbox format (`style.checkbox`): formulas see TRUE / FALSE, and Excel versions without checkboxes show those values. Written and read back.
 
 ## Charts
 
@@ -210,6 +252,8 @@ getPrintArea(ws); // ['A1:D50']
 ```ts
 ws.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 ws.headerFooter = { oddHeader: '&CMonthly report', oddFooter: '&LPage &P of &N' };
+ws.rowBreaks = [40, 80]; // manual page breaks after rows 40 and 80
+ws.colBreaks = [6];      // and after column F
 ```
 
 ## Sheet protection
@@ -218,7 +262,7 @@ ws.headerFooter = { oddHeader: '&CMonthly report', oddFooter: '&LPage &P of &N' 
 ws.protection = { password: 's3cret', formatCells: false, insertRows: false };
 ```
 
-`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
+`password` is hashed at write time (SHA-512, `spinCount` 100000 by default; lower it to speed up writes). To protect a sheet but keep most cells editable, unlock everything and lock the few cells that matter: `setSheetStyle(ws, { protection: { locked: false } })`, then `ws.setStyle('A1', { ...ws.getStyle('A1'), protection: { locked: true } })`. Sheet protection is not encryption: anyone can remove it. Use [encryption](#encryption) to restrict opening the file.
 
 ## Round-trip preservation
 

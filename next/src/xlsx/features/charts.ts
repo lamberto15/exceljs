@@ -373,7 +373,7 @@ function charts(c: DrawingWriteCtx): string {
     );
     const id = c.drawingRel('chart', `../charts/chart${n}.xml`);
     body += anchorXml(
-      toAnchor(ch.anchor),
+      toAnchor(ch.anchor, c.ws),
       undefined,
       `<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${c.shapeId()}" name="${escapeAttr(ch.name ?? `Chart ${i + 1}`)}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="${NS_C}"><c:chart xmlns:c="${NS_C}" r:id="${id}"/></a:graphicData></a:graphic></xdr:graphicFrame>`,
     );

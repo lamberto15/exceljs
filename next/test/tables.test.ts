@@ -4,7 +4,13 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { Workbook } from '../src/core/index.js';
-import { addDefinedName, addTable, type Table } from '../src/xlsx/features/index.js';
+import {
+  addDefinedName,
+  addTable,
+  addTableRows,
+  type Table,
+  tableRows,
+} from '../src/xlsx/features/index.js';
 import { readXlsx } from '../src/xlsx/read/index.js';
 import { createXlsxWriter, writeXlsx, xlsxStream } from '../src/xlsx/write/index.js';
 import { unzipSync } from '../src/zip/index.js';
@@ -417,4 +423,65 @@ describe('round trips', () => {
     const again = await oracle(writeXlsx(back));
     expect(again.getWorksheet('Sheet1')!.getTable('MyTable')).toBeDefined();
   });
+});
+
+describe('table rows: tableRows / addTableRows / column width', () => {
+  function sales(totals: boolean) {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    const t = addTable(ws, {
+      name: 'Sales',
+      topLeft: 'B2',
+      columns: [
+        { name: 'Item', width: 18, totalsRowLabel: 'Total' },
+        { name: 'Qty', totalsRowFunction: 'sum' },
+        { name: 'Double', calculatedColumnFormula: 'Sales[[#This Row],[Qty]]*2' },
+      ],
+      rows: [
+        ['a', 1],
+        ['b', 2],
+      ],
+      totalsRow: totals,
+    });
+    ws.setCell('B10', 'below');
+    ws.setCell('F1', { formula: 'SUM(C3:C4)' });
+    return { wb, ws, t };
+  }
+
+  it('addTable sets column widths without storing them in the table', () => {
+    const { ws, t } = sales(false);
+    expect(ws.getColumn('B').width).toBe(18);
+    expect(t.columns[0]).not.toHaveProperty('width');
+  });
+
+  it('tableRows returns data rows keyed by column name', () => {
+    const { ws } = sales(true);
+    expect(tableRows(ws, 'sales')).toEqual([
+      { Item: 'a', Qty: 1, Double: { formula: 'Sales[[#This Row],[Qty]]*2' } },
+      { Item: 'b', Qty: 2, Double: { formula: 'Sales[[#This Row],[Qty]]*2' } },
+    ]);
+    expect(() => tableRows(ws, 'Nope')).toThrow(/no table "Nope"/);
+  });
+
+  for (const totals of [false, true]) {
+    it(`addTableRows appends rows (totals row: ${totals})`, async () => {
+      const { wb, ws, t } = sales(totals);
+      addTableRows(ws, 'Sales', [['c', 3], { Qty: 4, Item: 'd' }]);
+      expect(t.ref).toBe(totals ? 'B2:D7' : 'B2:D6');
+      expect(tableRows(ws, 'Sales').map((r) => [r.Item, r.Qty])).toEqual([
+        ['a', 1],
+        ['b', 2],
+        ['c', 3],
+        ['d', 4],
+      ]);
+      expect(ws.getValue('D6')).toEqual({ formula: 'Sales[[#This Row],[Qty]]*2' });
+      expect(ws.getValue('B12')).toBe('below'); // moved down with the inserted rows
+      if (totals) expect(ws.getValue('B7')).toBe('Total');
+      expect(ws.getValue('F1')).toEqual({ formula: 'SUM(C3:C4)' });
+      const back = readXlsx(writeXlsx(wb)).getWorksheet('S')!;
+      expect(back.tables![0]!.ref).toBe(t.ref);
+      const ex = await oracle(writeXlsx(wb));
+      expect(ex.getWorksheet('S')!.getCell('B6').value).toBe('d');
+    });
+  }
 });
