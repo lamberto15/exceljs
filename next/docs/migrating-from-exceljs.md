@@ -59,7 +59,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.properties.tabColor` | `ws.tabColor` |
 | `ws.pageSetup`, `ws.headerFooter` | same shape (plain objects) |
 | `ws.protect(password, options)` | `ws.protection = { password, ...options }` |
-| `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues` | not supported (iterate with `eachRow`) |
+| `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues` | `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)` (functions) |
 | `ws.insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow` | `insertRow(s)(ws, …)`, `spliceRows(ws, …)`, `spliceColumns(ws, …)`, `duplicateRow(ws, …)`, plus `deleteRows`, `insertColumns`, `deleteColumns`; formulas, merges, names, tables, … follow like in Excel ([details](./features.md#inserting-and-deleting-rows-and-columns)) |
 
 ### Values

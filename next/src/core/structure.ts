@@ -68,6 +68,8 @@ interface Edit {
   readonly at: number;
   readonly n: number;
   readonly max: number;
+  /** Insert only: ranges ending right above `at` grow too (template rows, see fillTemplate). */
+  readonly grow?: boolean | undefined;
 }
 
 /** New index of p, or -1 when deleted / pushed off the grid. */
@@ -82,7 +84,7 @@ function mapSpan(e: Edit, a: number, b: number): [number, number] | undefined {
   if (e.n > 0) {
     const a2 = mapPoint(e, a);
     if (a2 < 0) return undefined;
-    const b2 = b >= e.at ? b + e.n : b;
+    const b2 = b >= e.at || (e.grow && b === e.at - 1 && a < e.at) ? b + e.n : b;
     return [a2, b2 < e.max ? b2 : e.max - 1];
   }
   const end = e.at - e.n;
@@ -414,10 +416,10 @@ function planTables(e: Edit): TablePlan[] {
   return plans;
 }
 
-function edit(ws: Worksheet, rows: boolean, at: number, n: number): void {
+function edit(ws: Worksheet, rows: boolean, at: number, n: number, grow = false): void {
   if (n === 0) return;
   const max = rows ? MAX_ROWS : MAX_COLS;
-  const e: Edit = { ws, name: ws.name.toLowerCase(), rows, at, n, max };
+  const e: Edit = { ws, name: ws.name.toLowerCase(), rows, at, n, max, grow };
   if (n > 0) {
     const used = lastUsed(ws, rows);
     if (used >= at && used + n >= max) {
@@ -958,9 +960,23 @@ function cloneRow(src: RowData, r0: number): RowData {
  * overwriting them. Relative references in formulas are adjusted as when pasting the row.
  */
 export function duplicateRow(ws: Worksheet, rowNum: number, count: number, insert = false): void {
+  dupRow(ws, rowNum, count, insert, false);
+}
+
+/**
+ * @internal duplicateRow; `grow`: ranges ending at the source row extend over the inserted
+ * copies (fillTemplate: totals below a repeated row cover every copy).
+ */
+export function dupRow(
+  ws: Worksheet,
+  rowNum: number,
+  count: number,
+  insert: boolean,
+  grow: boolean,
+): void {
   const r0 = rowNum - 1;
   check(true, r0, count + 1);
-  if (insert) edit(ws, true, r0 + 1, count);
+  if (insert) edit(ws, true, r0 + 1, count, grow);
   const s = st(ws);
   const src = s._rows[r0];
   if (!insert) {
