@@ -1,18 +1,12 @@
 ---
-name: 🚀 Feature Proposal
-title: '[F] XYZ'
-labels: ':rocket: Feature Request'
-about: Submit a proposal for a new feature
+name: Feature request
+about: Something turbosheet should support
+title: ''
+labels: enhancement
 ---
 
-## 🚀 Feature Proposal
+**What you want to do** (the spreadsheet / Excel feature, or the API you miss):
 
-A clear and concise description of what the feature is.
+**How you would call it** (optional):
 
-## Motivation
-
-Please outline the motivation for the proposal.
-
-## Example
-
-Please provide an example for how this feature would be used.
+**Workaround today** (optional):

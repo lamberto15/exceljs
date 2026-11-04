@@ -1,149 +1,215 @@
 {
-  "name": "exceljs",
-  "version": "4.4.0",
-  "description": "Excel Workbook Manager - Read and Write xlsx and csv Files.",
-  "private": false,
-  "license": "MIT",
-  "author": {
-    "name": "Guyon Roche",
-    "email": "guyon@live.com"
+  "name": "turbosheet",
+  "version": "0.3.0",
+  "description": "Fast, small, streaming-first XLSX and CSV library for TypeScript on every JavaScript runtime (Node, Bun, Deno, browsers, workers).",
+  "keywords": [
+    "xlsx",
+    "excel",
+    "spreadsheet",
+    "csv",
+    "ooxml",
+    "streaming",
+    "exceljs",
+    "typescript",
+    "encryption",
+    "worksheet",
+    "formula"
+  ],
+  "homepage": "https://github.com/lamberto15/turbosheet#readme",
+  "bugs": {
+    "url": "https://github.com/lamberto15/turbosheet/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/exceljs/exceljs.git"
+    "url": "git+https://github.com/lamberto15/turbosheet.git"
   },
+  "author": "turbosheet contributors",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
   "engines": {
-    "node": ">=8.3.0"
+    "node": ">=22"
   },
-  "main": "./excel.js",
-  "browser": "./dist/exceljs.min.js",
-  "types": "./index.d.ts",
-  "files": [
-    "dist",
-    "lib",
-    "excel.js",
-    "LICENSE",
-    "README.md",
-    "README_zh.md",
-    "index.ts",
-    "index.d.ts"
-  ],
-  "scripts": {
-    "test": "npm run test:full",
-    "test:es5": "export EXCEL_BUILD=es5 && npm run test:full",
-    "test:full": "npm run build && npm run test:unit && npm run test:integration && npm run test:end-to-end && npm run test:jasmine",
-    "test:version": "npm run build && npm run test:unit && npm run test:integration && npm run test:end-to-end && npm run test:browser && npm run test:dist",
-    "test:all": "npm run test:native && npm run test:es5",
-    "test:native": "npm run test:full",
-    "test:unit": "mocha --require spec/config/setup --require spec/config/setup-unit spec/unit --recursive",
-    "test:integration": "mocha --require spec/config/setup spec/integration --recursive",
-    "test:end-to-end": "mocha --require spec/config/setup spec/end-to-end --recursive",
-    "test:browser": "if [ ! -f .disable-test-browser ]; then npm run build && npm run test:jasmine; fi",
-    "test:jasmine": "grunt jasmine",
-    "test:unit:es5": "export EXCEL_BUILD=es5 && npm run test:unit",
-    "test:integration:es5": "export EXCEL_BUILD=es5 && npm run test:integration",
-    "test:end-to-end:es5": "export EXCEL_BUILD=es5 && npm run test:end-to-end",
-    "test:dist": "mocha --require spec/config/setup spec/dist --recursive",
-    "test:manual": "node spec/manual/app.js",
-    "test:typescript": "mocha -r ts-node/register spec/typescript/**/*.spec.ts",
-    "clean-build": "npm run clean && npm run build",
-    "lint": "eslint --format node_modules/eslint-friendly-formatter .",
-    "lint:fix": "prettier-eslint --write $(pwd)'/**/*.js'",
-    "lint:staged": "lint-staged",
-    "clean": "rm -rf build/ && rm -rf dist",
-    "benchmark": "node --expose-gc benchmark",
-    "benchmark:debug": "node --expose-gc --inspect-brk --trace-deopt benchmark",
-    "build": "grunt build",
-    "install-build": "npm install && grunt build",
-    "preversion": "npm run clean && npm run build && npm run test:version",
-    "postversion": "git push --no-verify && git push --tags --no-verify"
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./lite": {
+      "import": {
+        "types": "./dist/lite.d.ts",
+        "default": "./dist/lite.js"
+      },
+      "require": {
+        "types": "./dist/lite.d.cts",
+        "default": "./dist/lite.cjs"
+      }
+    },
+    "./csv": {
+      "import": {
+        "types": "./dist/csv.d.ts",
+        "default": "./dist/csv.js"
+      },
+      "require": {
+        "types": "./dist/csv.d.cts",
+        "default": "./dist/csv.cjs"
+      }
+    },
+    "./json": {
+      "import": {
+        "types": "./dist/json.d.ts",
+        "default": "./dist/json.js"
+      },
+      "require": {
+        "types": "./dist/json.d.cts",
+        "default": "./dist/json.cjs"
+      }
+    },
+    "./crypto": {
+      "import": {
+        "types": "./dist/crypto.d.ts",
+        "default": "./dist/crypto.js"
+      },
+      "require": {
+        "types": "./dist/crypto.d.cts",
+        "default": "./dist/crypto.cjs"
+      }
+    },
+    "./formula": {
+      "import": {
+        "types": "./dist/formula.d.ts",
+        "default": "./dist/formula.js"
+      },
+      "require": {
+        "types": "./dist/formula.d.cts",
+        "default": "./dist/formula.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged"
+  "typesVersions": {
+    "*": {
+      "lite": [
+        "dist/lite.d.ts"
+      ],
+      "csv": [
+        "dist/csv.d.ts"
+      ],
+      "json": [
+        "dist/json.d.ts"
+      ],
+      "crypto": [
+        "dist/crypto.d.ts"
+      ],
+      "formula": [
+        "dist/formula.d.ts"
+      ]
     }
   },
-  "lint-staged": {
-    "*.js": [
-      "prettier-eslint --write",
-      "eslint --format node_modules/eslint-friendly-formatter",
-      "git add"
-    ]
-  },
-  "keywords": [
-    "xlsx",
-    "json",
-    "csv",
-    "excel",
-    "font",
-    "border",
-    "fill",
-    "number",
-    "format",
-    "number format",
-    "alignment",
-    "office",
-    "spreadsheet",
-    "workbook",
-    "defined names",
-    "data validations",
-    "rich text",
-    "in-cell format",
-    "outlineLevel",
-    "views",
-    "frozen",
-    "split",
-    "pageSetup"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "bench": "node --expose-gc bench/run.mjs",
+    "size": "size-limit",
+    "changeset": "changeset",
+    "release": "changeset publish",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
   "dependencies": {
-    "archiver": "^5.0.0",
-    "dayjs": "^1.8.34",
-    "fast-csv": "^4.3.1",
-    "jszip": "^3.10.1",
-    "readable-stream": "^3.6.0",
-    "saxes": "^5.0.1",
-    "tmp": "^0.2.0",
-    "unzipper": "^0.10.11",
-    "uuid": "^8.3.0"
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@babel/cli": "^7.10.5",
-    "@babel/core": "^7.11.4",
-    "@babel/preset-env": "^7.11.0",
-    "@types/chai": "^4.2.12",
-    "@types/mocha": "^8.0.3",
-    "@types/node": "^14.11.2",
-    "babelify": "^10.0.0",
-    "browserify": "^16.5.2",
-    "chai": "^4.2.0",
-    "chai-datetime": "^1.7.0",
-    "chai-xml": "^0.3.2",
-    "core-js": "^3.6.5",
-    "dirty-chai": "^2.0.1",
-    "eslint": "^6.5.1",
-    "eslint-config-airbnb-base": "^14.2.0",
-    "eslint-config-prettier": "^6.12.0",
-    "eslint-friendly-formatter": "^4.0.1",
-    "eslint-plugin-import": "^2.22.0",
-    "eslint-plugin-node": "^11.1.0",
-    "express": "^4.16.4",
-    "got": "^9.0.0",
-    "grunt": "^1.3.0",
-    "grunt-babel": "^8.0.0",
-    "grunt-browserify": "^5.3.0",
-    "grunt-contrib-copy": "^1.0.0",
-    "grunt-contrib-jasmine": "^2.2.0",
-    "grunt-contrib-watch": "^1.1.0",
-    "grunt-exorcise": "^2.1.1",
-    "grunt-terser": "^1.0.0",
-    "husky": "^4.3.0",
-    "lint-staged": "^10.2.13",
-    "mocha": "^7.2.0",
-    "prettier-eslint": "^11.0.0",
-    "prettier-eslint-cli": "^5.0.0",
-    "regenerator-runtime": "^0.13.7",
-    "sax": "^1.2.4",
-    "ts-node": "^8.10.2",
-    "typescript": "^3.9.7"
-  }
+    "@biomejs/biome": "^2.0.0",
+    "@changesets/cli": "^3.0.3",
+    "@size-limit/preset-small-lib": "^11.0.0",
+    "@types/node": "^22.20.5",
+    "exceljs": "4.4.0",
+    "size-limit": "^11.0.0",
+    "tinybench": "^3.0.0",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "size-limit": [
+    {
+      "name": "write-only",
+      "path": "dist/index.js",
+      "import": "{ Workbook, writeXlsx }",
+      "limit": "34 KB"
+    },
+    {
+      "name": "read+write",
+      "path": "dist/index.js",
+      "import": "*",
+      "limit": "75 KB"
+    },
+    {
+      "name": "lite write-only",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, writeXlsx }",
+      "limit": "23 KB"
+    },
+    {
+      "name": "lite read+write",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, readXlsx, writeXlsx }",
+      "limit": "41 KB"
+    },
+    {
+      "name": "lite write + tables + images",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, writeXlsx, addTable, tablesWriter, addImage, placeImage, imagesWriter }",
+      "limit": "27 KB"
+    },
+    {
+      "name": "lite autofit",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, autoFitColumns }",
+      "limit": "11 KB"
+    },
+    {
+      "name": "lite write + charts",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, writeXlsx, addChart, chartsWriter }",
+      "limit": "26.5 KB"
+    },
+    {
+      "name": "csv",
+      "path": "dist/csv.js",
+      "import": "*",
+      "limit": "5 KB"
+    },
+    {
+      "name": "crypto",
+      "path": "dist/crypto.js",
+      "import": "*",
+      "limit": "8 KB"
+    },
+    {
+      "name": "formula",
+      "path": "dist/formula.js",
+      "import": "*",
+      "limit": "16.5 KB"
+    }
+  ],
+  "packageManager": "pnpm@12.16.1"
 }

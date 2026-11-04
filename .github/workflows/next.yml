@@ -3,13 +3,7 @@ name: next
 on:
   push:
     branches: [next]
-    paths: ['next/**', '.github/workflows/next.yml']
   pull_request:
-    paths: ['next/**', '.github/workflows/next.yml']
-
-defaults:
-  run:
-    working-directory: next
 
 jobs:
   test:
@@ -18,24 +12,22 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        # macOS runners are scarce (free plan: max 5 concurrent) and turbosheet is pure JS, so
-        # one macOS job (newest Node) is enough; Linux and Windows run both Node versions.
-        exclude:
-          - node: 22
-            os: macos-latest
+        # No macOS job: GitHub's macOS runners were never scheduled for this repo and the queued
+        # job blocked later runs. turbosheet is pure JS; files are verified in Excel for Mac
+        # locally (test/smoke/excel-pack.mjs).
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: next/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-          cache-dependency-path: next/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
@@ -48,12 +40,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: next/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: next/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm build

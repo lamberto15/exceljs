@@ -1,13 +1,7 @@
-<!-- Thanks for submitting a pull request! Please provide enough information so that others can review your pull request. The two fields below are mandatory. -->
+## What
 
-## Summary
+## Verification
 
-<!-- Explain the **motivation** for making this change. What existing problem does the pull request solve? -->
-
-## Test plan
-
-<!-- Demonstrate the code is solid. Example: The exact commands you ran and their output, screenshots / videos if the pull request changes UI. -->
-
-## Related to source code (for typings update)
-
-<!-- List with permalink into source code to prove that changes are true -->
+- [ ] tests (`pnpm test`), `pnpm typecheck`, `pnpm lint`, `pnpm size`
+- [ ] a changeset (`pnpm changeset`) for user-visible changes, docs updated
+- [ ] file-format changes opened in real Excel (`pnpm build && node test/smoke/excel-pack.mjs out/pack`)
