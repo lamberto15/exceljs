@@ -8,8 +8,7 @@ import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { nativeCompressor } from '../../zip/index.js';
 import type { PPart } from '../common/preserved.js';
-import { WRITERS } from '../features/registry.js';
-import type { BookWriteCtx } from '../features/types.js';
+import type { BookWriteCtx, FeatureWriter } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts, type PartRec, RelList, relElems } from './package.js';
 import {
@@ -21,14 +20,18 @@ import {
   type SheetEntry,
   sharedStringsXml,
   stylesXml,
-  THEME_CT,
-  THEME_PATH,
-  themeXml,
   workbookRelsXml,
   workbookXml,
 } from './parts.js';
 import { planPreserved, presBook, sheetIds } from './preserve.js';
-import { afterSheetParts, encodeRow, newSheetCtx, sheetHead, sheetTail } from './sheet.js';
+import {
+  afterSheetParts,
+  encodeRow,
+  newSheetCtx,
+  sheetHead,
+  sheetPlan,
+  sheetTail,
+} from './sheet.js';
 import { concatChunks, ZipOut } from './zipout.js';
 
 /** Sheet XML is handed to the zip in pieces of about this many UTF-16 units. */
@@ -46,6 +49,7 @@ interface Piece {
  * writer.
  */
 export function bookParts(
+  writers: readonly FeatureWriter[],
   wb: Workbook,
   book: BookInfo,
   pkg: PackageParts,
@@ -63,16 +67,10 @@ export function bookParts(
     addDefault: (ext, ct) => pkg.addDefault(ext, ct),
     nextIndex: (f) => pkg.nextIndex(f),
   };
-  for (const f of WRITERS) f.book?.write?.(ctx);
+  for (const f of writers) f.book?.write?.(ctx);
   const pb = wb.preserved;
-  // a theme kept from the source file replaces the default one (never two themes)
-  const keptTheme = kept && pb?.implicit.some((k) => /\/theme$/.test(pb.rels[k]!.type));
-  if (book.theme !== false && !keptTheme) {
-    pkg.addPart(THEME_PATH, themeXml(), THEME_CT);
-    rels.add('theme', 'theme/theme1.xml');
-  }
   const extra: [number, string, number][] = [];
-  for (const f of WRITERS) {
+  for (const f of writers) {
     for (const e of f.book?.emitters ?? []) {
       const x = e.emit(ctx);
       if (x) extra.push([e.slot, x, e.order ?? 0]);
@@ -152,11 +150,12 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
   const pkg = new PackageParts();
   const kept = planPreserved(wb, pkg);
   const ids = sheetIds(wb);
+  const plan = sheetPlan(o.writers);
   let formulas = false;
 
   for (let si = 0; si < sheets.length; si++) {
     const ws = sheets[si]!;
-    const ctx = newSheetCtx({ sst, pkg, ws, index: si, streaming: false });
+    const ctx = newSheetCtx({ plan, sst, pkg, ws, index: si, streaming: false });
     const path = ctx.path;
     const rows = ws.rowData;
     let outline = 0;
@@ -193,14 +192,14 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     created: wb.created,
     modified: wb.modified,
     definedNames: wb.definedNames,
-    theme: o.theme,
   };
-  for (const p of bookParts(wb, book, pkg, sst, kept))
+  for (const p of bookParts(o.writers, wb, book, pkg, sst, kept))
     yield { path: p.path, data: p.data, last: true };
 }
 
 /**
- * Serialize a workbook to XLSX bytes. The date system is the workbook's own (`wb.date1904`);
+ * Serialize a workbook to XLSX bytes, running only the feature writers in `opts.features`
+ * (none by default; the package root's writeXlsx passes all built-ins). The date system is the workbook's own (`wb.date1904`);
  * `opts.date1904` is ignored here because cell serials were computed when values were stored.
  */
 export function writeXlsx(wb: Workbook, opts?: WriteOptions): Uint8Array {
@@ -213,7 +212,7 @@ export function writeXlsx(wb: Workbook, opts?: WriteOptions): Uint8Array {
 }
 
 /**
- * Stream a workbook as XLSX. Pull-based: sheet XML is generated one piece (~128K chars of rows)
+ * Stream a workbook as XLSX (features: see writeXlsx). Pull-based: sheet XML is generated one piece (~128K chars of rows)
  * per pull, so a slow consumer stalls generation instead of buffering the whole file.
  * The workbook must not be modified until the stream has finished.
  */

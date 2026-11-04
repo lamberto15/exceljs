@@ -1,5 +1,8 @@
 // Public value & style types shared by every module.
-// Keep this file dependency-free: it is the contract between core, xlsx, csv and json.
+// Keep this file dependency-free: it is the contract between core, xlsx, csv and json (the one
+// type-only import below is the feature extension-point interfaces used by the options).
+
+import type { FeatureReader, FeatureWriter } from '../xlsx/features/types.js';
 
 export type ErrorCode =
   | '#NULL!'
@@ -175,8 +178,17 @@ export interface WriteOptions {
   strings?: 'shared' | 'inline';
   /** Use 1904 date system. */
   date1904?: boolean;
-  /** Write the default Office theme part (`xl/theme/theme1.xml`, ~0.5 KB compressed). Default true. */
+  /**
+   * Write the default Office theme part (`xl/theme/theme1.xml`, ~0.5 KB compressed). Default
+   * true. `false` removes the `themeWriter` feature (in `./lite` it is only written when
+   * `themeWriter` is in `features`).
+   */
   theme?: boolean;
+  /**
+   * Feature writers to run. Package root: added to the built-in ones (all enabled; use it for
+   * custom features). `./lite`: the ONLY features enabled, e.g. `[tablesWriter, imagesWriter]`.
+   */
+  features?: readonly FeatureWriter[];
 }
 
 export interface ReadOptions {
@@ -191,6 +203,12 @@ export interface ReadOptions {
   preserveUnknown?: boolean;
   /** Only load these sheet names. */
   sheets?: readonly string[];
+  /**
+   * Feature readers to run. Package root: added to the built-in ones (all enabled). `./lite`:
+   * the ONLY features modelled, e.g. `[tablesReader]`; elements of the others are kept raw by
+   * `preserveUnknown` and written back unchanged. `xlsxRows` ignores features.
+   */
+  features?: readonly FeatureReader[];
 }
 
 export interface Limits {

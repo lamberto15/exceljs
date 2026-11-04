@@ -16,8 +16,8 @@ import type { Column, RowData, Worksheet, WorksheetView } from '../../core/works
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { fillRels } from '../common/preserved.js';
 import { runsXml } from '../common/rich-text.js';
-import { WRITERS } from '../features/registry.js';
 import {
+  type FeatureWriter,
   type SheetEmitter,
   SheetPrOrder,
   SheetSlot,
@@ -51,9 +51,12 @@ export interface SheetCtx extends SheetWriteCtx {
   /** Max row outline level (sheetFormatPr outlineLevelRow); 0 = unknown/none. */
   outlineLevelRow: number;
   tabSelected: boolean;
+  /** Emitters of this write (built-in + enabled features). */
+  readonly plan: SheetPlan;
 }
 
 export interface NewSheetCtx {
+  readonly plan: SheetPlan;
   readonly sst: SharedStrings | undefined;
   readonly pkg: PackageParts;
   readonly ws: Worksheet;
@@ -79,6 +82,7 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
     index: o.index,
     path: sheetPath(o.index),
     streaming: o.streaming,
+    plan: o.plan,
     addRel: (type, target, external) => rels.add(type, target, external),
     addPart: (path, data, ct) => pkg.addPart(path, data, ct),
     addDefault: (ext, ct) => pkg.addDefault(ext, ct),
@@ -280,7 +284,8 @@ function colOutline(cols: readonly (Column | undefined)[]): number {
   return outline;
 }
 
-interface Emitter {
+/** A sheet emitter as the writer sees it (feature emitters get the full SheetCtx). */
+export interface Emitter {
   readonly slot: number;
   readonly order?: number | undefined;
   emit(ctx: SheetCtx): string;
@@ -343,23 +348,27 @@ const BUILTIN: readonly Emitter[] = [
   },
 ];
 
-let emitters: Emitter[] | undefined;
-let worksheetOpen: string | undefined;
+/** Per-write emitter list and `<worksheet>` start tag (see sheetPlan). */
+export interface SheetPlan {
+  readonly writers: readonly FeatureWriter[];
+  readonly emitters: readonly Emitter[];
+  readonly open: string;
+}
 
-/** Built-in + feature emitters, sorted by (slot, order); computed once. */
-function sheetEmitters(): Emitter[] {
-  if (emitters === undefined) {
-    const all: Emitter[] = [...BUILTIN];
-    let ns = '';
-    for (const f of WRITERS) {
-      for (const e of f.sheet?.emitters ?? []) all.push(e as SheetEmitter as Emitter);
-      for (const n of f.sheet?.namespaces ?? []) if (!ns.includes(n)) ns += ` ${n}`;
-    }
-    all.sort((a, b) => a.slot - b.slot || (a.order ?? 0) - (b.order ?? 0));
-    emitters = all;
-    worksheetOpen = `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"${ns}>`;
+/** Built-in + feature emitters sorted by (slot, order); once per write (never per sheet/cell). */
+export function sheetPlan(writers: readonly FeatureWriter[]): SheetPlan {
+  const all: Emitter[] = [...BUILTIN];
+  let ns = '';
+  for (const f of writers) {
+    for (const e of f.sheet?.emitters ?? []) all.push(e as SheetEmitter as Emitter);
+    for (const n of f.sheet?.namespaces ?? []) if (!ns.includes(n)) ns += ` ${n}`;
   }
-  return emitters;
+  all.sort((a, b) => a.slot - b.slot || (a.order ?? 0) - (b.order ?? 0));
+  return {
+    writers,
+    emitters: all,
+    open: `${XML_DECL}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"${ns}>`,
+  };
 }
 
 /**
@@ -370,7 +379,7 @@ function sheetEmitters(): Emitter[] {
 function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
   const out: string[] = [];
   const pr: [number, string][] = [];
-  for (const e of sheetEmitters()) {
+  for (const e of ctx.plan.emitters) {
     if (e.slot < lo || e.slot > hi) continue;
     const x = e.emit(ctx);
     if (x === '') continue;
@@ -404,7 +413,7 @@ function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
 /** Everything up to and including `<sheetData>`. Set ctx.dimension/outlineLevelRow/tabSelected first. */
 export function sheetHead(ctx: SheetCtx): string {
   const body = runEmitters(ctx, 0, SheetSlot.sheetData - 1);
-  return `${worksheetOpen}${body}<sheetData>`;
+  return `${ctx.plan.open}${body}<sheetData>`;
 }
 
 /** `</sheetData>` through `</worksheet>`. Allocates the sheet's relationships (see ctx.rels). */

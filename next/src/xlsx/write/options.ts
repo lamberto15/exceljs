@@ -1,6 +1,7 @@
 // Write option resolution: profile → defaults, explicit options win.
 
 import type { Profile, WriteOptions } from '../../core/types.js';
+import type { FeatureWriter } from '../features/types.js';
 
 export interface ResolvedWriteOptions {
   readonly profile: Profile;
@@ -10,6 +11,8 @@ export interface ResolvedWriteOptions {
   /** Only set when given explicitly (writeXlsx uses the workbook's own date system). */
   readonly date1904: boolean | undefined;
   readonly theme: boolean;
+  /** Feature writers to run (`features`, minus the theme when `theme: false`). */
+  readonly writers: readonly FeatureWriter[];
 }
 
 const PROFILES: Record<Profile, { compression: number; strings: 'shared' | 'inline' }> = {
@@ -35,5 +38,8 @@ export function resolveWriteOptions(opts: WriteOptions = {}): ResolvedWriteOptio
   if (strings !== 'shared' && strings !== 'inline') {
     throw new TypeError(`strings must be 'shared' or 'inline', got ${String(strings)}`);
   }
-  return { profile, compression, strings, date1904: opts.date1904, theme: opts.theme !== false };
+  const theme = opts.theme !== false;
+  const f = opts.features ?? [];
+  const writers = theme ? f : f.filter((w) => w.name !== 'theme');
+  return { profile, compression, strings, date1904: opts.date1904, theme, writers };
 }

@@ -42,7 +42,9 @@ import {
   encodeRow,
   newSheetCtx,
   type SheetCtx,
+  type SheetPlan,
   sheetHead,
+  sheetPlan,
   sheetTail,
 } from './sheet.js';
 import { ZipOut } from './zipout.js';
@@ -252,6 +254,7 @@ export class XlsxWriter {
   /** @internal Feature parts / content types / part counters. */
   readonly _pkg: PackageParts = new PackageParts();
   private readonly _o: ResolvedWriteOptions;
+  private readonly _plan: SheetPlan;
   private readonly _sst: SharedStrings | undefined;
   private readonly _sheets: StreamSheet[] = [];
   private readonly _sink: ChunkSink | undefined;
@@ -270,6 +273,7 @@ export class XlsxWriter {
 
   constructor(opts: XlsxWriterOptions = {}) {
     this._o = resolveWriteOptions(opts);
+    this._plan = sheetPlan(this._o.writers);
     this.workbook = new Workbook({ date1904: opts.date1904 === true });
     const wb = this.workbook;
     if (opts.creator !== undefined) wb.creator = opts.creator;
@@ -320,7 +324,14 @@ export class XlsxWriter {
     }
     if (opts.autoFilter) ws.autoFilter = opts.autoFilter;
     const index = this._sheets.length;
-    const ctx = newSheetCtx({ sst: this._sst, pkg: this._pkg, ws, index, streaming: true });
+    const ctx = newSheetCtx({
+      plan: this._plan,
+      sst: this._sst,
+      pkg: this._pkg,
+      ws,
+      index,
+      streaming: true,
+    });
     const s = new StreamSheet(this, ws, index, ctx);
     this._sheets.push(s);
     this._open = s;
@@ -352,10 +363,10 @@ export class XlsxWriter {
       created: wb.created,
       modified: wb.modified,
       definedNames: wb.definedNames,
-      theme: this._o.theme,
     };
     const z = this._zip;
-    for (const p of bookParts(wb, book, this._pkg, this._sst)) z.add(p.path, p.data);
+    for (const p of bookParts(this._o.writers, wb, book, this._pkg, this._sst))
+      z.add(p.path, p.data);
     z.end();
     await this._settle();
   }
@@ -488,7 +499,8 @@ export class XlsxWriter {
 }
 
 /**
- * Create a streaming XLSX writer. Its workbook is new and private: content preserved by
+ * Create a streaming XLSX writer running only the feature writers in `opts.features` (none by
+ * default; the package root's createXlsxWriter passes all built-ins). Its workbook is new and private: content preserved by
  * `readXlsx` (preserveUnknown) is never carried over — use writeXlsx / xlsxStream for that.
  * ```ts
  * const w = createXlsxWriter({ sink: (chunk) => file.write(chunk) });

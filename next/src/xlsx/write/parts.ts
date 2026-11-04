@@ -36,8 +36,6 @@ export interface BookInfo {
   readonly modified: Date | undefined;
   /** User defined names (wb.definedNames); autoFilter names are added by workbookXml. */
   readonly definedNames?: readonly DefinedName[] | undefined;
-  /** Write xl/theme/theme1.xml (default true). */
-  readonly theme?: boolean | undefined;
   /** Preserved (round-trip) pieces: raw workbookPr / calcPr attributes, extra `<sheet>`s. */
   readonly prAttrs?: string | undefined;
   readonly calcAttrs?: string | undefined;
@@ -74,36 +72,6 @@ export function contentTypesXml(
     s += `<Override PartName="/xl/sharedStrings.xml" ContentType="${CT}spreadsheetml.sharedStrings+xml"/>`;
   }
   return `${s}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="${CT}extended-properties+xml"/></Types>`;
-}
-
-export const THEME_PATH: string = 'xl/theme/theme1.xml';
-export const THEME_CT: string = `${CT}theme+xml`;
-
-/** Minimal valid Office theme: the default palette and Calibri fonts, placeholder-only format scheme. */
-export function themeXml(): string {
-  const fill = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>';
-  const x3 = (s: string): string => s + s + s;
-  const clr = (n: string, v: string): string => `<a:${n}><a:srgbClr val="${v}"/></a:${n}>`;
-  const font = (n: string, f: string): string =>
-    `<a:${n}Font><a:latin typeface="${f}"/><a:ea typeface=""/><a:cs typeface=""/></a:${n}Font>`;
-  return (
-    `${XML_DECL}<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Office">` +
-    '<a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>' +
-    clr('dk2', '44546A') +
-    clr('lt2', 'E7E6E6') +
-    clr('accent1', '4472C4') +
-    clr('accent2', 'ED7D31') +
-    clr('accent3', 'A5A5A5') +
-    clr('accent4', 'FFC000') +
-    clr('accent5', '5B9BD5') +
-    clr('accent6', '70AD47') +
-    clr('hlink', '0563C1') +
-    clr('folHlink', '954F72') +
-    `</a:clrScheme><a:fontScheme name="Office">${font('major', 'Calibri Light')}${font('minor', 'Calibri')}</a:fontScheme>` +
-    `<a:fmtScheme name="Office"><a:fillStyleLst>${x3(fill)}</a:fillStyleLst><a:lnStyleLst>${x3(`<a:ln w="9525">${fill}</a:ln>`)}</a:lnStyleLst>` +
-    `<a:effectStyleLst>${x3('<a:effectStyle><a:effectLst/></a:effectStyle>')}</a:effectStyleLst><a:bgFillStyleLst>${x3(fill)}</a:bgFillStyleLst></a:fmtScheme>` +
-    '</a:themeElements></a:theme>'
-  );
 }
 
 /** Package relationships; `extra` = more relationship elements (ids from rId4). */
