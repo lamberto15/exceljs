@@ -186,6 +186,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 - [docs/api.md](./docs/api.md): API reference
 - [docs/features.md](./docs/features.md): one section per feature
 - [docs/migrating-from-exceljs.md](./docs/migrating-from-exceljs.md): ExcelJS to turbosheet
+- [docs/exceljs-parity.md](./docs/exceljs-parity.md): every ExcelJS test, ported and classified (supported / different / missing)
 - [docs/bundle-size.md](./docs/bundle-size.md): `turbosheet/lite` and size budgets
 - [docs/benchmarks.md](./docs/benchmarks.md): benchmark methodology and results
 - [CONTRIBUTING.md](./CONTRIBUTING.md): development setup and PR flow

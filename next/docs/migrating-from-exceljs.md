@@ -1,6 +1,6 @@
 # Migrating from ExcelJS
 
-turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to turbosheet 0.1. Every turbosheet sample here runs in CI (`test/docs-examples.test.ts`).
+turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to turbosheet 0.1. Every turbosheet sample here runs in CI (`test/docs-examples.test.ts`). For a test-by-test account of which ExcelJS behaviours are supported, different or missing, see [exceljs-parity.md](./exceljs-parity.md).
 
 ## The big differences
 
@@ -170,6 +170,8 @@ To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `
 - **Sheet names** are validated with Excel's rules when you add or rename a sheet.
 - **Merged cells:** `mergeCells` does not clear or copy cell values; a value left in a non-top-left cell stays in the model (Excel displays only the top-left one). Put the value in the top-left cell.
 - **`ws.columns = [...]` with headers writes row 1**, like ExcelJS; `addRow` then continues below it.
+- **Alignment uses OOXML names and encoding:** `vertical: 'center'` (ExcelJS `'middle'`), `textRotation: 255` for vertical text (ExcelJS `'vertical'`); a negative rotation such as `-45` is stored as Excel does (`135`).
+- **Shared formulas are expanded on read** (`{ formula: 'A4+1', result }` per cell); there is no `{ sharedFormula }` value.
 
 ## What turbosheet adds
 
