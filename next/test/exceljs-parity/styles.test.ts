@@ -2,10 +2,9 @@
 // worksheet-xlsx-writer.spec.js / workbook-xlsx-writer.spec.js / workbook-xlsx-reader.spec.js,
 // and regressions for the style bugs found while porting.
 
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CellKind, readXlsx, type Style, Workbook, writeXlsx } from '../../src/index.js';
-import { exceljsLoad, fixture, partText, roundtrip, streamWrite } from './helpers.js';
+import { exceljsLoad, fixture, fixtureText, partText, roundtrip, streamWrite } from './helpers.js';
 import { alignment, font, fontBack, numFmt1, numFmt2, styles } from './test-book.js';
 
 const comic = font(styles.fonts.comicSansUdB16);
@@ -102,17 +101,11 @@ describe('exceljs parity: styles', () => {
 
   // exceljs: spec/integration/workbook/styles.spec.js — "in-cell formats properly in xlsx file"
   it('reads in-cell (rich text) formats', () => {
-    const src = readFileSync(
-      new URL('../../../spec/integration/data/rich-text-sample.js', import.meta.url),
-      'utf8',
-    );
+    const src = fixtureText('rich-text-sample.js');
     const b64 = /'([A-Za-z0-9+/=]+)'/.exec(src)![1]!;
-    const expected = JSON.parse(
-      readFileSync(
-        new URL('../../../spec/integration/data/rich-text-sample-a1.json', import.meta.url),
-        'utf8',
-      ),
-    ) as { richText: { text: string; font: Record<string, unknown> }[] };
+    const expected = JSON.parse(fixtureText('rich-text-sample-a1.json')) as {
+      richText: { text: string; font: Record<string, unknown> }[];
+    };
     const ws = readXlsx(Uint8Array.from(Buffer.from(b64, 'base64'))).worksheets[0]!;
     const a1 = ws.getValue('A1') as { richText: { text: string; font?: object }[] };
     // 🚫 font family / scheme are not modelled; everything else matches

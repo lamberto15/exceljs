@@ -625,7 +625,13 @@ export class Worksheet {
   ): number {
     const r0 = this._rows.length;
     if (r0 >= MAX_ROWS) throw new RangeError('Worksheet row limit reached');
-    this._fillRow(r0, values, style);
+    try {
+      this._fillRow(r0, values, style);
+    } catch (e) {
+      // an invalid value must not leave a half-written row behind (it would shift later rows)
+      this._rows.length = r0;
+      throw e;
+    }
     return r0 + 1;
   }
 

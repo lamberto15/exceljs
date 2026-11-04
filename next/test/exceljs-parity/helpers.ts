@@ -2,6 +2,8 @@
 // Each test ports one ExcelJS spec (`// exceljs: <path> — "<title>"`); see docs/exceljs-parity.md.
 
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import { unzipSync } from 'fflate';
 import {
@@ -17,12 +19,18 @@ import {
   xlsxRows,
 } from '../../src/index.js';
 
-const DATA = new URL('../../../spec/integration/data/', import.meta.url);
-const UTIL_DATA = new URL('../../../spec/utils/data/', import.meta.url);
+/** spec/integration/data (fileURLToPath, not URL.pathname: Windows paths). */
+export const DATA_DIR: string = fileURLToPath(
+  new URL('../../../spec/integration/data/', import.meta.url),
+);
+const UTIL_DIR = fileURLToPath(new URL('../../../spec/utils/data/', import.meta.url));
+
+/** Text of a file in spec/integration/data. */
+export const fixtureText = (name: string): string => readFileSync(join(DATA_DIR, name), 'utf8');
 
 /** Bytes of a fixture from spec/integration/data. */
 export const fixture = (name: string): Uint8Array =>
-  new Uint8Array(readFileSync(new URL(name, DATA)));
+  new Uint8Array(readFileSync(join(DATA_DIR, name)));
 
 const DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.]\d{3}Z$/;
 
@@ -41,7 +49,7 @@ function fix(o: unknown): unknown {
 /** One of spec/utils/data/*.json (dates revived like the ExcelJS test utils). */
 // biome-ignore lint/suspicious/noExplicitAny: test data mirrors untyped ExcelJS JSON fixtures
 export const utilData = (name: string): any =>
-  fix(JSON.parse(readFileSync(new URL(`${name}.json`, UTIL_DATA), 'utf8')));
+  fix(JSON.parse(readFileSync(join(UTIL_DIR, `${name}.json`), 'utf8')));
 
 /** write → read. */
 export const roundtrip = (wb: Workbook, opts?: WriteOptions): Workbook =>
