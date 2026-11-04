@@ -33,13 +33,14 @@ export function fragLive(f: PFrag, ws: Worksheet): boolean {
   );
 }
 
-/** Implicit sheet relationships still valid. */
+/** Implicit sheet relationships still valid (threaded comments need the legacy notes). */
 function implicitRels(ws: Worksheet): PRel[] {
   const p = ws.preserved;
   if (!p || p.name !== ws.name) return [];
   const out: PRel[] = [];
   for (const k of p.implicit) {
-    out.push(p.rels[k]!);
+    const r = p.rels[k]!;
+    if (!/threadedComment/i.test(r.type) || ws.comments?.length) out.push(r);
   }
   return out;
 }
@@ -130,13 +131,9 @@ export function listPreservedParts(wb: Workbook): PreservedPart[] {
 export function planPreserved(wb: Workbook, pkg: PackageParts): PPart[] | undefined {
   if (!wb.preserved && !wb.worksheets.some((w) => w.preserved)) return undefined;
   const list = reachable(wb, pkg);
-  const taken = new Set([
-    'xl/workbook.xml',
-    'xl/styles.xml',
-    'xl/sharedstrings.xml',
-    'docprops/core.xml',
-    'docprops/app.xml',
-  ]);
+  // names the writer generates outside nextIndex families (workbook-level parts, styles, docProps
+  // are owned by the model, never kept)
+  const taken = new Set<string>();
   for (let i = 0; i < wb.worksheets.length; i++) taken.add(`xl/worksheets/sheet${i + 1}.xml`);
   const imgs = wb.images ?? [];
   for (let i = 0; i < imgs.length; i++) taken.add(`xl/media/image${i + 1}.${imgs[i]!.extension}`);
@@ -178,9 +175,8 @@ export function presBook(
         relsXml(
           p.rels.map((r) => {
             const t = r.target;
-            return typeof t === 'string'
-              ? { id: r.id, type: r.type, target: t, external: true }
-              : { id: r.id, type: r.type, target: relTarget(out, t.out!), external: false };
+            const external = typeof t === 'string';
+            return { ...r, target: external ? t : relTarget(out, t.out!), external };
           }),
         ),
       );

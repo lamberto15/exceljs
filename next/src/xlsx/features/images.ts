@@ -12,16 +12,17 @@
 // pixels (1 px = 9525 EMU; values read from files may be fractional).
 // `wb.images` holds each picture once (addImage dedupes identical bytes; the reader dedupes
 // identical media across sheets); every entry is written as one media part, referenced by any
-// number of placements on any sheets. Out of scope: charts, shapes and group shapes inside
-// drawings are skipped on read (not preserved yet) — a drawing holding them still loads its
-// pictures.
+// number of placements on any sheets. Charts, shapes, group shapes, linked pictures inside a
+// drawing are not modelled: readXlsx keeps them raw (ws.preserved, see read/preserve.ts) and
+// this writer appends them after the pictures, renumbering their relationships (until the
+// sheet is renamed).
 
 import { decodeAddr, decodeRange } from '../../core/address.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, parseXml } from '../../xml/index.js';
 import { type FeatureReader, type FeatureWriter, SheetSlot, type SheetWriteCtx } from './types.js';
-import { attrs, escapeAttr, num, unbase64 } from './util.js';
+import { attrs, escapeAttr, fillRels, num, presDrawing, unbase64 } from './util.js';
 
 export type ImageExtension =
   | 'png'
@@ -185,15 +186,21 @@ function cellXml(tag: string, p: CellPosition): string {
   return `<xdr:${tag}><xdr:col>${p.col}</xdr:col><xdr:colOff>${emu(p.colOff)}</xdr:colOff><xdr:row>${p.row}</xdr:row><xdr:rowOff>${emu(p.rowOff)}</xdr:rowOff></xdr:${tag}>`;
 }
 
+/**
+ * The sheet's drawing part: its pictures, then the anchors kept from the file it was read from
+ * (charts, shapes, ...: see read/preserve.ts) with their relationships renumbered.
+ */
 function drawing(c: SheetWriteCtx, list: readonly ImagePlacement[]): string {
   const wb = c.workbook;
   const n = c.nextIndex('drawing');
+  const kept = presDrawing(c.ws);
+  const base = kept?.maxId ?? 0;
   let rels = '';
   let rid = 0;
   const media = new Map<number, string>();
-  const rel = (type: string, target: string, ext: boolean): string => {
+  const rel = (type: string, target: string, ext?: boolean): string => {
     const id = `rId${++rid}`;
-    rels += `<Relationship Id="${id}" Type="${NS_R}/${type}" Target="${escapeAttr(target)}"${ext ? ' TargetMode="External"' : ''}/>`;
+    rels += `<Relationship Id="${id}" Type="${type.includes(':') ? '' : `${NS_R}/`}${escapeAttr(type)}" Target="${escapeAttr(target)}"${ext ? ' TargetMode="External"' : ''}/>`;
     return id;
   };
   let body = '';
@@ -221,9 +228,10 @@ function drawing(c: SheetWriteCtx, list: readonly ImagePlacement[]): string {
       const internal = p.hyperlink.charCodeAt(0) === 35;
       link = `<a:hlinkClick r:id="${rel('hyperlink', p.hyperlink, !internal)}"${attrs({ tooltip: p.tooltip })}/>`;
     }
-    body += `<xdr:${tag}${tag === 'twoCellAnchor' ? attrs({ editAs: p.editAs }) : ''}>${pos}<xdr:pic><xdr:nvPicPr><xdr:cNvPr${attrs({ id: i + 2, name: p.name ?? `Picture ${i + 1}`, descr: p.description })}>${link}</xdr:cNvPr><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${embed}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:${tag}>`;
+    body += `<xdr:${tag}${tag === 'twoCellAnchor' ? attrs({ editAs: p.editAs }) : ''}>${pos}<xdr:pic><xdr:nvPicPr><xdr:cNvPr${attrs({ id: base + i + 2, name: p.name ?? `Picture ${i + 1}`, descr: p.description })}>${link}</xdr:cNvPr><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${embed}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:${tag}>`;
   }
   const path = `xl/drawings/drawing${n}.xml`;
+  if (kept) body += fillRels(kept.xml, kept.rels, path, rel);
   c.addPart(
     path,
     `${XML_DECL}<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${body}</xdr:wsDr>`,
@@ -242,7 +250,8 @@ export const imagesWriter: FeatureWriter = {
     emitters: [
       {
         slot: SheetSlot.drawing,
-        emit: (c) => (c.ws.images?.length ? drawing(c, c.ws.images) : ''),
+        emit: (c) =>
+          c.ws.images?.length || presDrawing(c.ws) ? drawing(c, c.ws.images ?? []) : '',
       },
       {
         slot: SheetSlot.picture,

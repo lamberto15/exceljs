@@ -3,8 +3,10 @@ import ExcelJS from 'exceljs';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
+  addImage,
   addNote,
   listPreservedParts,
+  placeImage,
   readXlsx,
   Workbook,
   writeXlsx,
@@ -210,6 +212,18 @@ describe('preserve: real fixtures', () => {
     });
   }
 
+  it('KRISHNAPATNAM: text-box shapes kept next to the modelled picture', () => {
+    const src = fixture('1519293514-KRISHNAPATNAM_LINE_UP.xlsx');
+    const { wb, z } = roundTrip(src);
+    expect(wb.worksheets[0]!.images!.length).toBe(1);
+    const d = text(z, drawingOf(z, 1));
+    expect(d).toContain('EVERETT (INDIA) PVT LTD');
+    expect(d.match(/<xdr:sp>/g)!.length).toBe(
+      text(unzipSync(src), 'xl/drawings/drawing1.xml').match(/<xdr:sp>/g)!.length,
+    );
+    expect(d.match(/<xdr:pic>/g)!.length).toBe(1);
+  });
+
   it('test-issue-877: header/footer VML images (legacyDrawingHF) kept with their media', () => {
     const src = fixture('test-issue-877.xlsx');
     const zs = unzipSync(src);
@@ -279,6 +293,127 @@ async function base(withImage = false): Promise<Uint8Array> {
 }
 
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const CHART_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:chart><c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:ser><c:idx val="0"/><c:order val="0"/><c:val><c:numRef><c:f>Data!$A$2:$A$3</c:f></c:numRef></c:val></c:ser><c:axId val="1"/><c:axId val="2"/></c:barChart><c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx><c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx></c:plotArea></c:chart></c:chartSpace>`;
+const CHART_ANCHOR = `<xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>5</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>20</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="7" name="Chart 1"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="${REL}" r:id="rIdChart"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
+const CT_CHART = 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml';
+
+/** Add a chart anchor into the first sheet's drawing (creating the drawing when absent). */
+async function withChart(withImage: boolean): Promise<Uint8Array> {
+  const src = await base(withImage);
+  const z = unzipSync(src);
+  const ct = text(z, '[Content_Types].xml');
+  const edits: Record<string, string> = {
+    'xl/charts/chart1.xml': CHART_XML,
+    '[Content_Types].xml': ct.replace(
+      '</Types>',
+      `<Override PartName="/xl/charts/chart1.xml" ContentType="${CT_CHART}"/>${
+        withImage
+          ? ''
+          : '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+      }</Types>`,
+    ),
+  };
+  const chartRel = `<Relationship Id="rIdChart" Type="${REL}/chart" Target="../charts/chart1.xml"/>`;
+  if (withImage) {
+    edits['xl/drawings/drawing1.xml'] = text(z, 'xl/drawings/drawing1.xml').replace(
+      '</xdr:wsDr>',
+      `${CHART_ANCHOR}</xdr:wsDr>`,
+    );
+    edits['xl/drawings/_rels/drawing1.xml.rels'] = text(
+      z,
+      'xl/drawings/_rels/drawing1.xml.rels',
+    ).replace('</Relationships>', `${chartRel}</Relationships>`);
+  } else {
+    edits['xl/drawings/drawing1.xml'] =
+      `<?xml version="1.0" encoding="UTF-8"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${REL}">${CHART_ANCHOR}</xdr:wsDr>`;
+    edits['xl/drawings/_rels/drawing1.xml.rels'] =
+      `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${chartRel}</Relationships>`;
+    const sheet = text(z, 'xl/worksheets/sheet1.xml');
+    edits['xl/worksheets/sheet1.xml'] = sheet.replace(
+      /<\/worksheet>$/,
+      '<drawing r:id="rIdDr"/></worksheet>',
+    );
+    const rels = z['xl/worksheets/_rels/sheet1.xml.rels']
+      ? text(z, 'xl/worksheets/_rels/sheet1.xml.rels')
+      : '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    edits['xl/worksheets/_rels/sheet1.xml.rels'] = rels.replace(
+      '</Relationships>',
+      `<Relationship Id="rIdDr" Type="${REL}/drawing" Target="../drawings/drawing1.xml"/></Relationships>`,
+    );
+  }
+  return patch(src, edits);
+}
+
+function drawingOf(z: Zip, sheet: number): string {
+  const r = relsOf(z, `xl/worksheets/sheet${sheet}.xml`).find((x) => x.type.endsWith('/drawing'));
+  return r!.path;
+}
+
+describe('preserve: drawings with charts (mixed ownership)', () => {
+  it('chart-only drawing survives and a picture added by us is merged into it', async () => {
+    const wb = readXlsx(await withChart(false));
+    expect(wb.worksheets[0]!.images).toBeUndefined();
+    const id = addImage(wb, { data: fixture('image.png'), extension: 'png' });
+    placeImage(wb.worksheets[0]!, id, 'J2:K4');
+    placeImage(wb.worksheets[1]!, id, 'B2');
+    const out = writeXlsx(wb);
+    const z = unzipSync(out);
+    checkPackage(z);
+    const d = text(z, drawingOf(z, 1));
+    expect(d).toContain('<xdr:pic>');
+    expect(d).toContain('<c:chart');
+    expect(d.match(/<xdr:twoCellAnchor/g)!.length).toBe(2);
+    expect(z['xl/charts/chart1.xml']).toBeDefined();
+    expect(
+      relsOf(z, drawingOf(z, 1))
+        .map((r) => r.type.split('/').pop())
+        .sort(),
+    ).toEqual(['chart', 'image']);
+    // drawing names never collide (kept drawing1 is reserved → ours are numbered around it)
+    expect(new Set([drawingOf(z, 1), drawingOf(z, 2)]).size).toBe(2);
+    await exceljsLoads(out);
+    const again = readXlsx(out);
+    expect(again.worksheets[0]!.images!.length).toBe(1);
+    expect(again.worksheets[1]!.images!.length).toBe(1);
+    expect(listPreservedParts(again).map((p) => p.path)).toContain('xl/charts/chart1.xml');
+  });
+
+  it('drawing with picture + chart: picture modelled, chart kept, both written once', async () => {
+    const wb = readXlsx(await withChart(true));
+    expect(wb.worksheets[0]!.images!.length).toBe(1);
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    const d = text(z, drawingOf(z, 1));
+    expect(d.match(/<xdr:pic>/g)!.length).toBe(1);
+    expect(d.match(/<c:chart /g)!.length).toBe(1);
+    // the chart anchor's shape id stays below our pictures' ids
+    const ids = [...d.matchAll(/cNvPr id="(\d+)"/g)].map((m) => +m[1]!);
+    expect(new Set(ids).size).toBe(ids.length);
+    // removing the picture keeps the chart
+    wb.worksheets[0]!.images = [];
+    const z2 = unzipSync(writeXlsx(wb));
+    checkPackage(z2);
+    expect(text(z2, drawingOf(z2, 1))).not.toContain('<xdr:pic>');
+    expect(text(z2, drawingOf(z2, 1))).toContain('<c:chart ');
+  });
+
+  it('renaming the sheet drops its chart; removing it drops the chart part', async () => {
+    const src = await withChart(false);
+    const wb = readXlsx(src);
+    wb.worksheets[0]!.name = 'Renamed';
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    expect(z['xl/charts/chart1.xml']).toBeUndefined();
+    const wb2 = readXlsx(src);
+    wb2.removeWorksheet('Data');
+    expect(listPreservedParts(wb2).map((p) => p.path)).not.toContain('xl/charts/chart1.xml');
+    const z2 = unzipSync(writeXlsx(wb2));
+    checkPackage(z2);
+    expect(z2['xl/charts/chart1.xml']).toBeUndefined();
+  });
+});
+
 // ---------------------------------------------------------------- sheet elements
 
 const SHEET_TAIL = `<rowBreaks count="1" manualBreakCount="1"><brk id="2" max="16383" man="1"/></rowBreaks><colBreaks count="1" manualBreakCount="1"><brk id="1" max="1048575" man="1"/></colBreaks><ignoredErrors><ignoredError sqref="A1:C3" numberStoredAsText="1"/></ignoredErrors>`;
@@ -353,6 +488,43 @@ describe('preserve: unknown worksheet elements', () => {
 
 // ---------------------------------------------------------------- threaded comments
 
+const PERSONS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<personList xmlns="http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><person displayName="Ann" id="{00000000-0000-0000-0000-000000000001}" userId="ann" providerId="None"/></personList>`;
+const THREAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ThreadedComments xmlns="http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><threadedComment ref="B2" dT="2024-01-01T00:00:00.00" personId="{00000000-0000-0000-0000-000000000001}" id="{00000000-0000-0000-0000-0000000000AA}"><text>Looks good</text></threadedComment></ThreadedComments>`;
+const T_REL = 'http://schemas.microsoft.com/office/2017/10/relationships/threadedComment';
+const P_REL = 'http://schemas.microsoft.com/office/2017/10/relationships/person';
+
+async function withThreads(): Promise<Uint8Array> {
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow([1, 2]);
+  addNote(ws, 'B2', {
+    text: '[Threaded comment]\n\nLooks good',
+    author: 'tc={00000000-0000-0000-0000-0000000000AA}',
+  });
+  wb.addWorksheet('Other');
+  const src = writeXlsx(wb);
+  const z = unzipSync(src);
+  const ct = text(z, '[Content_Types].xml').replace(
+    '</Types>',
+    '<Override PartName="/xl/threadedComments/threadedComment1.xml" ContentType="application/vnd.ms-excel.threadedcomments+xml"/><Override PartName="/xl/persons/person.xml" ContentType="application/vnd.ms-excel.person+xml"/></Types>',
+  );
+  return patch(src, {
+    'xl/threadedComments/threadedComment1.xml': THREAD,
+    'xl/persons/person.xml': PERSONS,
+    '[Content_Types].xml': ct,
+    'xl/worksheets/_rels/sheet1.xml.rels': text(z, 'xl/worksheets/_rels/sheet1.xml.rels').replace(
+      '</Relationships>',
+      `<Relationship Id="rId99" Type="${T_REL}" Target="../threadedComments/threadedComment1.xml"/></Relationships>`,
+    ),
+    'xl/_rels/workbook.xml.rels': text(z, 'xl/_rels/workbook.xml.rels').replace(
+      '</Relationships>',
+      `<Relationship Id="rId99" Type="${P_REL}" Target="persons/person.xml"/></Relationships>`,
+    ),
+  });
+}
+
 const VML_CTRL = `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout><v:shape id="_x0000_s1025" type="#_x0000_t201"><x:ClientData ObjectType="Checkbox"><x:Anchor>1, 0, 1, 0, 2, 0, 2, 0</x:Anchor></x:ClientData></v:shape></xml>`;
 
 /** A sheet whose legacy VML holds a form control (no notes), plus a note on another sheet. */
@@ -393,6 +565,34 @@ describe('preserve: legacy VML with form controls', () => {
     const z = unzipSync(writeXlsx(wb));
     expect(Object.keys(z).filter((p) => p.endsWith('.vml')).length).toBe(2);
     expect(text(z, 'xl/worksheets/sheet2.xml').match(/<legacyDrawing /g)!.length).toBe(1);
+  });
+});
+
+describe('preserve: threaded comments + persons', () => {
+  it('kept linked; legacy notes still modelled; one legacy VML', async () => {
+    const wb = readXlsx(await withThreads());
+    expect(wb.worksheets[0]!.comments!.length).toBe(1);
+    const out = writeXlsx(wb);
+    const z = unzipSync(out);
+    checkPackage(z);
+    expect(text(z, 'xl/threadedComments/threadedComment1.xml')).toBe(THREAD);
+    expect(text(z, 'xl/persons/person.xml')).toBe(PERSONS);
+    const rels = relsOf(z, 'xl/worksheets/sheet1.xml');
+    expect(rels.filter((r) => r.type === T_REL).length).toBe(1);
+    expect(rels.filter((r) => r.type.endsWith('/vmlDrawing')).length).toBe(1);
+    expect(rels.filter((r) => r.type.endsWith('/comments')).length).toBe(1);
+    expect(relsOf(z, 'xl/workbook.xml').filter((r) => r.type === P_REL).length).toBe(1);
+    expect(Object.keys(z).filter((p) => p.endsWith('.vml')).length).toBe(1);
+    expect(text(z, 'xl/comments1.xml')).toContain('tc={00000000-0000-0000-0000-0000000000AA}');
+    await exceljsLoads(out);
+  });
+
+  it('threads are dropped when the sheet has no notes any more', async () => {
+    const wb = readXlsx(await withThreads());
+    wb.worksheets[0]!.comments = [];
+    const z = unzipSync(writeXlsx(wb));
+    checkPackage(z);
+    expect(z['xl/threadedComments/threadedComment1.xml']).toBeUndefined();
   });
 });
 

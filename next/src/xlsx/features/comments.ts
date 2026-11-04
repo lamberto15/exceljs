@@ -12,8 +12,11 @@
 // Box size is in pixels; the VML anchor is derived from it and the sheet's actual column widths /
 // row heights (defaults: 64 x 20 px). On read, visibility and size come from the VML part when present
 // (a missing VML part is tolerated). Excel 365 threaded comments (xl/threadedComments) are not
-// modelled: Excel also writes a legacy note for each thread ("[Threaded comment] ..."), which
-// is what is read here; the threaded part itself is ignored (and not written back).
+// modelled: Excel also writes a legacy note for each thread ("[Threaded comment] ...", author
+// "tc={id}"), which is what is read here; readXlsx keeps the threaded part and the persons part
+// (round-trip preservation) and writes them back while the sheet still has notes.
+// The VML part is regenerated from the notes; a VML part that also holds other shapes (form
+// controls) is kept as is instead, unless the sheet has notes to write (ours win).
 
 import { decodeAddr, decodeCol, encodeAddr } from '../../core/address.js';
 import type { RichText } from '../../core/types.js';
