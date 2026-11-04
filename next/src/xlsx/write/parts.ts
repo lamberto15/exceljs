@@ -2,18 +2,12 @@
 
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { StyleRegistry, Xf } from '../../core/styles.js';
-import type {
-  Alignment,
-  Border,
-  BorderEdge,
-  Color,
-  DefinedName,
-  Fill,
-  Font,
-  Style,
-} from '../../core/types.js';
+import type { Alignment, Border, BorderEdge, DefinedName, Fill, Style } from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
+import { colorAttrs, fontBody, tElem } from '../common/rich-text.js';
+
+export { colorAttrs, fontBody, tElem };
 
 export const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 export const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -224,45 +218,7 @@ export function sharedStringsXml(sst: SharedStrings): string {
   return parts.join('');
 }
 
-/** `<t>` element, with xml:space="preserve" only when the text has leading/trailing whitespace. */
-export function tElem(v: string): string {
-  const n = v.length;
-  if (n === 0) return '<t></t>';
-  const a = v.charCodeAt(0);
-  const z = v.charCodeAt(n - 1);
-  const e = escapeText(v);
-  return a === 32 || a === 9 || a === 10 || a === 13 || z === 32 || z === 9 || z === 10 || z === 13
-    ? `<t xml:space="preserve">${e}</t>`
-    : `<t>${e}</t>`;
-}
-
 // ---- styles.xml ------------------------------------------------------------------------
-
-export function colorAttrs(c: Color): string {
-  let s = '';
-  if (c.argb !== undefined) s += ` rgb="${escapeAttr(c.argb)}"`;
-  else if (c.theme !== undefined) s += ` theme="${c.theme}"`;
-  else if (c.indexed !== undefined) s += ` indexed="${c.indexed}"`;
-  if (c.tint !== undefined && c.tint !== 0) s += ` tint="${c.tint}"`;
-  return s;
-}
-
-/** Font children in Excel's order. `nameTag` is 'name' in styles.xml and 'rFont' in rich text. */
-export function fontBody(f: Font, nameTag: 'name' | 'rFont'): string {
-  let s = '';
-  if (f.bold) s += '<b/>';
-  if (f.italic) s += '<i/>';
-  if (f.strike) s += '<strike/>';
-  if (f.underline) {
-    const u = f.underline === true ? 'single' : f.underline;
-    s += u === 'single' ? '<u/>' : `<u val="${u}"/>`;
-  }
-  if (f.vertAlign) s += `<vertAlign val="${f.vertAlign}"/>`;
-  if (f.size !== undefined) s += `<sz val="${f.size}"/>`;
-  if (f.color) s += `<color${colorAttrs(f.color)}/>`;
-  if (f.name !== undefined) s += `<${nameTag} val="${escapeAttr(f.name)}"/>`;
-  return s;
-}
 
 function fillXml(f: Fill): string {
   const p = f.pattern || 'none';

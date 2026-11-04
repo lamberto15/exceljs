@@ -11,79 +11,18 @@ import type {
   Border,
   BorderEdge,
   BorderStyle,
-  Color,
   Fill,
   Font,
   Protection,
   Style,
 } from '../../core/types.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
+import { cleanFont, fontChild, parseColor } from '../common/rich-text.js';
 import { attrBool } from './xml-util.js';
 
+export { cleanFont, fontChild, parseColor };
+
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-
-export function parseColor(a: XmlAttrs): Color | undefined {
-  const c: Mutable<Color> = {};
-  if (a.rgb !== undefined) c.argb = a.rgb.length === 6 ? `FF${a.rgb}` : a.rgb;
-  if (a.theme !== undefined) c.theme = +a.theme;
-  if (a.indexed !== undefined) c.indexed = +a.indexed;
-  if (a.tint !== undefined && +a.tint !== 0) c.tint = +a.tint;
-  if (
-    a.auto !== undefined &&
-    c.argb === undefined &&
-    c.theme === undefined &&
-    c.indexed === undefined
-  ) {
-    return undefined;
-  }
-  return c.argb === undefined && c.theme === undefined && c.indexed === undefined ? undefined : c;
-}
-
-/**
- * Incremental font builder for `<font>` (styles) and `<rPr>` (rich text runs): feed child
- * elements with `fontChild(font, localName, attrs)`.
- */
-export function fontChild(f: Mutable<Font>, ln: string, a: XmlAttrs): void {
-  switch (ln) {
-    case 'b':
-      f.bold = attrBool(a.val, true);
-      break;
-    case 'i':
-      f.italic = attrBool(a.val, true);
-      break;
-    case 'strike':
-      f.strike = attrBool(a.val, true);
-      break;
-    case 'u': {
-      const v = a.val ?? 'single';
-      if (v !== 'none') f.underline = v as Font['underline'];
-      break;
-    }
-    case 'sz':
-      if (a.val !== undefined) f.size = +a.val;
-      break;
-    case 'name':
-    case 'rFont':
-      if (a.val !== undefined) f.name = a.val;
-      break;
-    case 'color': {
-      const c = parseColor(a);
-      if (c) f.color = c;
-      break;
-    }
-    case 'vertAlign':
-      if (a.val === 'superscript' || a.val === 'subscript') f.vertAlign = a.val;
-      break;
-  }
-}
-
-/** Remove false flags so fonts compare cleanly (b val="0" → no bold key). */
-export function cleanFont(f: Mutable<Font>): Font {
-  if (f.bold === false) delete f.bold;
-  if (f.italic === false) delete f.italic;
-  if (f.strike === false) delete f.strike;
-  return f;
-}
 
 interface RawXf {
   numFmtId: number;

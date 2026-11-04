@@ -5,6 +5,13 @@
 import { escapeAttr } from '../../xml/index.js';
 
 export { escapeAttr, escapeText } from '../../xml/index.js';
+// rich text (CT_Rst): `<r>` runs writer, `<t>` element, and the <si>/<is>-style run reader
+export {
+  runsXml,
+  type StringItem,
+  StringItemBuilder,
+  tElem,
+} from '../common/rich-text.js';
 
 /** OOXML boolean attribute: "1" / "true" → true, "0" / "false" → false, absent → `dflt`. */
 export function bool(v: string | undefined, dflt = false): boolean {

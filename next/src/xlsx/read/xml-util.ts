@@ -104,31 +104,4 @@ export function attrLocal(a: XmlAttrs, local: string): string | undefined {
   return undefined;
 }
 
-/**
- * Decode ST_Xstring escapes: `_xHHHH_` → UTF-16 code unit (e.g. `_x000D_` → CR);
- * `_x005F_` escapes a literal underscore. Fast path when no `_x` is present.
- */
-export function decodeXString(s: string): string {
-  let i = s.indexOf('_x');
-  if (i < 0) return s;
-  let out = '';
-  let last = 0;
-  while (i >= 0) {
-    if (i + 7 <= s.length && s.charCodeAt(i + 6) === 95 && isHex4(s, i + 2)) {
-      out += s.slice(last, i) + String.fromCharCode(parseInt(s.slice(i + 2, i + 6), 16));
-      last = i + 7;
-      i = s.indexOf('_x', last);
-    } else {
-      i = s.indexOf('_x', i + 1);
-    }
-  }
-  return out + s.slice(last);
-}
-
-function isHex4(s: string, p: number): boolean {
-  for (let k = p; k < p + 4; k++) {
-    const c = s.charCodeAt(k);
-    if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102))) return false;
-  }
-  return true;
-}
+export { decodeXString } from '../common/rich-text.js';

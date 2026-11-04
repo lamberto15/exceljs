@@ -11,9 +11,10 @@
 
 import { encodeAddr, encodeCol, encodeRange } from '../../core/address.js';
 import type { SharedStrings } from '../../core/sharedstrings.js';
-import type { CellError, Formula, Hyperlink, RichText, RichTextRun } from '../../core/types.js';
+import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.js';
 import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
+import { runsXml } from '../common/rich-text.js';
 import { WRITERS } from '../features/registry.js';
 import {
   type SheetEmitter,
@@ -24,7 +25,6 @@ import {
 import { type PackageParts, type PartRec, RelList, relsXml } from './package.js';
 import {
   colorAttrs,
-  fontBody,
   type LinkRec,
   NS_MAIN,
   NS_R,
@@ -112,16 +112,7 @@ function strCell(ref: string, s: string, v: string, sst: SharedStrings | undefin
 }
 
 function richCell(ref: string, s: string, rt: RichText): string {
-  let out = `<c r="${ref}"${s} t="inlineStr"><is>`;
-  const runs: readonly RichTextRun[] = rt.richText;
-  for (let i = 0; i < runs.length; i++) {
-    const run = runs[i]!;
-    const f = run.font;
-    out += f
-      ? `<r><rPr>${fontBody(f, 'rFont')}</rPr>${tElem(run.text)}</r>`
-      : `<r>${tElem(run.text)}</r>`;
-  }
-  return `${out}</is></c>`;
+  return `<c r="${ref}"${s} t="inlineStr"><is>${runsXml(rt.richText)}</is></c>`;
 }
 
 function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string {

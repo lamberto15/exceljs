@@ -132,7 +132,8 @@ export const dataValidationReader: FeatureReader = {
 ## Rules
 
 - **Imports**: only `src/core/*`, `src/xml/*`, `./types.ts`, `./util.ts` (bool/num/attrs/
-  base64/escape helpers) and your own files. Never import runtime code from `src/xlsx/read/*`
+  base64/escape helpers, rich text runs: `runsXml` / `tElem` / `StringItemBuilder`) and your own
+  files. Never import runtime code from `src/xlsx/read/*`
   or `src/xlsx/write/*`: every registered writer ships in the write-only bundle and every reader
   in the read bundle.
 - Web APIs only (no `node:*`, no `Buffer`); no top-level side effects (`/* @__PURE__ */` for
