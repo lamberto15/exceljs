@@ -203,7 +203,7 @@ Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook,
 
 This is a **0.x** release: the API may still change in minor versions, with changes listed in [CHANGELOG.md](./CHANGELOG.md).
 
-Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. **Manual verification in Microsoft Excel is in progress**; until it is done, treat Excel behavior as unconfirmed and please report any "We found a problem with some content" dialog with the file attached.
+Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. A 17-file pack covering every feature (including encrypted files, the streaming writer and real files re-saved after reading) was opened in **Microsoft Excel for the web** without repair prompts (November 2026; desktop Excel not yet checked). If you ever see a "We found a problem with some content" dialog, please open an issue with the file attached.
 
 Not supported yet: writing charts (existing charts are preserved on round trip), evaluating formulas (cached results are written and read as given), pivot table authoring (existing ones are preserved), `.xls` and `.xlsb`.
 
