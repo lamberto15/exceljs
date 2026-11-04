@@ -1,0 +1,63 @@
+name: next-release
+
+# On every push to `next` that touches the library:
+#  - pending changesets (next/.changeset/*.md)  -> opens/updates the "Version Packages" PR
+#  - no pending changesets, version not on npm  -> builds, tests and publishes with provenance
+# Requires the repository secret NPM_TOKEN (see next/RELEASING.md).
+
+on:
+  push:
+    branches: [next]
+    paths: ['next/**', '.github/workflows/next-release.yml']
+
+concurrency:
+  group: next-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version branch, create tags/releases
+  pull-requests: write # open the "Version Packages" PR
+  id-token: write # npm provenance (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: next/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: next/pnpm-lock.yaml
+          registry-url: https://registry.npmjs.org
+      - name: Install
+        working-directory: next
+        run: pnpm install --frozen-lockfile
+      - name: Verify
+        working-directory: next
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm size
+      - name: Version PR or publish
+        uses: changesets/action@v1
+        with:
+          cwd: next
+          # Publishes every package whose version is not on npm yet (`changeset publish` runs
+          # `npm publish --access public`; provenance comes from NPM_CONFIG_PROVENANCE below).
+          publish: pnpm release
+          version: pnpm changeset version
+          commit: 'chore(release): version packages'
+          title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
