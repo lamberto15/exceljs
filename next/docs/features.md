@@ -8,6 +8,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Tables](#tables)
 - [Notes (comments)](#notes-comments)
 - [Pictures](#pictures)
+- [Charts](#charts)
 - [Conditional formatting](#conditional-formatting)
 - [Data validation](#data-validation)
 - [Defined names, print area and titles](#defined-names-print-area-and-titles)
@@ -111,6 +112,35 @@ placeImage(ws, id, { tl: 'H2', ext: { width: 120, height: 80 } }, { description:
 ws.backgroundImage = id;                                        // sheet background
 ```
 
+## Charts
+
+Bar, column, line, pie, doughnut, scatter and area charts, written as native Excel charts (write only: charts in files you read are kept raw and written back).
+
+```ts
+ws.addRow(['Month', 'North', 'South']);
+ws.addRow(['Jan', 10, 30]);
+ws.addRow(['Feb', 15, 27]);
+ws.addRow(['Mar', 20, 24]);
+addChart(ws, {
+  type: 'column', // 'bar' | 'column' | 'line' | 'pie' | 'doughnut' | 'scatter' | 'area'
+  title: 'Units per month',
+  series: [
+    { name: { ref: 'B1' }, categories: 'A2:A4', values: 'B2:B4' }, // the chart's own sheet
+    { name: 'South', categories: "'Data'!$A$2:$A$4", values: "'Data'!$C$2:$C$4", color: { argb: 'FFC00000' } },
+  ],
+  anchor: 'E2:L16', // same forms as placeImage
+  legend: { position: 'b' }, // or false
+  axes: { y: { title: 'Units', min: 0 } },
+  stacked: 'stacked', // bar / column / line / area
+  dataLabels: { showValue: true },
+});
+```
+
+- References are A1 ranges, optionally sheet-qualified (`'My Data'!$B$2:$B$10`); unqualified ranges mean the chart's own sheet. They are written absolute, with the sheet name quoted when needed.
+- Each reference carries a cache of the cells' current values, so Excel and LibreOffice show the data immediately. The streaming writer holds no cells: it writes references only (Excel recalculates on open; LibreOffice shows an empty chart) unless you pass `series.cache: { name?, categories?, values?, xValues? }`.
+- Series options: `color` (`argb` or `theme` 0-9), `marker: false` and `smooth` (line, scatter), `line: true` (scatter: connect the points; default markers only), `xValues` (scatter). Chart options: `style` (built-in style 1-48), `varyColors` (default on for pie/doughnut), `dataLabels: { showValue, showPercent, showCategoryName, showSeriesName }`, axis `title`, `numFmt`, `min`, `max`, shape `name`.
+- Charts share the sheet's drawing with pictures; on a sheet read with charts, the ones you add are written next to the kept ones.
+
 ## Conditional formatting
 
 ```ts
@@ -188,6 +218,7 @@ The streaming writer exposes metadata-only sheets, so sheet-level features work 
 const w = createXlsxWriter({ sink });
 const s = w.addWorksheet('Data', { columns: [{ header: 'Region', key: 'region' }], freeze: 1 });
 s.worksheet.dataValidations = [{ sqref: 'A2:A1000', type: 'list', values: ['North', 'South'] }];
+s.worksheet.charts = [{ type: 'line', series: [{ values: 'B2:B1000' }], anchor: 'D2:K16' }]; // no caches
 for (const r of rows) s.addRow(r);
 await s.commit();
 await w.end();

@@ -186,6 +186,7 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Tables | `ws.tables: Table[]` | `addTable(ws, AddTableOptions) -> Table` | `tablesWriter`, `tablesReader` |
 | Notes | `ws.comments: Note[]` | `addNote(ws, ref, text \| RichText \| { text, author?, visible?, width?, height? }) -> Note` | `commentsWriter`, `commentsReader` |
 | Pictures | `wb.images`, `ws.images`, `ws.backgroundImage` | `addImage(wb, { data \| base64, extension }) -> id`, `placeImage(ws, id, anchor, opts?) -> ImagePlacement` | `imagesWriter`, `imagesReader` |
+| Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[])` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
 | Data validation | `ws.dataValidations` | `addDataValidation(ws, dv)` | `dataValidationWriter`, `dataValidationReader` |
 | Print setup | `ws.pageSetup`, `ws.headerFooter` | (plain objects) | `printSetupWriter`, `printSetupReader` |
@@ -221,6 +222,10 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 ### Pictures
 
 `ImageExtension`: `png jpeg jpg gif bmp tiff svg emf wmf webp`. `placeImage` anchors: a range string (`'B2:D6'`), `{ tl: 'B2' | CellPosition, ext: { width, height } }` (pixels), or an `ImageAnchor` (`{ from, to }`, `{ from, ext }`, `{ pos, ext }`). Options: `editAs`, `hyperlink`, `tooltip`, `description`, `name`. Identical pictures are stored once. Set `ws.backgroundImage = id` for a sheet background.
+
+### Charts
+
+`Chart`: `type` (`bar column line pie doughnut scatter area`), `series: ChartSeries[]`, `anchor` (same forms as `placeImage`), `title?`, `legend?: { position: 'r' | 'l' | 't' | 'b' | 'tr' } | false` (default `r`), `axes?: { x?: ChartAxis, y?: ChartAxis }` (x = category axis or scatter x values; y = value axis), `stacked?: 'stacked' | 'percentStacked'` (bar, column, line, area), `dataLabels?: { showValue?, showPercent?, showCategoryName?, showSeriesName? }`, `style?` (1-48), `varyColors?`, `name?`. `ChartSeries`: `values` (A1 reference), `categories?`, `xValues?` (scatter), `name?: string | { ref }` (or a string starting with `=`), `color?: Color` (`argb`, or `theme` 0-9), `marker?`, `smooth?`, `line?` (scatter), `cache?: { name?, categories?, values?, xValues? }` (written instead of reading cells; the streaming writer has no cells). `ChartAxis`: `title?`, `numFmt?`, `min?`, `max?`. References without a sheet name point at the chart's sheet.
 
 ### Conditional formatting rules
 

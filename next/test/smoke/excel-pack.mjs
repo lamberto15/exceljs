@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encryptXlsx } from '../../dist/crypto.js';
 import {
+  addChart,
   addConditionalFormatting,
   addDataValidation,
   addDefinedName,
@@ -436,6 +437,69 @@ for (const [file, what] of [
     '13-everything.xlsx',
     writeXlsx(wb),
     'all features together (note, CF, drop-down at E2, image E5:F8, table on "Other") — mainly: opens without a repair prompt.',
+  );
+}
+
+// 14 — charts: one sheet of data + one chart per type ------------------------------------------
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Chart Data');
+  ws.addRow(['Month', 'North', 'South', 'X', 'Y']);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  for (const [i, m] of months.entries())
+    ws.addRow([m, 10 + i * 5, 30 - i * 3, i + 1, (i + 1) ** 2]);
+  const d = "'Chart Data'!";
+  const two = [
+    { name: { ref: `${d}$B$1` }, categories: `${d}$A$2:$A$7`, values: `${d}$B$2:$B$7` },
+    { name: { ref: `${d}$C$1` }, categories: `${d}$A$2:$A$7`, values: `${d}$C$2:$C$7` },
+  ];
+  const at = (i) =>
+    `${'GP'[i % 2]}${2 + Math.floor(i / 2) * 18}:${'NW'[i % 2]}${17 + Math.floor(i / 2) * 18}`;
+  addChart(ws, { type: 'column', title: 'Column (clustered)', series: two, anchor: at(0) });
+  addChart(ws, {
+    type: 'bar',
+    title: 'Bar (stacked)',
+    stacked: 'stacked',
+    series: two,
+    anchor: at(1),
+    legend: { position: 'b' },
+  });
+  addChart(ws, {
+    type: 'line',
+    title: 'Line',
+    series: [
+      { ...two[0], color: { argb: 'FFC00000' } },
+      { ...two[1], smooth: true, marker: false },
+    ],
+    anchor: at(2),
+    axes: { x: { title: 'Month' }, y: { title: 'Units', min: 0 } },
+  });
+  addChart(ws, {
+    type: 'pie',
+    title: 'Pie',
+    series: [two[0]],
+    anchor: at(3),
+    dataLabels: { showPercent: true },
+  });
+  addChart(ws, { type: 'doughnut', title: 'Doughnut', series: [two[1]], anchor: at(4) });
+  addChart(ws, {
+    type: 'scatter',
+    title: 'Scatter',
+    series: [{ name: 'y = x²', xValues: `${d}$D$2:$D$7`, values: `${d}$E$2:$E$7` }],
+    anchor: at(5),
+    legend: false,
+  });
+  addChart(ws, {
+    type: 'area',
+    title: 'Area (stacked)',
+    stacked: 'stacked',
+    series: two,
+    anchor: at(6),
+  });
+  save(
+    '14-charts.xlsx',
+    writeXlsx(wb),
+    'seven charts on "Chart Data" (clustered column, stacked bar, line with a red series + a smooth markerless one and axis titles, pie with % labels, doughnut, scatter y=x² without legend, stacked area), each titled with its type and showing the Jan–Jun data.',
   );
 }
 

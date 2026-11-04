@@ -356,6 +356,7 @@ const OWNED: readonly string[] = [
   'tables:tables',
   'comments:comments',
   'images:images',
+  'charts:charts',
   'backgroundImage:images',
   'conditionalFormatting:conditional-formatting',
   'dataValidations:data-validation',

@@ -23,6 +23,7 @@ Each feature has a write half and a read half, so a write-only bundle never cont
 | tables                 | `ws.tables`                          | `tablesWriter`                | `tablesReader`                |
 | notes (comments)       | `ws.comments`                        | `commentsWriter`              | `commentsReader`              |
 | images                 | `ws.images`, `ws.backgroundImage`    | `imagesWriter`                | `imagesReader`                |
+| charts                 | `ws.charts`                          | `chartsWriter`                | — (read charts are kept raw)  |
 | conditional formatting | `ws.conditionalFormatting`           | `conditionalFormattingWriter` | `conditionalFormattingReader` |
 | data validation        | `ws.dataValidations`                 | `dataValidationWriter`        | `dataValidationReader`        |
 | print setup            | `ws.pageSetup`, `ws.headerFooter`    | `printSetupWriter`            | `printSetupReader`            |
@@ -39,7 +40,7 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
   `Worksheet 'Data': ws.tables is set but the 'tables' feature is not enabled; pass features:
   [tablesWriter]`. Empty arrays are not data. The streaming writer throws at `commit()` for
   fields set after the rows. A workbook read by the root with charts next to pictures in a
-  drawing needs `imagesWriter` to write those anchors back (`ws.preserved is set ...`).
+  drawing needs `imagesWriter` (or `chartsWriter`) to write those anchors back (`ws.preserved is set ...`).
 - **Reading without a feature keeps it raw.** Its worksheet elements and parts (table parts, notes
   and their VML, drawings and media, conditional formatting incl. x14 extensions, data
   validations, protection, page setup/margins/header-footer, the theme) are kept by
@@ -59,12 +60,13 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 28.41 KB |
-| read+write                     | root `*`                                                       | 60 KB | 57.99 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 19.96 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.24 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24 KB | 23.43 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 32 KB | 30.90 KB |
+| read+write                     | root `*`                                                       | 64 KB | 60.42 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 21 KB | 20.01 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 40 KB | 36.35 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 24 KB | 23.56 KB |
 | lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 10.5 KB | 10.03 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 24 KB | 23.3 KB  |
 | csv                            | `./csv` `*`                                                    | 5 KB  | 2.38 KB  |
 | crypto                         | `./crypto` `*`                                                 | 8 KB  | 7.18 KB  |
 
@@ -91,3 +93,5 @@ npx -y esbuild@0.25.12 /tmp/e.mjs --bundle --minify --format=esm --metafile=/tmp
 ```
 
 or `npx size-limit --why`.
+
+The root `*` budget (64 KB) measures importing every export at once (all features, auto-fit, charts): a worst case no app hits. The budgets that guard real-world size are the lite ones.

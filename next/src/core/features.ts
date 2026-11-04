@@ -7,6 +7,7 @@
 // Adding a feature field: one `import type` line and one documented optional field.
 
 import type { PBook, PSheet } from '../xlsx/common/preserved.js';
+import type { Chart } from '../xlsx/features/charts.js';
 import type { Note } from '../xlsx/features/comments.js';
 import type { ConditionalFormatting } from '../xlsx/features/conditional-formatting.js';
 
@@ -25,6 +26,8 @@ export interface WorksheetFeatureFields {
   comments?: Note[] | undefined;
   /** Pictures placed on the sheet (features/images; see placeImage). */
   images?: ImagePlacement[] | undefined;
+  /** Charts placed on the sheet (features/charts; see addChart). Write only: charts of read files are kept raw. */
+  charts?: Chart[] | undefined;
   /** Sheet background picture: an id of workbook.images (features/images). */
   backgroundImage?: number | undefined;
   /** Conditional formatting blocks (features/conditional-formatting; see addConditionalFormatting). */

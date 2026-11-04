@@ -147,7 +147,7 @@
       "name": "read+write",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "60 KB"
+      "limit": "64 KB"
     },
     {
       "name": "lite write-only",
@@ -172,6 +172,12 @@
       "path": "dist/lite.js",
       "import": "{ Workbook, autoFitColumns }",
       "limit": "10.5 KB"
+    },
+    {
+      "name": "lite write + charts",
+      "path": "dist/lite.js",
+      "import": "{ Workbook, writeXlsx, addChart, chartsWriter }",
+      "limit": "24 KB"
     },
     {
       "name": "csv",

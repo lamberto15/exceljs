@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  addChart,
   addConditionalFormatting,
   addDataValidation,
   addDefinedName,
@@ -116,6 +117,35 @@ describe('docs/features.md', () => {
     expect(back.getStyle('A1').font?.bold).toBe(true);
     expect(back.getStyle('B1').numFmt).toBe('#,##0.00');
     expect(back.getStyle(5, 1).font?.italic).toBe(true);
+  });
+
+  it('charts', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.addRow(['Month', 'North', 'South']);
+    ws.addRow(['Jan', 10, 30]);
+    ws.addRow(['Feb', 15, 27]);
+    ws.addRow(['Mar', 20, 24]);
+    addChart(ws, {
+      type: 'column', // 'bar' | 'column' | 'line' | 'pie' | 'doughnut' | 'scatter' | 'area'
+      title: 'Units per month',
+      series: [
+        { name: { ref: 'B1' }, categories: 'A2:A4', values: 'B2:B4' }, // the chart's own sheet
+        {
+          name: 'South',
+          categories: "'Data'!$A$2:$A$4",
+          values: "'Data'!$C$2:$C$4",
+          color: { argb: 'FFC00000' },
+        },
+      ],
+      anchor: 'E2:L16', // same forms as placeImage
+      legend: { position: 'b' }, // or false
+      axes: { y: { title: 'Units', min: 0 } },
+      stacked: 'stacked', // bar / column / line / area
+      dataLabels: { showValue: true },
+    });
+    const out = writeXlsx(wb);
+    expect(listPreservedParts(readXlsx(out)).map((p) => p.path)).toContain('xl/charts/chart1.xml');
   });
 
   it('notes, pictures, conditional formatting, validation, names, print, protection', () => {

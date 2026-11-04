@@ -12,6 +12,7 @@ const dec = new TextDecoder();
 const enc = new TextEncoder();
 
 const ALL_W = [
+  lite.chartsWriter,
   lite.commentsWriter,
   lite.conditionalFormattingWriter,
   lite.dataValidationWriter,
@@ -277,7 +278,9 @@ describe('lite: missing feature', () => {
     expect(ws.preserved?.drawing).toBeDefined();
     ws.images = undefined;
     expect(() =>
-      lite.writeXlsx(wb, { features: ALL_W.filter((f) => f.name !== 'images') }),
+      lite.writeXlsx(wb, {
+        features: ALL_W.filter((f) => f.name !== 'images' && f.name !== 'charts'),
+      }),
     ).toThrow(
       /ws\.preserved is set but the 'images' feature is not enabled; pass features: \[imagesWriter\]/,
     );

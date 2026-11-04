@@ -36,7 +36,7 @@ import { type PackageParts, relsXml } from './package.js';
  */
 const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
   [SheetSlot.legacyDrawing]: (ws) => ws.comments?.length,
-  [SheetSlot.drawing]: (ws) => ws.images?.length,
+  [SheetSlot.drawing]: (ws) => ws.images?.length || ws.charts?.length,
   [SheetSlot.picture]: (ws) => ws.backgroundImage !== undefined,
   [SheetSlot.tableParts]: (ws) => ws.tables?.length,
   [SheetSlot.pageSetup]: (ws) => ws.pageSetup,

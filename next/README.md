@@ -148,7 +148,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), tables, notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
@@ -178,7 +178,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 
 | Import             | What                                                        | Size (min + brotli, with deps) |
 | ------------------ | ----------------------------------------------------------- | ------------------------------ |
-| `turbosheet`          | read + write, every feature on                              | 28 KB write-only, 55 KB read + write |
+| `turbosheet`          | read + write, every feature on                              | 31 KB write-only, 60 KB read + write |
 | `turbosheet/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
 | `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |

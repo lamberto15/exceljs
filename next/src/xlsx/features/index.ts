@@ -3,6 +3,14 @@
 // `options.features` in `./lite`; the root always runs them). The registry (registry.ts) is
 // root-only and internal; of ./types.ts only the two extension-point interfaces are public.
 
+export {
+  addChart,
+  type Chart,
+  type ChartAxis,
+  type ChartSeries,
+  type ChartType,
+  chartsWriter,
+} from './charts.js';
 export { addNote, commentsReader, commentsWriter, type Note } from './comments.js';
 export {
   addConditionalFormatting,
@@ -47,6 +55,7 @@ export {
   setPrintArea,
   setPrintTitles,
 } from './defined-names.js';
+export { type AnchorInput, drawingEmitter } from './drawing.js';
 export {
   addImage,
   type CellPosition,
