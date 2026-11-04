@@ -61,13 +61,13 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 34 KB | 33.51 KB |
-| read+write                     | root `*`                                                       | 75 KB | 72.25 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 23 KB | 22.22 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 41 KB | 40.23 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 27 KB | 26.03 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.63 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 26.5 KB | 25.64 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 35 KB | 33.91 KB |
+| read+write                     | root `*`                                                       | 75 KB | 73.11 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 23.5 KB | 22.59 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 41 KB | 40.69 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 27 KB | 26.4 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.75 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 26.5 KB | 26 KB |
 | csv                            | `./csv` `*`                                                    | 5 KB | 2.38 KB |
 | crypto                         | `./crypto` `*`                                                 | 8 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 16.5 KB | 16.02 KB |

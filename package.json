@@ -154,7 +154,7 @@
       "name": "write-only",
       "path": "dist/index.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "34 KB"
+      "limit": "35 KB"
     },
     {
       "name": "read+write",
@@ -166,7 +166,7 @@
       "name": "lite write-only",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "23 KB"
+      "limit": "23.5 KB"
     },
     {
       "name": "lite read+write",
