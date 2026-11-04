@@ -254,11 +254,19 @@ export const imagesWriter: FeatureWriter = {
     ],
   },
   book: {
-    // every workbook picture once, however many sheets place it
+    // every USED workbook picture once, however many sheets place it; media nobody places (nor
+    // uses as a background) is skipped. Part names keep the position in wb.images, so they are
+    // stable whatever the other sheets use.
     write(c) {
       const list = c.workbook.images ?? [];
+      const used = new Set<number>();
+      for (const ws of c.workbook.worksheets) {
+        for (const p of ws.images ?? []) used.add(p.imageId);
+        if (ws.backgroundImage !== undefined) used.add(ws.backgroundImage);
+      }
       for (let i = 0; i < list.length; i++) {
         const im = list[i]!;
+        if (!used.has(im.id)) continue;
         const ext = im.extension;
         c.addPart(`xl/media/image${i + 1}.${ext}`, im.data);
         c.addDefault(ext, MIME[ext] ?? `image/${ext}`);

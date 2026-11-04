@@ -230,6 +230,34 @@ describe('images', () => {
     expect(b.backgroundImage).toBe(0);
   });
 
+  it('media that is neither placed nor a background is not written', async () => {
+    const wb = new Workbook();
+    const unused = addImage(wb, { data: PNG, extension: 'png' });
+    const placed = addImage(wb, { data: GIF, extension: 'gif' });
+    const bg = addImage(wb, { data: new Uint8Array([1, 2, 3]), extension: 'bmp' });
+    const ws = wb.addWorksheet('S');
+    ws.setCell('A1', 1);
+    placeImage(ws, placed, 'B2:C3');
+    ws.backgroundImage = bg;
+    expect(unused).toBe(0);
+    const bufs = [writeXlsx(wb), new Uint8Array(await new Response(xlsxStream(wb)).arrayBuffer())];
+    for (const buf of bufs) {
+      const p = parts(buf);
+      // part names keep the position in wb.images (stable across sheets): image1 is skipped
+      expect([...p.keys()].filter((k) => k.startsWith('xl/media/')).sort()).toEqual([
+        'xl/media/image2.gif',
+        'xl/media/image3.bmp',
+      ]);
+      expect(p.get('[Content_Types].xml')).not.toContain('Extension="png"');
+      expect(p.get('[Content_Types].xml')).toContain('Extension="gif"');
+      const back = readXlsx(buf);
+      expect(back.images!.map((i) => i.extension).sort()).toEqual(['bmp', 'gif']);
+      expect(back.getWorksheet('S')!.images!.length).toBe(1);
+      expect(back.getWorksheet('S')!.backgroundImage).toBeDefined();
+      await oracle(buf);
+    }
+  });
+
   it('background image round trip and exceljs', async () => {
     const wb = new Workbook();
     const id = addImage(wb, { data: GIF, extension: 'gif' });
