@@ -2,7 +2,7 @@
 // ...). Side-effect free: bundles keep only what they import.
 
 import type { Color, Font, RichText, RichTextRun } from '../../core/types.js';
-import { escapeAttr, escapeText, type XmlAttrs } from '../../xml/index.js';
+import { escapeAttr, escapeXString, type XmlAttrs } from '../../xml/index.js';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -14,7 +14,7 @@ export function tElem(v: string): string {
   if (n === 0) return '<t></t>';
   const a = v.charCodeAt(0);
   const z = v.charCodeAt(n - 1);
-  const e = escapeText(v);
+  const e = escapeXString(v);
   return a === 32 || a === 9 || a === 10 || a === 13 || z === 32 || z === 9 || z === 10 || z === 13
     ? `<t xml:space="preserve">${e}</t>`
     : `<t>${e}</t>`;

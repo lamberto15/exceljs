@@ -233,8 +233,11 @@ async function checkOracle(buf: Uint8Array, streaming: boolean): Promise<void> {
   expect(ws.getCell('E2').value).toBe(true);
   expect(ws.getCell('E3').value).toBe(false);
   expect(ws.getCell('B3').value).toBe('  padded  ');
-  // control chars are stripped (invalid in XML 1.0); everything else round-trips
-  expect(ws.getCell('B4').value).toBe(`a<b>&"c'd 😀 ü`);
+  // control chars are written as _xHHHH_ (Excel's ST_Xstring); exceljs decodes them in the shared
+  // string table only, not in inlineStr
+  expect(ws.getCell('B4').value).toBe(
+    files.has('xl/sharedStrings.xml') ? NASTY : `a<b>&"c'_x0001_d_x0008_ 😀 ü`,
+  );
   expect(ws.getCell('C4').value).toBe(1e21);
   expect(ws.getCell('D4').value).toBe(1e-7);
   expect(ws.getCell('E4').value).toEqual({ error: '#N/A' });
@@ -349,7 +352,7 @@ describe('writeXlsx', () => {
       if (strings === 'inline') {
         const sheet = files.get('xl/worksheets/sheet1.xml')!;
         expect(sheet).toContain('<is><t xml:space="preserve">  padded  </t></is>');
-        expect(sheet).toContain('<t>a&lt;b&gt;&amp;"c\'d 😀 ü</t>');
+        expect(sheet).toContain('<t>a&lt;b&gt;&amp;"c\'_x0001_d_x0008_ 😀 ü</t>');
       } else {
         expect(files.get('xl/sharedStrings.xml')).toContain(
           '<si><t xml:space="preserve">  padded  </t></si>',
