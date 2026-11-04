@@ -65,6 +65,8 @@ export interface DefinedName {
   /** Sheet scope: 0-based index into `workbook.worksheets`; undefined = workbook scope. */
   readonly localSheetId?: number | undefined;
   readonly hidden?: boolean | undefined;
+  /** Optional comment shown in Excel's Name Manager. */
+  readonly comment?: string | undefined;
 }
 
 // ---- styles -------------------------------------------------------------

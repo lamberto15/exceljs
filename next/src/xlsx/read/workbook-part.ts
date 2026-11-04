@@ -17,7 +17,9 @@ export class WorkbookHandler implements XmlHandler {
   readonly sheets: SheetEntry[] = [];
   readonly definedNames: DefinedName[] = [];
   date1904 = false;
-  private dn: { name: string; localSheetId?: number; hidden?: boolean } | undefined;
+  private dn:
+    | { name: string; localSheetId?: number; hidden?: boolean; comment?: string }
+    | undefined;
   private dnText = '';
 
   open(name: string, a: XmlAttrs): void {
@@ -39,6 +41,7 @@ export class WorkbookHandler implements XmlHandler {
         this.dn = { name: a.name ?? '' };
         if (a.localSheetId !== undefined) this.dn.localSheetId = +a.localSheetId;
         if (attrBool(a.hidden)) this.dn.hidden = true;
+        if (a.comment) this.dn.comment = a.comment;
         this.dnText = '';
         break;
     }

@@ -120,10 +120,11 @@ function definedNameXml(
   sheet: number | undefined,
   hidden: boolean,
   value: string,
+  comment?: string,
 ): string {
   return `<definedName name="${escapeAttr(name)}"${sheet !== undefined ? ` localSheetId="${sheet}"` : ''}${
-    hidden ? ' hidden="1"' : ''
-  }>${escapeText(value)}</definedName>`;
+    comment ? ` comment="${escapeAttr(comment)}"` : ''
+  }${hidden ? ' hidden="1"' : ''}>${escapeText(value)}</definedName>`;
 }
 
 /**
@@ -150,7 +151,7 @@ export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []
     ) {
       continue; // scope points at no sheet: Excel would reject the file
     }
-    names += definedNameXml(n.name, n.localSheetId, n.hidden === true, n.value);
+    names += definedNameXml(n.name, n.localSheetId, n.hidden === true, n.value, n.comment);
   }
   for (let i = 0; i < b.sheets.length; i++) {
     const sh = b.sheets[i]!;
