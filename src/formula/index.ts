@@ -17,6 +17,7 @@ import {
 } from './evaluator.js';
 import { BUILTINS } from './functions/index.js';
 
+export { cellText, formatValue } from './display.js';
 export {
   type EvaluateFormulaOptions,
   type EvaluateOptions,

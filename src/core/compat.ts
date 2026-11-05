@@ -1,6 +1,7 @@
 // ExcelJS-style read helpers for code migrating from ExcelJS (functions, so they cost nothing
 // unless imported).
 
+import { decodeCol } from './address.js';
 import type { CellValue } from './types.js';
 import { CellKind, RowView, type Worksheet } from './worksheet.js';
 
@@ -43,4 +44,36 @@ export function getSheetValues(ws: Worksheet): CellValue[][] {
     if (row?.n) out[r + 1] = new RowView(ws, r).values;
   });
   return out;
+}
+
+/** 0-based column index of a 1-based number or a letter. */
+const colIndex = (c: number | string): number => (typeof c === 'number' ? c - 1 : decodeCol(c));
+
+/**
+ * Values of one column as ExcelJS `column.values`: a sparse array indexed by 1-based row
+ * (index 0 unused). `col`: 1-based number or letter.
+ */
+export function columnValues(ws: Worksheet, col: number | string): CellValue[] {
+  const c = colIndex(col);
+  const out: CellValue[] = [];
+  ws.rowData.forEach((row, r) => {
+    if (!row) return;
+    const i = row.find(c);
+    if (i >= 0 && row.kind[i] !== CellKind.Empty) out[r + 1] = ws._valueAt(row, i);
+  });
+  return out;
+}
+
+/** Visit the non-empty cells of one column, top to bottom (ExcelJS `column.eachCell`). */
+export function eachColumnCell(
+  ws: Worksheet,
+  col: number | string,
+  cb: (value: CellValue, rowNumber: number) => void,
+): void {
+  const c = colIndex(col);
+  ws.rowData.forEach((row, r) => {
+    if (!row) return;
+    const i = row.find(c);
+    if (i >= 0 && row.kind[i] !== CellKind.Empty) cb(ws._valueAt(row, i), r + 1);
+  });
 }

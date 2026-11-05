@@ -126,7 +126,7 @@ second argument is the `FunctionContext`: `workbook`, `sheet`, `row` / `col` (0-
 
 ## Functions
 
-90 built-in functions. `supportedFunctions()` lists them; anything else evaluates to `#NAME?`
+90 built-in functions. `formatValue(value, numFmt)` / `cellText(ws, addr)` apply number formats like Excel's display (the `TEXT` renderer; General shows at most 11 characters). `supportedFunctions()` lists them; anything else evaluates to `#NAME?`
 and is reported in `unsupported`. Files store newer functions with an `_xlfn.` prefix; it is
 stripped (`_xlfn.CONCAT` is `CONCAT`).
 
