@@ -70,9 +70,11 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 30.1 KB | 29.88 KB |
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
-| formula                        | `./formula` `*`                                                | 21.8 KB | 21.48 KB |
+| formula                        | `./formula` `*`                                                | 24 KB | 23.61 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 16 (#107, #108) costs: `turbosheet/formula` +2.1 KB for 64 math, trigonometric and statistical functions (incl. AGGREGATE); nothing in the core bundles.
 
 What group 15 (#104-#106) costs: `turbosheet/formula` +4.3 KB (dynamic-array evaluation and spilling, FILTER / SORT / SORTBY / UNIQUE / SEQUENCE / TRANSPOSE / RANDARRAY, structured references, LET, SUBTOTAL, incremental recalculation); every writer ~0.45 KB (LET names get `_xlpm.`, `A1#` is written as `ANCHORARRAY(A1)`, #SPILL! / #CALC! as #VALUE!, the shared spill-function list). The core bundles do not include the formula engine.
 

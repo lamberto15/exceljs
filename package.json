@@ -208,7 +208,7 @@
       "name": "formula",
       "path": "dist/formula.js",
       "import": "*",
-      "limit": "21.8 KB"
+      "limit": "24 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"
