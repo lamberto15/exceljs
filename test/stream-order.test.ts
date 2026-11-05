@@ -107,8 +107,8 @@ describe('xlsxRows byte limits apply only to buffered parts (#74)', () => {
     expect(n).toBe(20_001);
   });
 
-  it('a buffered sheet (worksheets before metadata) is still capped', async () => {
-    const parts = [...unzipLazy(writeXlsx(book(20_000))).values()];
+  it('a buffered sheet (worksheets before metadata, stream source) is still capped', async () => {
+    const parts = [...unzipLazy(writeXlsx(book(20_000), { profile: 'low-memory' })).values()];
     const sheetsFirst = zipSync(
       [
         ...parts.filter((p) => p.path.includes('worksheets/')),
@@ -116,12 +116,14 @@ describe('xlsxRows byte limits apply only to buffered parts (#74)', () => {
       ].map((p) => ({ path: p.path, data: p.bytes() })),
       6,
     );
+    // a stream source cannot seek: the sheet is buffered, so the byte limits apply
     await expect(async () => {
-      for await (const _ of xlsxRows(sheetsFirst, { limits })) {
+      for await (const _ of xlsxRows(once(sheetsFirst), { limits })) {
       }
     }).rejects.toThrow(/too large|total/);
+    // bytes are random-access (#86): metadata is read first and the sheet streams uncapped
     let n = 0;
-    for await (const _ of xlsxRows(sheetsFirst)) n++;
+    for await (const _ of xlsxRows(sheetsFirst, { limits })) n++;
     expect(n).toBe(20_001);
   });
 

@@ -62,9 +62,9 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
 | write-only                     | root `{ Workbook, writeXlsx }`                                 | 36.5 KB | 36.31 KB |
-| read+write                     | root `*`                                                       | 77.6 KB | 77.45 KB |
+| read+write                     | root `*`                                                       | 78.8 KB | 78.53 KB |
 | lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 25 KB | 24.87 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 43.4 KB | 43.21 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 43.4 KB | 43.35 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 28.9 KB | 28.69 KB |
 | lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 12.1 KB | 12.03 KB |
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 28.5 KB | 28.28 KB |
@@ -81,6 +81,8 @@ CSV read typing and decoding (#81: `parseBooleans`, `parseErrors`, `dateFormats`
 ExcelJS iteration / shared-formula compatibility (#80) adds ~1 KB to every bundle with a `Workbook`: accepting `{ sharedFormula }` cell values needs `translateFormula` in the worksheet model (~0.55 KB; before, only read bundles and the row / column edit helpers had it), plus the `{ includeEmpty }` paths of `eachRow` / `row.eachCell`, the new `column.eachCell` and the master-cell lookup (~0.45 KB). Every limit that includes the worksheet model was raised to the measured size + at most 0.2 KB.
 
 After merging #80 and #82 together the root and lite write / read limits were re-set to the combined measured size + ~0.2 KB.
+
+The random-access `xlsxRows` path (#86: `unzipBlob`, metadata-first entry order, deferred size checks in `unzipLazy`) adds ~1.1 KB to root `*` (bundles importing `xlsxRows`) and ~0.15 KB to lite read+write; the `*` limit was raised to 78.8 KB.
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
 bundles that don't import them.
