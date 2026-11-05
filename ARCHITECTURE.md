@@ -219,3 +219,30 @@ const out = await encryptXlsx(writeXlsx(wb), pw);
   that decrypts to a full padding block. The package is decrypted with one call, then the first
   block of every 4096-byte segment is corrected for its own IV. AES-ECB (standard) = CBC with a
   zero IV, then XOR each block with the previous ciphertext block.
+
+## src/biff, src/xlsb, src/xls — binary workbooks (`./xlsb`, `./xls`, read-only)
+```ts
+export function readXlsb(data: Uint8Array | ArrayBuffer, opts?: BinaryReadOptions): Workbook; // ./xlsb
+export function readXls(data: Uint8Array | ArrayBuffer, opts?: BinaryReadOptions): Workbook;  // ./xls
+export class BiffParseError, EncryptedXlsError /* ./xls */;
+```
+- `xlsb/reader.ts`: the .xlsx package (`zip/unzipLazy`, `xlsx/common/r-opc` for the rels) with
+  BIFF12 parts (MS-XLSB): variable-length record ids / sizes; workbook.bin (sheets, 1904, extern
+  sheets, names), styles.bin, sharedStrings.bin, sheetN.bin (cells incl. the `BrtShort*` forms,
+  rows, columns, merges, hyperlinks, shared / array formula definitions).
+- `xls/reader.ts`: the `Workbook` stream of the compound file (`crypto/cfb.ts`, shared module:
+  `./crypto` is unchanged) with BIFF8 records (MS-XLS). CONTINUE records are joined; the SST and
+  STRING readers walk the segments because a string's characters restart with a new high-byte
+  flag at each boundary. XFs are interned lazily (most are unused cell-style XFs); `XFExt`
+  records give the full theme / RGB colors Excel 2007+ also writes, otherwise palette indices
+  are kept as `{ indexed }`, which is what Excel's own .xls → .xlsx conversion does.
+- `biff/formula.ts`: one RPN decompiler for both formats (`b12` switches the field widths: 32-bit
+  rows, UTF-16 strings with a 16-bit length, wider reserved fields). Unknown tokens throw inside
+  and make `decodeFormula` return undefined: the cell keeps its cached value. `biff/ftab.ts` is
+  the built-in function table (index → name, fixed argument counts for `PtgFunc`).
+- `biff/model.ts` (`CellWriter`): cached values → cell kinds (numbers with a date format become
+  `CellKind.Date`, as in readXlsx), formula cells, PtgExp cells resolved at the end of the sheet
+  (shared / array definitions follow their first cell), hyperlinks. `biff/common.ts`: enums both
+  formats number the same way, RK numbers, style interning (`StyleSink`), sheets, defined names.
+- Verified against Excel for Mac: `test/fixtures/binary` holds one workbook saved by Excel as
+  .xlsx, .xlsb and .xls; `test/binary-read.test.ts` asserts the three models are equal.
