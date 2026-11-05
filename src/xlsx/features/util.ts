@@ -6,7 +6,14 @@ import { escapeAttr } from '../../xml/index.js';
 
 export { escapeAttr, escapeText } from '../../xml/index.js';
 // round-trip: kept drawing anchors + relationship placeholder resolution
-export { addPRel, fillRels, presDrawing, presTable, presVml } from '../common/preserved.js';
+export {
+  addPRel,
+  fillRels,
+  presDrawing,
+  presPart,
+  presTable,
+  presVml,
+} from '../common/preserved.js';
 // rich text (CT_Rst): `<r>` runs writer, `<t>` element, and the <si>/<is>-style run reader
 export {
   runsXml,

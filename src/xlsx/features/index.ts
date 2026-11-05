@@ -7,8 +7,11 @@ export {
   addChart,
   type Chart,
   type ChartAxis,
+  type ChartDataLabels,
   type ChartSeries,
+  type ChartTrendline,
   type ChartType,
+  chartsReader,
   chartsWriter,
 } from './charts.js';
 export {

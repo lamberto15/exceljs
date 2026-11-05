@@ -26,6 +26,7 @@ import {
   type PPart,
   type PRel,
   type PresWrite,
+  presPart,
   presTable,
   relTarget,
 } from '../common/preserved.js';
@@ -217,6 +218,11 @@ function reachable(wb: Workbook, pkg?: PackageParts): PPart[] {
       if (!k) continue;
       visit(k.rel.target);
       pkg?.reserve(`table${k.id}`); // generated tables number their ids around it
+    }
+    // unchanged modelled charts: their original parts
+    for (const ch of ws.charts ?? []) {
+      const r = presPart(ws, ch);
+      if (r) visit(r.target);
     }
   }
   return list;

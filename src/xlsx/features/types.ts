@@ -222,6 +222,12 @@ export interface SheetReadCtx extends PackageReadCtx {
   dxf(id: string | number): number;
   /** Per-sheet scratch space, e.g. `ctx.scratch.set(myFeature, state)` in open, read in finish. */
   readonly scratch: Map<unknown, unknown>;
+  /**
+   * Claim a part the feature modelled as `model` (e.g. a chart part as a `Chart`): round-trip
+   * capture then drops the raw reference to it (the drawing anchor of a chart) and keeps the
+   * original part, which the writer emits while `model` is unchanged (see presPart).
+   */
+  claim(path: string, model: object): void;
 }
 
 /**

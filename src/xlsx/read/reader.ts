@@ -354,7 +354,11 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
       xf: (v) => (xfMap ? (xfMap[+v] ?? 0) : 0),
       dxf: (v) => (dxfMap ? (dxfMap[+v] ?? 0) : 0),
       scratch: new Map(),
+      claim: (path, model) => {
+        claims.set(path, model);
+      },
     };
+    const claims = new Map<string, object>();
     const cap = pres?.sheet(rels);
     const ctx: SheetContext = {
       strings,
@@ -375,7 +379,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     p.end();
     h.finish();
     for (const r of featureReaders) r.finish?.(fctx);
-    if (cap) pres!.finishSheet(cap, ws, s.sheetId);
+    if (cap) pres!.finishSheet(cap, ws, s.sheetId, claims);
     if (ws.autoFilter === undefined) {
       const af = filterDatabase(wbh.definedNames, s.index);
       if (af) ws.autoFilter = af;
