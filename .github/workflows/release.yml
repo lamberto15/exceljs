@@ -1,8 +1,5 @@
 name: release
 
-# The file keeps its old name: npm trusted publishing is bound to the workflow file name
-# (next-release.yml). Renaming it requires updating npmjs.com > turbosheet > Trusted publishing.
-#
 # Changesets release flow (same pattern as lamberto15/better-auth-adapter-prisma8). On every
 # push to `main`:
 #  - pending changeset files (.changeset/*.md, added by PRs) -> opens or updates a
@@ -64,7 +61,7 @@ jobs:
       # NODE_AUTH_TOKEN is deliberately not set: with no auth value in .npmrc, pnpm
       # (>= 11.1.3) falls back to the OIDC token GitHub mints from `id-token: write`.
       # npmjs.com side: package `turbosheet` > Settings > Trusted publishing > GitHub Actions:
-      # user `lamberto15`, repository `turbosheet`, workflow `next-release.yml` (exact,
+      # user `lamberto15`, repository `turbosheet`, workflow `release.yml` (exact,
       # case-sensitive), no environment.
       #
       # github-token: prefers a fine-grained PAT (secret RELEASE_PAT: Contents + Pull

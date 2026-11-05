@@ -1,7 +1,7 @@
 # Releasing
 
 turbosheet uses [Changesets](https://github.com/changesets/changesets) and a GitHub Actions workflow
-([`.github/workflows/next-release.yml`](./.github/workflows/next-release.yml)). Nothing is published
+([`.github/workflows/release.yml`](./.github/workflows/release.yml)). Nothing is published
 from a developer machine in the normal flow.
 
 ## Day to day: add a changeset
@@ -19,7 +19,7 @@ Docs-only, test-only and CI changes do not need one (no CI check enforces change
 ## How a release happens
 
 1. PRs with changesets land on `main`.
-2. The **release** workflow (file `next-release.yml`, kept for npm trusted publishing) runs on every push to `main` (and can be run by hand). It runs
+2. The **release** workflow (`release.yml`) runs on every push to `main` (and can be run by hand). It runs
    `typecheck`, `test`, `build`, `size`, then the Changesets action:
    - with pending changesets it opens (or updates) a **"chore(release): version packages"** PR that
      bumps `package.json` and writes `CHANGELOG.md`;
@@ -49,7 +49,7 @@ the repo pins pnpm 12 in `packageManager`).
 - The repository must be public (it is) for provenance.
 - After the first publish (below): on npmjs.com open the `turbosheet` package, **Settings, Trusted
   publishing**, add a GitHub Actions publisher: owner `lamberto15`, repository `turbosheet`, workflow
-  `next-release.yml` (exact, case-sensitive; environment empty). The repository was renamed from
+  `release.yml` (exact, case-sensitive; environment empty). The repository was renamed from
   `lamberto15/exceljs`; the publisher must name the current repository. Then, under the same settings, set publishing access to
   require 2FA and disallow tokens.
 
