@@ -11,6 +11,7 @@ import {
 } from 'fflate';
 import type { Limits } from '../core/types.js';
 import { Budget, ZipLimitError, ZipPathError } from './limits.js';
+import { nativeCrc } from './node.js';
 
 export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 
@@ -43,8 +44,11 @@ export function zipSync(entries: ZipEntryIn[], level: number): Uint8Array {
 
 /** Entry compressor producing output asynchronously (see `nativeCompressor()`). */
 export interface AsyncCompressor {
-  /** A zip entry for fflate's Zip (deflate, data descriptor). */
-  file(path: string): ZipInputFile & { push(chunk: Uint8Array, final?: boolean): void };
+  /** A zip entry for fflate's Zip (deflate at `level` 1-9, data descriptor). */
+  file(
+    path: string,
+    level: number,
+  ): ZipInputFile & { push(chunk: Uint8Array, final?: boolean): void };
   /** Resolves once at most `maxBytes` of input await compression; undefined = no wait. */
   below(maxBytes: number): Promise<void> | undefined;
   /** Resolves when every entry so far has been compressed (rejects on the first error). */
@@ -59,6 +63,16 @@ export interface ZipStreamOptions {
    * still stored synchronously.
    */
   compressor?: AsyncCompressor | undefined;
+}
+
+/**
+ * Swap fflate's byte-at-a-time CRC-32 of a fresh zip entry for `zlib.crc32` when the runtime has
+ * it. fflate entries keep their running CRC in `c` ({ p: update, d: digest }) and only touch it
+ * from `push`, so replacing it before the first push is safe.
+ */
+function useNativeCrc(f: ZipInputFile): void {
+  const c = nativeCrc();
+  if (c && 'c' in f) (f as unknown as { c: unknown }).c = c;
 }
 
 export class ZipStreamWriter {
@@ -93,8 +107,9 @@ export class ZipStreamWriter {
       lvl === 0
         ? new ZipPassThrough(path)
         : n
-          ? n.file(path)
+          ? n.file(path, lvl)
           : new ZipDeflate(path, { level: lvl as Level });
+    useNativeCrc(f);
     this.#zip.add(f);
     return {
       push(data, final = false) {

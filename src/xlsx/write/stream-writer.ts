@@ -18,7 +18,7 @@
 //   commit (memory ∝ hyperlink count).
 // - Output goes to `sink` (awaited sequentially when it returns a promise) or to `readable`.
 //   addRow() is synchronous; call `await sheet.flush()` periodically (or use `addRows`) to apply
-//   backpressure (with native CompressionStream deflate, compression is asynchronous: rows
+//   backpressure (with native deflate (node:zlib / CompressionStream), compression is asynchronous: rows
 //   added in a synchronous loop queue their XML until the next await, so flush() also bounds
 //   that queue). In readable mode commit()/end() never wait for the consumer (so writing
 //   everything before reading cannot deadlock); flush()/addRows() do.
@@ -303,7 +303,7 @@ export class XlsxWriter {
         { highWaterMark: hwm, size: (c) => c.byteLength },
       );
     }
-    // native CompressionStream when available: deflate runs off the main thread
+    // native deflate (node:zlib, else CompressionStream) when available: off the main thread
     this._zip = new ZipOut(
       (chunk, final) => this._out(chunk, final),
       this._o.compression,

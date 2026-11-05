@@ -229,7 +229,10 @@ export type Profile = 'low-memory' | 'balanced' | 'max-speed';
 
 export interface WriteOptions {
   profile?: Profile;
-  /** Deflate level 0-9. 0 = store. */
+  /**
+   * Deflate level 0-9. 0 = store. Async writers in browsers / workers deflate with
+   * `CompressionStream`, which has no level: there any level > 0 uses the platform default (~6).
+   */
   compression?: number;
   /** 'shared' builds sharedStrings.xml (smaller file); 'inline' writes inlineStr (faster, less RAM). */
   strings?: 'shared' | 'inline';
