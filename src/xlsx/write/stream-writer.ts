@@ -13,7 +13,7 @@
 // - Sheets are written one at a time, in order: adding a new worksheet commits the open one.
 // - Workbook-level parts (workbook.xml, styles.xml, sharedStrings.xml, rels, content types,
 //   docProps) are written by `end()`, after all sheets (zip entry order is irrelevant to Excel).
-// - strings: 'inline' is constant memory; 'shared' keeps the growing string table in RAM until
+// - strings: 'inline' (the default, profile 'low-memory') is constant memory; 'shared' keeps the growing string table in RAM until
 //   end() (smaller files, memory ∝ distinct strings). Hyperlink targets are kept per sheet until
 //   commit (memory ∝ hyperlink count).
 // - Output goes to `sink` (awaited sequentially when it returns a promise) or to `readable`.
@@ -52,6 +52,12 @@ import { ZipOut } from './zipout.js';
 
 export type ChunkSink = (chunk: Uint8Array) => void | Promise<void>;
 
+/**
+ * Options of the streaming writer. Unlike `writeXlsx` / `xlsxStream`, `profile` defaults to
+ * `'low-memory'` (inline strings, constant memory); pass `profile: 'balanced'` or
+ * `strings: 'shared'` for sharedStrings.xml (smaller files when strings repeat, but every
+ * distinct string stays in memory until `end()`).
+ */
 export interface XlsxWriterOptions extends WriteOptions {
   /** Receives zip output. Without it, read `writer.readable`. */
   sink?: ChunkSink;
@@ -273,7 +279,9 @@ export class XlsxWriter {
   private _active = -1;
 
   constructor(opts: XlsxWriterOptions = {}) {
-    this._o = resolveWriteOptions(opts);
+    // default 'low-memory' (inline strings): a shared-string table would grow for the whole
+    // export and be serialized in one blocking pass at end()
+    this._o = resolveWriteOptions({ ...opts, profile: opts.profile ?? 'low-memory' });
     this._plan = sheetPlan(this._o.writers);
     this.workbook = new Workbook({ date1904: opts.date1904 === true });
     const wb = this.workbook;

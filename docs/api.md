@@ -155,7 +155,7 @@ createXlsxWriter(opts?: XlsxWriterOptions): XlsxWriter             // row-by-row
 
 ```ts
 interface WriteOptions {
-  profile?: 'low-memory' | 'balanced' | 'max-speed';  // default 'balanced'
+  profile?: 'low-memory' | 'balanced' | 'max-speed';  // default 'balanced' ('low-memory' for createXlsxWriter)
   compression?: number;            // deflate level 0-9 (0 = store); overrides the profile
   strings?: 'shared' | 'inline';   // overrides the profile
   date1904?: boolean;              // ignored by writeXlsx: the workbook's own flag wins
@@ -166,8 +166,8 @@ interface WriteOptions {
 
 | Profile | compression | strings | Use |
 | --- | --- | --- | --- |
-| `balanced` (default) | 6 | shared | smallest files, normal speed |
-| `low-memory` | 6 | inline | less RAM (no string table) |
+| `balanced` (default for `writeXlsx`, `xlsxStream`) | 6 | shared | smallest files, normal speed |
+| `low-memory` (default for `createXlsxWriter`) | 6 | inline | less RAM (no string table) |
 | `max-speed` | 1 | inline | fastest, files ~30% larger in our benchmark |
 
 `resolveWriteOptions(opts)` returns the resolved values. `xlsxStream` is pull-based: sheet XML is generated as the consumer reads, so a slow consumer does not make memory grow; do not modify the workbook until the stream ends. Content kept by `readXlsx` (charts, pivots, ...) is written back by `writeXlsx` and `xlsxStream`, not by `createXlsxWriter`.
@@ -208,6 +208,7 @@ await s.flush();  await s.commit();
 await w.end();                                 // commits the open sheet, finishes the zip
 ```
 
+- `profile` defaults to `'low-memory'` here (inline strings: memory stays flat however many distinct strings you write). `profile: 'balanced'` / `strings: 'shared'` writes sharedStrings.xml instead: smaller files when strings repeat a lot, but the table holds every distinct string until `end()` and is serialized in one blocking pass there.
 - Without `sink`, read the zip from `w.readable` (a `ReadableStream<Uint8Array>`). With `sink: (chunk) => void | Promise<void>` the promise applies backpressure.
 - Sheets are written one after another: `addWorksheet` commits the previous sheet. Rows cannot be changed once added.
 - `s.worksheet` is a metadata-only `Worksheet` (columns, views, merges, feature fields). Set **head** data (columns, views, freeze) before adding rows; feature fields set after the rows (tables, validations, ...) are applied at `commit()`.
