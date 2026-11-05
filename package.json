@@ -154,31 +154,31 @@
       "name": "write-only",
       "path": "dist/index.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "37.7 KB"
+      "limit": "38.2 KB"
     },
     {
       "name": "read+write",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "82 KB"
+      "limit": "82.4 KB"
     },
     {
       "name": "lite write-only",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "26.2 KB"
+      "limit": "26.8 KB"
     },
     {
       "name": "lite read+write",
       "path": "dist/lite.js",
       "import": "{ Workbook, readXlsx, writeXlsx }",
-      "limit": "44.8 KB"
+      "limit": "45.3 KB"
     },
     {
       "name": "lite write + tables + images",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addTable, tablesWriter, addImage, placeImage, imagesWriter }",
-      "limit": "30 KB"
+      "limit": "30.5 KB"
     },
     {
       "name": "lite autofit",
@@ -190,7 +190,7 @@
       "name": "lite write + charts",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addChart, chartsWriter }",
-      "limit": "29.7 KB"
+      "limit": "30.1 KB"
     },
     {
       "name": "csv",
@@ -208,7 +208,7 @@
       "name": "formula",
       "path": "dist/formula.js",
       "import": "*",
-      "limit": "17.5 KB"
+      "limit": "21.8 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"

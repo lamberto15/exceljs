@@ -79,6 +79,20 @@ Over the runs made while preparing this page, ExcelJS varied more than turboshee
 and `WorkbookReader` 1.8-3.7 s, while turbosheet's read and write times moved by about 10% or less. The README
 quotes ranges for those cases for this reason.
 
+## Incremental recalculation
+
+`track(wb).set(sheet, address, value)` (#106) re-evaluates only the formulas downstream of the
+change. 100k formulas (50k rows of `=A{n}*2+1` plus a running total `=C{n-1}+B{n}`), Node 26 on
+Apple silicon, best of 5:
+
+| Operation | Formulas recalculated | Time |
+| --- | --- | --- |
+| full `evaluate` | 100,000 | 56 ms |
+| `set` a cell nothing depends on | 0 | 3.7 ms |
+| `set` the last input | 2 | 5.2 ms |
+| `set` the middle input | 25,002 | 18.2 ms |
+| `set` the first input | 50,001 | 31.8 ms |
+
 ## Shared formulas
 
 `fillFormula` ranges are written as Excel shared formulas (#101): the top-left cell holds the formula,

@@ -4,6 +4,7 @@
 
 import type {
   CellError,
+  CellValueInput,
   DefinedName,
   ErrorCode,
   Formula,
@@ -233,11 +234,11 @@ export class Evaluator {
   }
 
   /**
-   * Run passes until the spill areas of dynamic-array formulas are stable: a pass assumes the
+   * @internal Run passes until the spill areas of dynamic-array formulas are stable: a pass assumes the
    * areas found by the previous one (first: the areas stored in the file), so formulas reading
    * spilled cells see the right values. Usually one or two passes.
    */
-  #passes(wb: Workbook, options: EvaluateOptions, roots: (run: Run) => number[]): Run {
+  passes(wb: Workbook, options: EvaluateOptions, roots: (run: Run) => number[]): Run {
     let hints: Map<string, number[]> | undefined;
     for (let pass = 0; ; pass++) {
       const run = new Run(this, wb, options, hints);
@@ -251,10 +252,18 @@ export class Evaluator {
     }
   }
 
+  /**
+   * Evaluate the workbook (storing results) and keep the dependency graph for incremental
+   * recalculation: `track(wb).set('Sheet1', 'B2', 5)` recalculates only what depends on B2.
+   */
+  track(wb: Workbook, options: Omit<EvaluateOptions, 'sheets' | 'writeResults'> = {}): Recalc {
+    return new Recalc(this, wb, options);
+  }
+
   /** Evaluate every formula of the workbook (or of `options.sheets`). */
   evaluate(wb: Workbook, options: EvaluateOptions = {}): EvaluationReport {
     const want = options.sheets?.map((s) => (typeof s === 'string' ? wb.getWorksheet(s) : s));
-    const run = this.#passes(wb, options, (run) => {
+    const run = this.passes(wb, options, (run) => {
       const roots: number[] = [];
       for (const si of run.sheets) {
         if (want && !want.includes(si.ws)) continue;
@@ -277,7 +286,7 @@ export class Evaluator {
     if (!new Run(this, wb, options).sheetOf(sheet)) {
       throw new RangeError(`Unknown worksheet: ${String(sheet)}`);
     }
-    const run = this.#passes(wb, options, (run) => {
+    const run = this.passes(wb, options, (run) => {
       const id = run.find(run.sheetOf(sheet)!, row, col);
       return id >= 0 ? [id] : [];
     });
@@ -320,6 +329,70 @@ export class Evaluator {
   }
 }
 
+/**
+ * A workbook kept calculated: `set()` / `update()` recalculate only the formulas downstream of
+ * the changed cells (see Evaluator.track). Structural changes — a formula added, removed or
+ * edited, cells moved — need `recalc()` (set() does it by itself when it writes or replaces a
+ * formula).
+ */
+export class Recalc {
+  readonly #ev: Evaluator;
+  readonly #wb: Workbook;
+  readonly #opts: EvaluateOptions;
+  #run!: Run;
+  /** Report of the last full evaluation. */
+  report!: EvaluationReport;
+
+  constructor(ev: Evaluator, wb: Workbook, options: EvaluateOptions) {
+    this.#ev = ev;
+    this.#wb = wb;
+    this.#opts = { ...options, writeResults: true };
+    this.recalc();
+  }
+
+  /** Evaluate the whole workbook again and rebuild the dependency graph. */
+  recalc(): EvaluationReport {
+    const run = this.#ev.passes(this.#wb, this.#opts, (r) => {
+      const roots: number[] = [];
+      for (const si of r.sheets) {
+        const end = si.first[si.rows.length] ?? 0;
+        for (let id = si.first[0] ?? 0; id < end; id++) roots.push(id);
+      }
+      return roots;
+    });
+    this.#run = run;
+    this.report = run.go(() => run.report(true));
+    return this.report;
+  }
+
+  /**
+   * Set a cell and recalculate what depends on it. Returns the addresses of the formula cells
+   * recalculated ("Sheet1!C3"); writing or replacing a formula recalculates everything.
+   */
+  set(sheet: string | Worksheet, address: string, value: CellValueInput): string[] {
+    const ws = typeof sheet === 'string' ? this.#wb.getWorksheet(sheet) : sheet;
+    if (!ws) throw new RangeError(`Unknown worksheet: ${String(sheet)}`);
+    ws.setCell(address, value);
+    return this.update([{ sheet: ws, address }]);
+  }
+
+  /** Recalculate after the given cells were changed directly (e.g. with ws.setCell). */
+  update(cells: readonly { sheet: string | Worksheet; address: string }[]): string[] {
+    const run = this.#run;
+    const list: [SheetIndex, number, number][] = [];
+    for (const { sheet, address } of cells) {
+      const si = run.sheetOf(sheet);
+      if (!si) throw new RangeError(`Unknown worksheet: ${String(sheet)}`);
+      const [r, c] = cellAt(address);
+      list.push([si, r, c]);
+    }
+    const done = run.go(() => run.update(list));
+    if (done) return done;
+    this.recalc();
+    return this.#run.addresses();
+  }
+}
+
 function final(v: FormulaScalar): FormulaResult {
   if (v === null) return 0;
   if (typeof v === 'number') return Number.isFinite(v) ? round15(v) : NUM;
@@ -354,6 +427,9 @@ class Run implements CellReader {
   #iter = false;
   #val: FormulaValue[] = [];
   #state!: Uint8Array; // 0 pending, 1 evaluating, 2 done
+  #inOrder!: Uint8Array;
+  /** Rectangles each node reads ([sheet index, top, left, bottom, right]...), for update(). */
+  #rects: (number[] | undefined)[] = [];
   readonly #order: number[] = [];
   readonly #circ: number[] = [];
   readonly #unsupported: Map<string, string> = new Map();
@@ -426,6 +502,7 @@ class Run implements CellReader {
       si.first.push(this.#nF.length);
     }
     this.#state = new Uint8Array(this.#nF.length);
+    this.#inOrder = new Uint8Array(this.#nF.length);
   }
 
   go<T>(f: () => T): T {
@@ -713,7 +790,10 @@ class Run implements CellReader {
     for (const id of scc) {
       this.#circ.push(id);
       this.#state[id] = 2;
-      this.#order.push(id);
+      if (!this.#inOrder[id]) {
+        this.#inOrder[id] = 1;
+        this.#order.push(id);
+      }
       const r = this.#nF[id]!.result;
       this.#val[id] = iters > 0 ? (typeof r === 'number' ? r : 0) : REF;
     }
@@ -740,7 +820,10 @@ class Run implements CellReader {
     const v = this.#compute(id);
     this.#val[id] = v;
     this.#state[id] = 2;
-    this.#order.push(id);
+    if (!this.#inOrder[id]) {
+      this.#inOrder[id] = 1;
+      this.#order.push(id);
+    }
   }
 
   #compute(id: number): FormulaValue {
@@ -1079,36 +1162,8 @@ class Run implements CellReader {
     for (const id of this.#order) {
       const v = this.#val[id];
       const res = isArr(v) ? (v.data[0] as FormulaResult) : (v as FormulaResult);
-      if (results) {
-        results.set(this.#addr(id), res);
-        continue;
-      }
-      const ws = this.#nS[id]!.ws;
-      const r = this.#nR[id]!;
-      const c = this.#nC[id]!;
-      const row = ws.rowData[r]!;
-      const i = row.find(c);
-      if (i < 0 || row.kind[i] !== K_FORMULA) continue;
-      const f = row.obj![i] as Formula;
-      if (this.#dyn.has(id)) {
-        const b = isArr(v) ? r + v.rows - 1 : r;
-        const rr = isArr(v) ? c + v.cols - 1 : c;
-        const old = this.#old.get(id);
-        if (old) this.#clearStale(ws, old, [r, c, b, rr]);
-        row.obj![i] = {
-          ...f,
-          result: res,
-          array: colName(c) + (r + 1) + (b > r || rr > c ? `:${colName(rr)}${b + 1}` : ''),
-          dynamic: true,
-        };
-        if (isArr(v)) this.#writeSpill(ws, id, v, [r, c, b, rr]);
-        continue;
-      }
-      row.obj![i] = { ...f, result: res };
-      if (isArr(v) && f.array) {
-        const a = decodeRangeSafe(f.array);
-        if (a) this.#writeSpill(ws, id, v, a);
-      }
+      if (results) results.set(this.#addr(id), res);
+      else this.#write(id);
     }
     const circ = [...new Set(this.#circ)].map((id) => this.#addr(id));
     return {
@@ -1118,6 +1173,171 @@ class Run implements CellReader {
       errors: this.#errors,
       ...(results ? { results } : {}),
     };
+  }
+
+  /** Store node `id`'s value into its cell (and its spilled / array values). */
+  #write(id: number): void {
+    const v = this.#val[id];
+    const res = isArr(v) ? (v.data[0] as FormulaResult) : (v as FormulaResult);
+    const ws = this.#nS[id]!.ws;
+    const r = this.#nR[id]!;
+    const c = this.#nC[id]!;
+    const row = ws.rowData[r]!;
+    const i = row.find(c);
+    if (i < 0 || row.kind[i] !== K_FORMULA) return;
+    const f = row.obj![i] as Formula;
+    if (this.#dyn.has(id)) {
+      const b = isArr(v) ? r + v.rows - 1 : r;
+      const rr = isArr(v) ? c + v.cols - 1 : c;
+      const old = this.#old.get(id);
+      if (old) this.#clearStale(ws, old, [r, c, b, rr]);
+      row.obj![i] = {
+        ...f,
+        result: res,
+        array: colName(c) + (r + 1) + (b > r || rr > c ? `:${colName(rr)}${b + 1}` : ''),
+        dynamic: true,
+      };
+      if (isArr(v)) this.#writeSpill(ws, id, v, [r, c, b, rr]);
+      return;
+    }
+    row.obj![i] = { ...f, result: res };
+    if (isArr(v) && f.array) {
+      const a = decodeRangeSafe(f.array);
+      if (a) this.#writeSpill(ws, id, v, a);
+    }
+  }
+
+  /** Addresses of every evaluated formula cell. */
+  addresses(): string[] {
+    return this.#order.map((id) => this.#addr(id));
+  }
+
+  /**
+   * Incremental recalculation after the values (not formulas) of `cells` changed: re-evaluate
+   * the formulas reading them, directly or through other formulas, in dependency order, and
+   * store their results. Returns their addresses, or undefined when a full evaluation is
+   * needed instead (a changed cell is or was a formula or lies in an array / spill area, or a
+   * cycle / dynamic-array formula is affected).
+   */
+  update(cells: readonly (readonly [SheetIndex, number, number])[]): string[] | undefined {
+    const dirtyCells = new Map<number, Map<number, number[]>>();
+    const mark = (s: number, r: number, c: number): void => {
+      let cols = dirtyCells.get(s);
+      if (!cols) {
+        cols = new Map();
+        dirtyCells.set(s, cols);
+      }
+      let rows = cols.get(c);
+      if (!rows) {
+        rows = [];
+        cols.set(c, rows);
+      }
+      let lo = 0;
+      let hi = rows.length;
+      while (lo < hi) {
+        const m = (lo + hi) >>> 1;
+        if (rows[m]! < r) lo = m + 1;
+        else hi = m;
+      }
+      if (rows[lo] !== r) rows.splice(lo, 0, r);
+    };
+    const hits = (s: number, t: number, l: number, b: number, r: number): boolean => {
+      const cols = dirtyCells.get(s);
+      if (!cols) return false;
+      const check = (rows: number[]): boolean => {
+        let lo = 0;
+        let hi = rows.length;
+        while (lo < hi) {
+          const m = (lo + hi) >>> 1;
+          if (rows[m]! < t) lo = m + 1;
+          else hi = m;
+        }
+        return lo < rows.length && rows[lo]! <= b;
+      };
+      if (cols.size <= r - l + 1) {
+        for (const [c, rows] of cols) if (c >= l && c <= r && check(rows)) return true;
+        return false;
+      }
+      for (let c = l; c <= r; c++) {
+        const rows = cols.get(c);
+        if (rows && check(rows)) return true;
+      }
+      return false;
+    };
+    for (const [si, r, c] of cells) {
+      if (this.find(si, r, c) >= 0) return undefined;
+      const row = si.ws.rowData[r];
+      const i = row ? row.find(c) : -1;
+      if (i >= 0 && row!.kind[i] === K_FORMULA) return undefined;
+      for (const a of si.arrays ?? []) {
+        if (r >= a[0]! && r <= a[2]! && c >= a[1]! && c <= a[3]!) return undefined;
+      }
+      mark(si.i, r, c);
+    }
+    const circ = new Set(this.#circ);
+    const dirty: number[] = [];
+    for (const id of this.#order) {
+      const rc = this.#rects[id] ?? this.#rectsOf(id);
+      // rc[0] === -1: the formula uses a volatile function
+      let d = rc[0] === -1;
+      for (let k = d ? 1 : 0; k < rc.length && !d; k += 5) {
+        d = hits(rc[k]!, rc[k + 1]!, rc[k + 2]!, rc[k + 3]!, rc[k + 4]!);
+      }
+      if (!d) continue;
+      if (circ.has(id) || this.#dyn.has(id)) return undefined;
+      dirty.push(id);
+      const si = this.#nS[id]!;
+      mark(si.i, this.#nR[id]!, this.#nC[id]!);
+      for (const a of si.arrays ?? []) {
+        if (a[4] !== id) continue;
+        for (let r = a[0]!; r <= a[2]!; r++) for (let c = a[1]!; c <= a[3]!; c++) mark(si.i, r, c);
+      }
+    }
+    this.#cols.clear();
+    for (const id of dirty) this.#state[id] = 0;
+    for (const id of dirty) if (this.#state[id] === 0) this.#evalNode(id);
+    for (const id of dirty) this.#write(id);
+    return dirty.map((id) => this.#addr(id));
+  }
+
+  /**
+   * The rectangles node `id` reads (cached): sheet index, top, left, bottom, right, ...;
+   * starts with -1 when the formula uses a volatile function.
+   */
+  #rectsOf(id: number): number[] {
+    let rc = this.#rects[id];
+    if (rc) return rc;
+    const p = this.#nP[id] ?? this.ev.parsed(this.#nF[id]!.formula);
+    rc = p.calls?.some((n) => VOLATILE.has(n)) ? [-1] : [];
+    this.#collectRects(p, this.#nS[id]!, rc, 0, this.#nR[id]!, this.#nC[id]!);
+    this.#rects[id] = rc;
+    return rc;
+  }
+
+  #collectRects(
+    p: Parsed,
+    si: SheetIndex,
+    out: number[],
+    depth: number,
+    row: number,
+    col: number,
+  ): void {
+    if (!p.refs) return;
+    for (const ref of p.refs) {
+      if (ref.length === 2) {
+        if (depth > 16) continue;
+        const d = this.definedName(ref[1], ref[0], si);
+        if (d) this.#collectRects(this.ev.parsed(d.value), si, out, depth + 1, row, col);
+        continue;
+      }
+      if (ref.length === 1) {
+        const a = this.tableRef(ref[0], si, row, col, true);
+        if (!isError(a)) out.push(a[0].i, a[1], a[2], a[3], a[4]);
+        continue;
+      }
+      const t = this.sheetFor(ref[0], si);
+      if (t) out.push(t.i, ref[1], ref[2], ref[3], ref[4]);
+    }
   }
 
   /** Remove a dynamic formula's stale spilled values outside its new area. */
@@ -1261,6 +1481,20 @@ const pct = (x: FormulaScalar): FormulaScalar => {
   const n = toNum(x);
   return typeof n === 'number' ? n / 100 : n;
 };
+
+/** Functions whose result can change without a referenced cell changing (or that read cells
+ * not visible in the formula text): always recalculated by update(). */
+const VOLATILE = new Set([
+  'INDIRECT',
+  'OFFSET',
+  'NOW',
+  'TODAY',
+  'RAND',
+  'RANDBETWEEN',
+  'RANDARRAY',
+  'CELL',
+  'INFO',
+]);
 
 const localKey = (name: string): string => name.toLowerCase().replace(/^_xlpm\./, '');
 
