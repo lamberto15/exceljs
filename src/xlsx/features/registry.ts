@@ -14,6 +14,7 @@ import {
   conditionalFormattingReader,
   conditionalFormattingWriter,
 } from './conditional-formatting.js';
+import { customViewsReader, customViewsWriter } from './custom-views.js';
 import { dataValidationReader, dataValidationWriter } from './data-validation.js';
 import { ignoredErrorsReader, ignoredErrorsWriter } from './ignored-errors.js';
 import { imagesReader, imagesWriter } from './images.js';
@@ -27,6 +28,7 @@ export const WRITERS: readonly FeatureWriter[] = [
   chartsWriter,
   commentsWriter,
   conditionalFormattingWriter,
+  customViewsWriter,
   dataValidationWriter,
   ignoredErrorsWriter,
   imagesWriter,
@@ -39,6 +41,7 @@ export const WRITERS: readonly FeatureWriter[] = [
 export const READERS: readonly FeatureReader[] = [
   commentsReader,
   conditionalFormattingReader,
+  customViewsReader,
   dataValidationReader,
   ignoredErrorsReader,
   imagesReader,

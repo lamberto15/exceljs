@@ -15,7 +15,7 @@
 //   columns inserted inside one become new table columns), notes, picture and chart anchors,
 //   `autoFilter`, page breaks, ignored-error ranges, formula-cell hyperlinks kept from a read file.
 // - Not adjusted: content kept raw from a read file (`ws.preserved`: charts read from a file,
-//   pivot tables, sparklines, threaded comments, ...), hyperlink targets ("#Sheet!A1"),
+//   pivot tables, sparklines, ...), hyperlink targets ("#Sheet!A1"),
 //   `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external references.
 //
 // Everything is validated before anything changes: an edit that would push cells off the grid

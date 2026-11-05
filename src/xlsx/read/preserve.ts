@@ -19,7 +19,8 @@
 //   (`ws.preserved.vml`) and merged into the VML the comments feature writes; a VML without
 //   notes is kept together with its <legacyDrawing>;
 // - `comments` relationships when the comments feature modelled the sheet's notes (it
-//   regenerates them); threadedComments, pivotTables, queryTables, slicers, ... (relationships
+//   regenerates them) and `threadedComment` / `person` ones when it modelled the threads;
+//   pivotTables, queryTables, slicers, ... (relationships
 //   no element references) are kept.
 //
 // Which features are enabled is the caller's choice (`ReadOptions.features`; `./lite` enables
@@ -340,6 +341,8 @@ export class Preserver {
       if (c.refs.has(r.id) || c.seen.has(r.id)) continue;
       // notes modelled by the comments feature are regenerated; otherwise kept raw
       if (ws.comments !== undefined && relTypeIs(r.type, 'comments')) continue;
+      // threads modelled by the comments feature are regenerated too
+      if (ws.threadedComments !== undefined && /\/threadedComment$/.test(r.type)) continue;
       const t = this.target(r);
       if (t === undefined) continue;
       implicit.push(out.push({ type: r.type, target: t }) - 1);
@@ -573,6 +576,8 @@ export class Preserver {
       if (relTypeIs(r.type, 'vbaProject')) vba = true;
       if (seen.has(r.id) || index.has(r.id) || SHEETISH.test(r.type) || BOOK_OWNED.test(r.type))
         continue;
+      // persons read by the comments feature are written from wb.persons
+      if (wb.persons !== undefined && /\/person$/.test(r.type)) continue;
       const t = this.target(r);
       if (t !== undefined) implicit.push(out.push({ type: r.type, target: t }) - 1);
     }

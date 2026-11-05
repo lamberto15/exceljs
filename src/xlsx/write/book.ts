@@ -8,7 +8,7 @@ import type { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { nativeCompressor } from '../../zip/index.js';
 import { type PPart, presOf } from '../common/preserved.js';
-import type { BookWriteCtx, FeatureWriter } from '../features/types.js';
+import { BookSlot, type BookWriteCtx, type FeatureWriter } from '../features/types.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts, type PartRec, RelList, relElems } from './package.js';
 import {
@@ -94,10 +94,13 @@ export function bookParts(
   }
   const pb = wb.preserved;
   const extra: [number, string, number][] = [];
+  const owned = new Set<number>();
   for (const f of writers) {
     for (const e of f.book?.emitters ?? []) {
       const x = e.emit(ctx);
       if (x) extra.push([e.slot, x, e.order ?? 0]);
+      // extLst is a container (each feature adds its own <ext>): never owned as a whole
+      if ((x && e.slot !== BookSlot.extLst) || e.owns?.(wb)) owned.add(e.slot);
     }
   }
   let info = book;
@@ -110,7 +113,8 @@ export function bookParts(
       ctx.addRel,
       book.sheets.map((s) => s.sheetId),
     );
-    extra.push(...pres.frags);
+    // a kept element gives way to the model's (BookEmitter.owns)
+    for (const f of pres.frags) if (!owned.has(f[0])) extra.push(f);
     info = {
       ...book,
       prAttrs: pb?.prAttrs,

@@ -11,7 +11,16 @@ export {
   type ChartType,
   chartsWriter,
 } from './charts.js';
-export { addNote, commentsReader, commentsWriter, type Note } from './comments.js';
+export {
+  addNote,
+  addThreadedComment,
+  commentsReader,
+  commentsWriter,
+  type Note,
+  type Person,
+  type ThreadedComment,
+  type ThreadedReply,
+} from './comments.js';
 export {
   addConditionalFormatting,
   type CfAboveAverageRule,
@@ -35,6 +44,13 @@ export {
   conditionalFormattingReader,
   conditionalFormattingWriter,
 } from './conditional-formatting.js';
+export {
+  addCustomView,
+  type CustomSheetView,
+  type CustomView,
+  customViewsReader,
+  customViewsWriter,
+} from './custom-views.js';
 export {
   addDataValidation,
   type DataValidation,

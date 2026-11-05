@@ -27,7 +27,7 @@ export {
  * - `opts.limits`: zip-bomb limits (entry count, sizes, compression ratio).
  * - `opts.maxRows` / `opts.maxCols`: throw SheetLimitError at the first cell beyond them.
  * - `opts.preserveUnknown` (default true): keep what the model does not represent (charts,
- *   shapes, pivot tables, threaded comments, VBA, custom XML, unknown worksheet elements, ...)
+ *   shapes, pivot tables, VBA, custom XML, unknown worksheet elements, ...)
  *   so `writeXlsx` / `xlsxStream` write it back (see `listPreservedParts`). Kept parts stay
  *   compressed in the input buffer (inflated when written): do not mutate `data` afterwards.
  *   `false` drops all of it (and does not retain the input buffer).

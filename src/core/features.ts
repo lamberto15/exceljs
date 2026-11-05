@@ -8,8 +8,9 @@
 
 import type { PBook, PSheet } from '../xlsx/common/preserved.js';
 import type { Chart } from '../xlsx/features/charts.js';
-import type { Note } from '../xlsx/features/comments.js';
+import type { Note, Person, ThreadedComment } from '../xlsx/features/comments.js';
 import type { ConditionalFormatting } from '../xlsx/features/conditional-formatting.js';
+import type { CustomSheetView, CustomView } from '../xlsx/features/custom-views.js';
 import type { DataValidation } from '../xlsx/features/data-validation.js';
 import type { IgnoredError } from '../xlsx/features/ignored-errors.js';
 import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
@@ -31,6 +32,13 @@ export interface WorksheetFeatureFields {
   ignoredErrors?: IgnoredError[] | undefined;
   /** Cell notes (legacy comments), one per cell (features/comments; see addNote). */
   comments?: Note[] | undefined;
+  /**
+   * Threaded comments (Excel 365 conversations), one thread per cell (features/comments; see
+   * addThreadedComment). Written with the legacy note Excel needs for older versions.
+   */
+  threadedComments?: ThreadedComment[] | undefined;
+  /** This sheet's settings in each custom view (`wb.customViews`; features/custom-views). */
+  customSheetViews?: CustomSheetView[] | undefined;
   /** Pictures placed on the sheet (features/images; see placeImage). */
   images?: ImagePlacement[] | undefined;
   /** Charts placed on the sheet (features/charts; see addChart). Write only: charts of read files are kept raw. */
@@ -53,6 +61,13 @@ export interface WorksheetFeatureFields {
 }
 
 export interface WorkbookFeatureFields {
+  /**
+   * People who wrote threaded comments (xl/persons/person.xml), kept from read files; writers
+   * add one for each new author (features/comments).
+   */
+  persons?: Person[] | undefined;
+  /** Custom views (View > Custom Views), with the window each restores (features/custom-views). */
+  customViews?: CustomView[] | undefined;
   /** Document properties (File > Info / Properties), written to docProps/core.xml & app.xml. */
   title?: string | undefined;
   subject?: string | undefined;

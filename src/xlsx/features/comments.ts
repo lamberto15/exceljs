@@ -11,10 +11,12 @@
 // file order; look one up with `ws.comments?.find((n) => n.ref === 'B2')`.
 // Box size is in pixels; the VML anchor is derived from it and the sheet's actual column widths /
 // row heights (defaults: 64 x 20 px). On read, visibility and size come from the VML part when present
-// (a missing VML part is tolerated). Excel 365 threaded comments (xl/threadedComments) are not
-// modelled: Excel also writes a legacy note for each thread ("[Threaded comment] ...", author
-// "tc={id}"), which is what is read here; readXlsx keeps the threaded part and the persons part
-// (round-trip preservation) and writes them back while the sheet still has notes.
+// (a missing VML part is tolerated).
+// Threaded comments (Excel 365 conversations: xl/threadedComments/threadedCommentN.xml, authors
+// in xl/persons/person.xml) are `ws.threadedComments` (one thread per cell, with replies) and
+// `wb.persons`. For each thread the writer also emits the legacy note Excel expects
+// ("[Threaded comment] ...", author "tc={thread id}") — older Excel versions show it; the reader
+// drops those generated notes from `ws.comments`. A cell holds a note or a thread, not both.
 // The VML part is regenerated from the notes. Other shapes of a read VML (form controls) are
 // kept: merged into the regenerated VML when the sheet had notes (ws.preserved.vml, see
 // read/preserve.ts), else the whole part is kept with its <legacyDrawing>.
@@ -23,7 +25,13 @@ import { decodeAddr, decodeCol, encodeAddr } from '../../core/address.js';
 import type { RichText } from '../../core/types.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, parseXml } from '../../xml/index.js';
-import { type FeatureReader, type FeatureWriter, SheetSlot, type SheetWriteCtx } from './types.js';
+import {
+  type FeatureReader,
+  type FeatureWriter,
+  type SheetReadCtx,
+  SheetSlot,
+  type SheetWriteCtx,
+} from './types.js';
 import { escapeText, num, presVml, runsXml, StringItemBuilder, tElem } from './util.js';
 
 export interface Note {
@@ -59,6 +67,61 @@ export interface Note {
    * cells), 'oneCells' (move but don't size), 'twoCells' (move and size).
    */
   editAs?: 'twoCells' | 'oneCells' | 'absolute' | undefined;
+}
+
+/** A reply in a threaded comment. */
+export interface ThreadedReply {
+  text: string;
+  /** Display name of the author (a `wb.persons` entry; added when missing). */
+  author: string;
+  date?: Date | undefined;
+  /** GUID kept from the file ("{...}"); generated when missing. */
+  id?: string | undefined;
+}
+
+/** A threaded comment (Excel 365 conversation) on a cell. */
+export interface ThreadedComment {
+  /** Cell address, "B2". */
+  ref: string;
+  text: string;
+  /** Display name of the author (a `wb.persons` entry; added when missing). */
+  author: string;
+  date?: Date | undefined;
+  /** The thread is resolved. */
+  done?: boolean | undefined;
+  replies?: ThreadedReply[] | undefined;
+  /** GUID kept from the file ("{...}"); generated when missing. */
+  id?: string | undefined;
+}
+
+/** An author of threaded comments (xl/persons/person.xml). */
+export interface Person {
+  displayName: string;
+  /** GUID ("{...}"). */
+  id: string;
+  /** Account id, e.g. an e-mail address (default: the display name). */
+  userId?: string | undefined;
+  /** Account provider: "AD", "Windows Live", "PeoplePicker", "None" (default). */
+  providerId?: string | undefined;
+}
+
+/**
+ * Add a threaded comment to a cell (replacing a thread already there); returns it. `replies`
+ * are appended in order. A note on the same cell is an error when writing.
+ */
+export function addThreadedComment(
+  ws: Worksheet,
+  ref: string,
+  comment: Omit<ThreadedComment, 'ref'>,
+): ThreadedComment {
+  const a = decodeAddr(ref);
+  const t: ThreadedComment = { ...comment, ref: encodeAddr(a.row, a.col) };
+  ws.threadedComments ??= [];
+  const list = ws.threadedComments;
+  const i = list.findIndex((x) => x.ref === t.ref);
+  if (i >= 0) list[i] = t;
+  else list.push(t);
+  return t;
 }
 
 /** Add (or replace) the note of a cell; returns the stored note. */
@@ -178,8 +241,103 @@ function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): stri
   return `${s}</xml>`;
 }
 
+const NS_TC = 'http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments';
+const REL_TC = 'http://schemas.microsoft.com/office/2017/10/relationships/threadedComment';
+const REL_PERSON = 'http://schemas.microsoft.com/office/2017/10/relationships/person';
+const CT_TC = 'application/vnd.ms-excel.threadedcomments+xml';
+const CT_PERSON = 'application/vnd.ms-excel.person+xml';
+
+/** A stable GUID ("{XXXXXXXX-...}") derived from `seed` (deterministic output). */
+function guid(seed: string): string {
+  let hex = '';
+  for (let k = 0; k < 4; k++) {
+    let h = 0x811c9dc5 ^ (k * 0x9e3779b9);
+    for (let i = 0; i < seed.length; i++) {
+      h ^= seed.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    hex += (h >>> 0).toString(16).padStart(8, '0');
+  }
+  hex = hex.toUpperCase();
+  return `{${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}}`;
+}
+
+/** The person id of an author: from `wb.persons`, else derived from the name. */
+function personId(c: { workbook: Worksheet['workbook'] }, name: string): string {
+  return c.workbook.persons?.find((p) => p.displayName === name)?.id ?? guid(`person:${name}`);
+}
+
+const threadId = (ws: Worksheet, t: ThreadedComment): string =>
+  t.id ?? guid(`tc:${ws.name}:${t.ref}`);
+
+/** Excel's timestamp form: local time without zone, two decimals. */
+const stamp = (d: Date): string => `${d.toISOString().slice(0, 19)}.00`;
+
+const LEGACY =
+  '[Threaded comment]\n\nYour version of Excel allows you to read this threaded comment; however, any edits to it will get removed if the file is opened in a newer version of Excel. Learn more: https://go.microsoft.com/fwlink/?linkid=870924\n\nComment:\n    ';
+
+/** The legacy notes Excel writes alongside threads (older versions show them). */
+function threadNotes(ws: Worksheet): Note[] {
+  return (ws.threadedComments ?? []).map((t) => {
+    let text = LEGACY + t.text;
+    for (const r of t.replies ?? []) text += `\nReply:\n    ${r.text}`;
+    return { ref: t.ref, text, author: `tc=${threadId(ws, t)}` };
+  });
+}
+
+function threadsXml(c: SheetWriteCtx, threads: readonly ThreadedComment[]): string {
+  let s = '';
+  const one = (
+    ref: string,
+    text: string,
+    author: string,
+    date: Date | undefined,
+    id: string,
+    extra: string,
+  ) => {
+    s += `<threadedComment ref="${ref}"${date ? ` dT="${stamp(date)}"` : ''} personId="${personId(c, author)}" id="${id}"${extra}><text>${escapeText(text)}</text></threadedComment>`;
+  };
+  for (const t of threads) {
+    const a = decodeAddr(t.ref);
+    const ref = encodeAddr(a.row, a.col);
+    const root = threadId(c.ws, t);
+    one(ref, t.text, t.author, t.date, root, t.done ? ' done="1"' : '');
+    (t.replies ?? []).forEach((r, k) => {
+      one(
+        ref,
+        r.text,
+        r.author,
+        r.date,
+        r.id ?? guid(`tc:${c.ws.name}:${t.ref}:${k}`),
+        ` parentId="${root}"`,
+      );
+    });
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<ThreadedComments xmlns="${NS_TC}" xmlns:x="${NS_MAIN}">${s}</ThreadedComments>`;
+}
+
 function emit(c: SheetWriteCtx): string {
-  const notes = c.ws.comments ?? [];
+  const threads = c.ws.threadedComments ?? [];
+  const own = c.ws.comments ?? [];
+  for (const t of threads) {
+    const a = decodeAddr(t.ref);
+    if (
+      own.some((n) => {
+        const b = decodeAddr(n.ref);
+        return a.row === b.row && a.col === b.col;
+      })
+    ) {
+      throw new Error(
+        `Worksheet '${c.ws.name}': cell ${t.ref} has both a note and a threaded comment (Excel allows one)`,
+      );
+    }
+  }
+  const notes = threads.length ? [...own, ...threadNotes(c.ws)] : own;
+  if (threads.length) {
+    const n = c.nextIndex('threadedComment');
+    c.addPart(`xl/threadedComments/threadedComment${n}.xml`, threadsXml(c, threads), CT_TC);
+    c.addRel(REL_TC, `../threadedComments/threadedComment${n}.xml`);
+  }
   // without notes, a VML is still needed for shapes kept next to the read file's notes
   if (notes.length === 0 && !presVml(c.ws)) return '';
   const cells = notes.map((n) => {
@@ -204,6 +362,33 @@ function emit(c: SheetWriteCtx): string {
 export const commentsWriter: FeatureWriter = {
   name: 'comments',
   sheet: { emitters: [{ slot: SheetSlot.legacyDrawing, emit }] },
+  book: {
+    write(c) {
+      // the persons part: kept persons plus one per new threaded-comment author
+      const wb = c.workbook;
+      const list: Person[] = [...(wb.persons ?? [])];
+      for (const ws of wb.worksheets) {
+        for (const t of ws.threadedComments ?? []) {
+          for (const name of [t.author, ...(t.replies ?? []).map((r) => r.author)]) {
+            if (!list.some((p) => p.displayName === name)) {
+              list.push({ displayName: name, id: guid(`person:${name}`) });
+            }
+          }
+        }
+      }
+      if (!wb.worksheets.some((ws) => ws.threadedComments?.length)) return;
+      let s = '';
+      for (const p of list) {
+        s += `<person displayName="${escapeText(p.displayName).replace(/"/g, '&quot;')}" id="${p.id}" userId="${escapeText(p.userId ?? p.displayName).replace(/"/g, '&quot;')}" providerId="${escapeText(p.providerId ?? 'None').replace(/"/g, '&quot;')}"/>`;
+      }
+      c.addPart(
+        'xl/persons/person.xml',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<personList xmlns="${NS_TC}" xmlns:x="${NS_MAIN}">${s}</personList>`,
+        CT_PERSON,
+      );
+      c.addRel(REL_PERSON, 'persons/person.xml');
+    },
+  },
 };
 
 // ---------------------------------------------------------------- reading
@@ -356,6 +541,88 @@ function readVml(xml: string): Map<string, Shape> {
  * Read half of the cell notes (ws.comments) feature. Always on in the package root; in `./lite` pass it
  * in `features` of readXlsx (without it, the elements are kept raw and written back).
  */
+/** Persons of the package (xl/persons/person.xml via the workbook's relationships). */
+function readPersons(ctx: SheetReadCtx): Person[] {
+  const root = [...(ctx.relsOf('')?.values() ?? [])].find(
+    (r) => relKind(r.type) === 'officeDocument',
+  );
+  const rel =
+    root && [...(ctx.relsOf(root.path)?.values() ?? [])].find((r) => relKind(r.type) === 'person');
+  const xml = rel && !rel.external ? ctx.readText(rel.path) : undefined;
+  const out: Person[] = [];
+  if (!xml) return out;
+  parseXml(xml, {
+    open(name, a) {
+      if (localName(name) !== 'person' || !a.id) return;
+      const p: Person = { displayName: a.displayName ?? '', id: a.id };
+      if (a.userId !== undefined && a.userId !== p.displayName) p.userId = a.userId;
+      if (a.providerId !== undefined && a.providerId !== 'None') p.providerId = a.providerId;
+      out.push(p);
+    },
+  });
+  return out;
+}
+
+const parseStamp = (s: string | undefined): Date | undefined => {
+  const m = s && /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(\.\d+)?/.exec(s);
+  return m
+    ? new Date(
+        Date.UTC(
+          +m[1]!,
+          +m[2]! - 1,
+          +m[3]!,
+          +m[4]!,
+          +m[5]!,
+          +m[6]!,
+          Math.round(+(m[7] ?? 0) * 1000),
+        ),
+      )
+    : undefined;
+};
+
+function readThreads(xml: string, persons: Person[]): ThreadedComment[] {
+  const byId = new Map<string, ThreadedComment>();
+  const out: ThreadedComment[] = [];
+  let cur: { a: Record<string, string>; text: string } | undefined;
+  let inText = false;
+  const name = (pid: string | undefined) => persons.find((p) => p.id === pid)?.displayName ?? '';
+  parseXml(xml, {
+    open(n, a) {
+      const ln = localName(n);
+      if (ln === 'threadedComment') cur = { a: { ...a }, text: '' };
+      else if (ln === 'text' && cur) inText = true;
+    },
+    text(t) {
+      if (inText && cur) cur.text += t;
+    },
+    close(n) {
+      const ln = localName(n);
+      if (ln === 'text') inText = false;
+      else if (ln === 'threadedComment' && cur) {
+        const { a, text } = cur;
+        cur = undefined;
+        const date = parseStamp(a.dT);
+        if (a.parentId) {
+          const root = byId.get(a.parentId);
+          if (!root) return;
+          const r: ThreadedReply = { text, author: name(a.personId), id: a.id };
+          if (date) r.date = date;
+          if (root.replies) root.replies.push(r);
+          else root.replies = [r];
+          return;
+        }
+        if (!a.ref) return;
+        const t: ThreadedComment = { ref: a.ref, text, author: name(a.personId), id: a.id };
+        if (date) t.date = date;
+        if (a.done === '1' || a.done === 'true') t.done = true;
+        if (a.id) byId.set(a.id, t);
+        out.push(t);
+      }
+    },
+  });
+  return out;
+}
+
 export const commentsReader: FeatureReader = {
   name: 'comments',
   sheet: {
@@ -363,6 +630,7 @@ export const commentsReader: FeatureReader = {
       if (!ctx.rels) return;
       let notes: Note[] | undefined;
       let vml: string | undefined;
+      let threads: ThreadedComment[] | undefined;
       for (const r of ctx.rels.values()) {
         if (r.external) continue;
         const k = relKind(r.type);
@@ -370,6 +638,24 @@ export const commentsReader: FeatureReader = {
           const xml = ctx.readText(r.path);
           if (xml) notes = readComments(xml);
         } else if (k === 'vmlDrawing') vml ??= ctx.readText(r.path);
+        else if (k === 'threadedComment') {
+          const xml = ctx.readText(r.path);
+          if (xml) {
+            const wb = ctx.workbook;
+            wb.persons ??= readPersons(ctx);
+            threads = readThreads(xml, wb.persons);
+          }
+        }
+      }
+      if (threads?.length) {
+        ctx.ws.threadedComments = threads;
+        // the legacy notes Excel wrote for the threads are regenerated from them
+        const at = new Set(threads.map((t) => t.ref));
+        notes = (notes ?? []).filter((n) => !(n.author?.startsWith('tc=') && at.has(n.ref)));
+        if (notes.length === 0) {
+          ctx.ws.comments = [];
+          return;
+        }
       }
       if (!notes || notes.length === 0) return;
       let shapes: Map<string, Shape> | undefined;

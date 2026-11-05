@@ -157,7 +157,7 @@ ExcelJS differences: these are functions, not methods; `spliceRows(ws, start, co
 
 Outline groups: `groupRows(ws, 2, 5)` / `groupColumns(ws, 'B', 'D')` put rows / columns one outline level deeper (Excel's *Data > Group*, max 7 levels); `{ collapsed: true }` also hides them and flags the summary row below (column to the right). Iterate with `for (const row of ws.rows())` and `for (const [col, value] of row.cells())`.
 
-Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, threaded comments, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
+Not adjusted: content kept raw from a read file (charts read from a file, pivot tables, sparklines, ...), hyperlink targets (`#Sheet!A1`), `ws.views` (frozen panes, selection), 3D (`Sheet1:Sheet3!A1`) and external-workbook references.
 
 ## Sorting and templates
 
@@ -224,7 +224,32 @@ addNote(ws, 'B5', {
 });
 ```
 
-These are classic notes (legacy comments with a VML box). Threaded comments in existing files are preserved, not modelled.
+These are classic notes (legacy comments with a VML box).
+
+Threaded comments (Excel 365 conversations) are `ws.threadedComments`, one thread per cell:
+
+```ts
+addThreadedComment(ws, 'C2', {
+  text: 'Is this right?',
+  author: 'Ann',
+  date: new Date(),
+  replies: [{ text: 'Yes, checked', author: 'Bob' }],
+});
+ws.threadedComments![0]!.done = true; // resolve the thread
+```
+
+Authors are `wb.persons` (`{ displayName, id, userId?, providerId? }`): read from files (account ids are kept), and one is added per new author when writing. Each thread is also written as the legacy note Excel expects (older Excel versions show it as "[Threaded comment] ..."); the reader turns those back into the thread, so `ws.comments` holds only real notes. A cell has a note or a thread, not both (writing both throws).
+
+## Custom views
+
+`wb.customViews` are the named views of View > Custom Views; `ws.customSheetViews` hold each sheet's settings in a view (zoom, gridlines, view mode, hidden state, frozen pane / selection and print settings, as XML in `children`). Both are read from and written to files.
+
+```ts
+ws.views = [{ state: 'frozen', ySplit: 1, zoomScale: 120 }];
+addCustomView(wb, 'Review'); // every sheet as it is now; same name replaces
+```
+
+Hidden rows / columns and filters of a view are defined names Excel keeps (`Z_{GUID}_.wvu.Rows`, ...), which round-trip with `wb.definedNames`.
 
 ## Pictures
 
@@ -339,7 +364,7 @@ ws.protection = { password: 's3cret', formatCells: false, insertRows: false };
 
 ## Round-trip preservation
 
-`readXlsx` keeps what the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, themes, custom XML, unknown worksheet elements, ...) and `writeXlsx`/`xlsxStream` write it back, so loading a file, editing cells and saving does not strip it.
+`readXlsx` keeps what the model does not represent (charts, pivot tables, shapes, VBA, themes, custom XML, unknown worksheet elements, ...) and `writeXlsx`/`xlsxStream` write it back, so loading a file, editing cells and saving does not strip it.
 
 ```ts
 const wb = readXlsx(bytes);                 // preserveUnknown defaults to true
