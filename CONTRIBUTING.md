@@ -52,7 +52,7 @@ CI changes do not need one.
 ## Pull requests
 
 - Use conventional commit messages (`feat:`, `fix:`, `docs:`, ...).
-- Open PRs against `next` (the default branch). Required checks: the test matrix (Node 22 and 24 on ubuntu and
+- Open PRs against `main` (the default branch). Required checks: the test matrix (Node 22 and 24 on ubuntu and
   windows: typecheck, test, build) and `quality` (lint, build, size, LibreOffice opens the generated files).
   There is no macOS CI job; files are verified in Excel for Mac locally with the Excel pack.
 - Keep PRs focused, with tests for behavior changes.

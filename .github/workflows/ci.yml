@@ -1,8 +1,8 @@
-name: next
+name: ci
 
 on:
   push:
-    branches: [next]
+    branches: [main]
   pull_request:
 
 jobs:

@@ -16,6 +16,8 @@ const ENTRIES: Record<string, string> = {
   'turbosheet/json': 'src/json/index.ts',
   'turbosheet/crypto': 'src/crypto/index.ts',
   'turbosheet/formula': 'src/formula/index.ts',
+  'turbosheet/xlsb': 'src/xlsb/index.ts',
+  'turbosheet/xls': 'src/xls/index.ts',
 };
 
 const toTs = (from: string, spec: string): string =>

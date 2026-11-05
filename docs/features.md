@@ -21,6 +21,7 @@ Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per 
 - [Round-trip preservation](#round-trip-preservation)
 - [Streaming with features](#streaming-with-features)
 - [Encryption](#encryption)
+- [Reading .xlsb and .xls](#reading-xlsb-and-xls)
 - [Lite: opt-in features](#lite-opt-in-features)
 
 ## Cell values, rich text, hyperlinks, formulas
@@ -467,6 +468,21 @@ See [`turbosheet/crypto` in api.md](./api.md#crypto):
 const encrypted = await encryptXlsx(writeXlsx(wb), 'hunter2');
 const wb2 = readXlsx(await decryptXlsx(encrypted, 'hunter2'));
 ```
+
+## Reading .xlsb and .xls
+
+Excel binary workbooks (`.xlsb`) and legacy Excel 97-2003 files (`.xls`) are read into the same model as `.xlsx`, by two separate entries (nothing is added to the main bundles). Writing them is not supported: convert with `writeXlsx`.
+
+```ts
+import { readXlsb } from 'turbosheet/xlsb';
+import { readXls } from 'turbosheet/xls';
+
+const wb = name.endsWith('.xls') ? readXls(bytes) : readXlsb(bytes);
+wb.getWorksheet('Data')?.getValue('B2'); // values, styles, merges, names... as readXlsx gives them
+const xlsx = writeXlsx(wb); // convert
+```
+
+Formulas come back as text with their cached result (`{ formula: 'SUM(A1:A3)', result: 6 }`); formulas the decompiler does not know (structured table references, links to other workbooks, ...) keep their cached value only. Charts, pictures, comments, data validation and conditional formatting are not read. What is covered and what is not: [api.md](./api.md#binary-workbooks-xlsb-xls).
 
 ## Lite: opt-in features
 

@@ -541,3 +541,17 @@ value toNumber
 value toText
 value track
 
+# turbosheet/xlsb
+value BiffParseError
+type  BinaryReadOptions
+value ZipLimitError
+value ZipPathError
+value readXlsb
+
+# turbosheet/xls
+value BiffParseError
+type  BinaryReadOptions
+value CfbError
+value EncryptedXlsError
+value readXls
+

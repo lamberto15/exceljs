@@ -1,7 +1,14 @@
 // Every code sample in README.md and docs/*.md lives here (same code, imports from '../src').
 // If you change a sample in the docs, change it here too: this file keeps the docs honest.
 
-import { createReadStream, createWriteStream, mkdtempSync, openAsBlob, rmSync } from 'node:fs';
+import {
+  createReadStream,
+  createWriteStream,
+  mkdtempSync,
+  openAsBlob,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
@@ -37,6 +44,8 @@ import {
 } from '../src/index.js';
 import { objectsToSheet, sheetToNdjson, sheetToObjects } from '../src/json/index.js';
 import * as lite from '../src/lite.js';
+import { readXls } from '../src/xls/index.js';
+import { readXlsb } from '../src/xlsb/index.js';
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), 'turbosheet-readme-'));
 
@@ -184,6 +193,26 @@ describe('README quick start', () => {
     const back = readXlsx(await decryptXlsx(encrypted, 'hunter2'));
     expect(back.getWorksheet('Secret')!.getValue('B1')).toBe('secret');
   }, 30_000);
+
+  it('.xlsb and legacy .xls (README, docs/features.md)', () => {
+    const file = (n: string) =>
+      new Uint8Array(readFileSync(new URL(`./fixtures/binary/${n}`, import.meta.url)));
+    const xlsbBytes = file('excel-saved.xlsb');
+    const xlsBytes = file('excel-saved.xls');
+    const fromXlsb = readXlsb(xlsbBytes); // same Workbook model as readXlsx
+    const fromXls = readXls(xlsBytes); // Excel 97-2003 (BIFF8)
+    const xlsx = writeXlsx(fromXls); // convert
+    expect(fromXlsb.getWorksheet('Data')?.getValue('B1')).toBe(42);
+    expect(readXlsx(xlsx).getWorksheet('Data')?.getValue('A5')).toEqual({
+      formula: 'B1*2',
+      result: 84,
+    });
+    for (const name of ['excel-saved.xls', 'excel-saved.xlsb']) {
+      const bytes = file(name);
+      const wb = name.endsWith('.xls') ? readXls(bytes) : readXlsb(bytes);
+      expect(wb.getWorksheet('Data')?.getValue('B2')).toBe(false);
+    }
+  });
 
   it('round-trip preservation', () => {
     const wb = new Workbook();

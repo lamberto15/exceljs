@@ -1,10 +1,10 @@
 # API reference
 
-Covers 0.6.0 (the `dist/*.d.ts` type declarations have the full signatures and JSDoc). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json`, `turbosheet/crypto` and `turbosheet/formula` are separate entries.
+Covers 0.6.0 (the `dist/*.d.ts` type declarations have the full signatures and JSDoc). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json`, `turbosheet/crypto`, `turbosheet/formula`, `turbosheet/xlsb` and `turbosheet/xls` are separate entries.
 
 Conventions: **rows and columns in the public API are 1-based** (like Excel); columns may be given as a number or a letter (`3` or `'C'`). Cell addresses are A1 strings (`'B3'`). The low-level helpers in `address` (`decodeAddr`, `decodeRange`, `encodeAddr`, `encodeRange`, `encodeCol`, `decodeCol`) are **0-based** and ranges are `{ top, left, bottom, right }`.
 
-Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, columns](#rows-cells-columns) - [CellValue](#cellvalue) - [Style](#style) - [Writing](#writing) - [Reading](#reading) - [Streaming writer](#streaming-writer) - [Features](#features) - [CSV](#csv) - [JSON](#json) - [Crypto](#crypto) - [Formula](#formula) - [Errors](#errors) - [Addresses and dates](#addresses-and-dates)
+Contents: [Workbook](#workbook) - [Worksheet](#worksheet) - [Rows, cells, columns](#rows-cells-columns) - [CellValue](#cellvalue) - [Style](#style) - [Writing](#writing) - [Reading](#reading) - [Streaming writer](#streaming-writer) - [Features](#features) - [CSV](#csv) - [JSON](#json) - [Crypto](#crypto) - [Binary workbooks (.xlsb, .xls)](#binary-workbooks-xlsb-xls) - [Formula](#formula) - [Errors](#errors) - [Addresses and dates](#addresses-and-dates)
 
 ## Workbook
 
@@ -377,6 +377,29 @@ encryptXlsx(zipBytes, password, { cipher?: 'AES-128'|'AES-192'|'AES-256', hash?:
 
 Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. `decryptXlsx` reads agile and standard (Excel 2007) encryption; `encryptXlsx` writes agile. `verifyIntegrity` defaults to true; `maxSpinCount` defaults to 10,000,000.
 
+## Binary workbooks (.xlsb, .xls)
+
+`import { readXlsb } from 'turbosheet/xlsb'` and `import { readXls } from 'turbosheet/xls'` (synchronous, read-only)
+
+```ts
+readXlsb(data: Uint8Array | ArrayBuffer, opts?: BinaryReadOptions): Workbook   // Excel binary workbook (BIFF12 in a zip)
+readXls(data: Uint8Array | ArrayBuffer, opts?: BinaryReadOptions): Workbook    // Excel 97-2003 (BIFF8 in an OLE compound file)
+
+interface BinaryReadOptions {
+  limits?: Partial<Limits>;     // .xlsb: the zip limits of readXlsx; .xls: maxEntryBytes caps each compound-file stream
+  sheets?: readonly string[];   // only load these sheets (case-insensitive)
+  localDates?: boolean;         // sets workbook.localDates
+}
+```
+
+Both return the model `readXlsx` returns for the same workbook saved as .xlsx: write it with `writeXlsx` to convert. Read: sheet order, names and hidden state; numbers, text, booleans, errors and styled blank cells; shared strings incl. rich text runs (`RichText` with their fonts); dates as numbers with a date format (`getValue` gives a `Date`, as for .xlsx); styles interned into `wb.styles` (number formats incl. built-in ids, fonts, pattern fills, borders, alignment, protection; in .xls the full theme / RGB colors Excel 2007+ stores in `XFExt` records, palette indices otherwise); merged cells; column widths, hidden columns and column styles; row heights, hidden rows and row styles; outline levels; defined names (ranges, constants, formulas, sheet scope, built-ins such as `_xlnm.Print_Area`; `_xlnm._FilterDatabase` becomes `ws.autoFilter`); hyperlinks (.xls: URLs and in-workbook locations); the 1904 date system.
+
+Formulas are decompiled from their binary tokens to the text `readXlsx` gives (`{ formula, result }`, with the cached result): references (relative, absolute, whole rows / columns, other sheets, `#REF!`), shared formulas (each cell gets its own text), array formulas (`array` range on the top-left cell, the other cells keep their cached values), operators, strings, numbers, booleans, errors, array constants, built-in functions, future functions (`XLOOKUP`, `IFERROR` in .xls, ...) and defined names. A formula using a token the decompiler does not know (structured table references, references to other workbooks, data tables, macro-sheet functions) keeps only its cached value.
+
+Not read: charts, pictures, comments, data validation, conditional formatting, tables, pivot tables, sheet views and protection, print setup, document properties, VBA, gradient fills (read as no fill), custom palettes (.xls indexed colors stay `{ indexed }`). `.xls` files saved by Excel 95 or older (BIFF5 and below) and password-protected `.xls` files are rejected. A password-protected `.xlsb` is an encrypted OOXML container: `readXlsb(await decryptXlsx(bytes, password))`.
+
+Errors: `BiffParseError` (malformed data, wrong format; both entries), `EncryptedXlsError` (extends `BiffParseError`, `.xls` with a FILEPASS record), `CfbError` (broken compound file, `./xls`), `ZipLimitError` / `ZipPathError` (`./xlsb`).
+
 ## Formula
 
 `import { ... } from 'turbosheet/formula'` (synchronous; details, semantics and the function list: [formula.md](./formula.md))
@@ -409,6 +432,7 @@ Custom functions receive references as `FormulaRange` (0-based `top`/`left`/`bot
 | `RangeError`, `TypeError`, `Error` | model methods | Invalid addresses or options (`RangeError` / `TypeError`, e.g. a `{ sharedFormula }` whose master holds no formula); overlapping merges and bad sheet names throw a plain `Error`. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
 | `CsvError` | `turbosheet/csv` | Option or size-limit problem. |
+| `BiffParseError`, `EncryptedXlsError` | `turbosheet/xlsb`, `turbosheet/xls` | Malformed or unsupported binary workbook; password-protected `.xls` (`EncryptedXlsError` extends `BiffParseError`). |
 | `FormulaParseError` (extends `SyntaxError`) | `parseFormula`, `evaluateFormula` | Formula text that does not parse; `position` is the 0-based offset. `evaluate` reports such cells instead of throwing. |
 
 In `turbosheet/lite`, writing a feature field whose writer is not enabled throws (for example ``Worksheet 'Data': ws.tables is set but the 'tables' feature is not enabled; pass features: [tablesWriter]``) instead of dropping data silently.

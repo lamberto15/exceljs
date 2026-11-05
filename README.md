@@ -1,6 +1,6 @@
 # turbosheet
 
-[![npm](https://img.shields.io/npm/v/turbosheet)](https://www.npmjs.com/package/turbosheet) [![CI](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml/badge.svg?branch=next)](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml?query=branch%3Anext) [![minzipped size](https://img.shields.io/bundlephobia/minzip/turbosheet)](https://bundlephobia.com/package/turbosheet) [![node](https://img.shields.io/node/v/turbosheet)](https://nodejs.org) [![license](https://img.shields.io/npm/l/turbosheet)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/turbosheet)](https://www.npmjs.com/package/turbosheet) [![CI](https://github.com/lamberto15/turbosheet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lamberto15/turbosheet/actions/workflows/ci.yml?query=branch%3Amain) [![minzipped size](https://img.shields.io/bundlephobia/minzip/turbosheet)](https://bundlephobia.com/package/turbosheet) [![node](https://img.shields.io/node/v/turbosheet)](https://nodejs.org) [![license](https://img.shields.io/npm/l/turbosheet)](./LICENSE)
 
 Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript runtime.
 
@@ -169,9 +169,22 @@ const back = readXlsx(await decryptXlsx(encrypted, 'hunter2')); // WrongPassword
 
 Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are read only.
 
+### .xlsb and legacy .xls
+
+```ts
+import { readXlsb } from 'turbosheet/xlsb';
+import { readXls } from 'turbosheet/xls';
+
+const fromXlsb = readXlsb(xlsbBytes); // same Workbook model as readXlsx
+const fromXls = readXls(xlsBytes); // Excel 97-2003 (BIFF8)
+const xlsx = writeXlsx(fromXls); // convert
+```
+
+Read-only: values, shared strings and rich text, styles, merges, column widths, row heights, hidden sheets / rows / columns, defined names, hyperlinks, the 1904 date system, and formulas decompiled to text with their cached results. See [api.md](./docs/api.md#binary-workbooks-xlsb-xls) for what is not read.
+
 ## Features
 
-Formula evaluation (`turbosheet/formula`: 213 functions, structured references, `LET`, dynamic arrays that spill, dependency graph, incremental recalculation, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), outline groups, tables (append, read and edit), notes, threaded comments, custom views, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts read from a file, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Formula evaluation (`turbosheet/formula`: 213 functions, structured references, `LET`, dynamic arrays that spill, dependency graph, incremental recalculation, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), outline groups, tables (append, read and edit), notes, threaded comments, custom views, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings, reading `.xlsb` and legacy `.xls` (`turbosheet/xlsb`, `turbosheet/xls`). Everything the model does not represent (charts read from a file, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
@@ -212,6 +225,8 @@ addConditionalFormatting(ws, 'B2:B3', [
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
 | `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
 | `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 17 KB                    |
+| `turbosheet/xlsb`     | read .xlsb (Excel binary workbook)                          | 23.6 KB                        |
+| `turbosheet/xls`      | read legacy .xls (Excel 97-2003, BIFF8)                     | 20.2 KB                        |
 
 Sizes are from `pnpm size` for the 0.6.0 build (tree-shaken imports: write-only `{ Workbook, writeXlsx }`, lite read + write `{ Workbook, readXlsx, writeXlsx }`, others `*`; budgets in [docs/bundle-size.md](./docs/bundle-size.md)). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
 
@@ -234,7 +249,7 @@ This is a **0.x** release: the API may still change in minor versions, with chan
 
 Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. A 17-file pack covering every feature (including an encrypted file, the streaming writer and real files re-saved after reading; see `test/smoke/excel-pack.mjs`) was opened in **Microsoft Excel for Mac 16.114** with no repair prompts, and its content was checked through Excel (tables, conditional formatting, pictures, protection, chart sheets). Excel for Windows has not been checked yet. If you ever see a "We found a problem with some content" dialog, please open an issue with the file attached.
 
-Not supported yet: `.xls` and `.xlsb`. See the [roadmap](./ROADMAP.md).
+Not supported yet: writing `.xls` and `.xlsb` (both are read: `turbosheet/xls`, `turbosheet/xlsb`). See the [roadmap](./ROADMAP.md).
 
 ## Credits and license
 
