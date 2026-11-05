@@ -41,6 +41,8 @@ turbosheet never evaluates formulas: provide `result` if readers that do not rec
 
 Dynamic-array formulas (FILTER, SORT, UNIQUE, SEQUENCE, ... that spill in Excel 365) are written with Excel's dynamic-array metadata, so Excel shows `=SORT(A1:A9)` and spills it instead of turning it into `=@SORT(A1:A9)`. It is automatic for formulas using a spilling function; `{ formula, dynamic: true }` forces it, `dynamic: false` turns it off, and `array: 'C1:C9'` (without `dynamic`) still writes a legacy Ctrl+Shift+Enter array formula. Files read keep the flag.
 
+Filling: `fillFormula(ws, 'C2:C100', 'A2*B2', results?)` puts the formula in every cell with relative references adjusted (like Excel's fill handle); `results` (array or `(row, col) => value`) are the cached values. Recalculation: workbooks with formulas are written with `fullCalcOnLoad` so Excel recomputes on open; `wb.calcProperties = { fullCalcOnLoad: false }` turns that off when the cached results are current (e.g. after `evaluate`), `true` forces it.
+
 Copying: `copyWorksheet(ws)` adds a copy to the same workbook ("Data (2)"), `copyWorksheet(ws, otherWb, 'Name')` to another one (styles re-registered, pictures re-added, table names made unique, dates converted between date systems). `copyRange(src, 'A1:D10', dst, 'F2')` copies cells, styles and merges like copy-paste, adjusting relative references.
 
 Column keys may be dotted paths: with `ws.columns = [{ key: 'address.city' }]`, `ws.addRow({ address: { city: 'Oslo' } })` fills that column.

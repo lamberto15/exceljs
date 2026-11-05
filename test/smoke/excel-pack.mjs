@@ -22,6 +22,7 @@ import {
   createXlsxWriter,
   deleteRows,
   duplicateRow,
+  fillFormula,
   fillTemplate,
   fitImage,
   groupColumns,
@@ -914,6 +915,46 @@ for (const [file, what] of [
     '25-rich-hyperlink.xlsx',
     writeXlsx(wb),
     `"Links": A1 is a link to example.com whose first two words are bold. No repair prompt.`,
+  );
+}
+
+// 26: fillFormula + OFFSET / INDIRECT / LOOKUP computed by turbosheet, then by Excel
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Fns');
+  ws.addRows([
+    [1, 'one', 10],
+    [2, 'two', 20],
+    [3, 'three', 30],
+    [5, 'five', 50],
+  ]);
+  fillFormula(ws, 'D1:D4', 'C1*2');
+  const fs = [
+    'OFFSET(A1,2,1)',
+    'SUM(OFFSET(A1,1,0,3,1))',
+    'SUM(OFFSET(C4,0,0,-2,1))',
+    'INDIRECT("C2")',
+    'INDIRECT("B"&3)',
+    'SUM(INDIRECT("A1:A2"))',
+    'LOOKUP(4,A1:A4,B1:B4)',
+    'LOOKUP(99,A1:A4,C1:C4)',
+    'LOOKUP(2,A1:C4)',
+  ];
+  fs.forEach((f, i) => {
+    ws.setCell(i + 1, 6, { formula: f });
+  });
+  evaluate(wb);
+  fs.forEach((_, i) => {
+    ws.setCell(i + 1, 7, ws.getValue(i + 1, 6).result);
+  });
+  fs.forEach((_, i) => {
+    ws.setCell(i + 1, 8, { formula: `F${i + 1}=G${i + 1}` });
+  });
+  evaluate(wb);
+  save(
+    '26-fill-offset-indirect-lookup.xlsx',
+    writeXlsx(wb),
+    `"Fns": D1:D4 = 20, 40, 60, 100 (filled formula); column F: OFFSET / INDIRECT / LOOKUP formulas, G: turbosheet's results as values, H must be TRUE on every row after Excel recalculates (Ctrl+Alt+F9). No repair prompt.`,
   );
 }
 

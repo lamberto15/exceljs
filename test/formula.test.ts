@@ -324,11 +324,11 @@ describe('evaluate', () => {
     const ws = wb.getWorksheet()!;
     ws.setCell('A1', { formula: 'NOPE(1)+1' });
     ws.setCell('A2', { formula: 'NOPE(2)' });
-    ws.setCell('A3', { formula: 'IFERROR(OFFSET(A1,1,1),"fallback")' });
+    ws.setCell('A3', { formula: 'IFERROR(CELL("type",A1),"fallback")' });
     const seen: string[] = [];
     const rep = evaluate(wb, { onUnsupported: (n, a) => seen.push(`${n}@${a}`) });
-    expect(rep.unsupported).toEqual(['NOPE', 'OFFSET']);
-    expect(seen).toEqual(['NOPE@Sheet1!A1', 'OFFSET@Sheet1!A3']);
+    expect(rep.unsupported).toEqual(['CELL', 'NOPE']);
+    expect(seen).toEqual(['NOPE@Sheet1!A1', 'CELL@Sheet1!A3']);
     expect(result(wb, 'Sheet1', 'A1')).toEqual({ error: '#NAME?' });
     expect(result(wb, 'Sheet1', 'A3')).toBe('fallback');
   });

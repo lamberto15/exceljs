@@ -30,6 +30,7 @@ export interface BookInfo {
   readonly sheets: readonly SheetEntry[];
   readonly date1904: boolean;
   readonly sharedStrings: boolean;
+  /** Write `fullCalcOnLoad` (formulas present, or wb.calcProperties). */
   readonly formulas: boolean;
   readonly activeTab: number;
   readonly creator: string | undefined;
