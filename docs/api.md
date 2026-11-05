@@ -297,15 +297,31 @@ In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; 
 `import { ... } from 'turbosheet/csv'`
 
 ```ts
-parseCsv(text, opts?): string[][]                       // CsvValue[][] when parseNumbers / parseDates is set
+parseCsv(text, opts?): string[][]                       // CsvValue[][] when a typing option is set
 csvRows(source, opts?): AsyncIterable<string[]>         // source: AsyncIterable|Iterable<string|Uint8Array> | ReadableStream<Uint8Array>
 class CsvParser { constructor(onRow, opts?); write(chunk: string); end() }
 writeCsv(rows, opts?): string                           // each row followed by eol
 formatCsvRow(row, opts?): string                        // one row, no eol
 csvStream(rows, opts?): ReadableStream<Uint8Array>      // pull-based
+type CsvValue = string | number | boolean | Date | CellError
 ```
 
-Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bom` (strip, default true), `parseNumbers`, `parseDates` (unquoted ISO 8601), `maxFieldBytes` (default 16 MiB), `skipEmptyLines` (default true). Write options: `delimiter`, `quote`, `eol` (default `\r\n`), `bom` (default false), `escapeFormulas` (default false), `dateFormat` (default `toISOString()`). Errors: `CsvError` with `code` `FIELD_TOO_LARGE | BAD_OPTION`. Multi-byte UTF-8 split across chunks is handled.
+Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bom` (strip a leading U+FEFF, default true), `maxFieldBytes` (default 16 MiB), `skipEmptyLines` (default true). Write options: `delimiter`, `quote`, `eol` (default `\r\n`), `bom` (default false), `escapeFormulas` (default false), `dateFormat` (default `toISOString()`). Errors: `CsvError` with `code` `FIELD_TOO_LARGE | BAD_OPTION`.
+
+Typing (all opt-in, unquoted fields only: `"5"`, `"true"`, `"#N/A"` stay strings; rows are `string[]` without them):
+
+| Option | Converts | Notes |
+| --- | --- | --- |
+| `parseNumbers` | `-1.5`, `1e3` → number | no leading zeros (`007` stays text); integers over 15 digits stay text |
+| `parseDates` | ISO 8601 → `Date` | `2024-01-02`, `2024-01-02T03:04[:05[.123]]`, with `Z` / `±hh:mm` / `±hhmm` |
+| `dateFormats` | e.g. `['DD/MM/YYYY', 'MM/DD/YYYY HH:mm']` → `Date` | tried in order after ISO 8601; implies `parseDates` |
+| `localDates` | — | dates without an offset use the local wall clock instead of UTC |
+| `parseBooleans` | `true` / `false`, any case → boolean | |
+| `parseErrors` | `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!` → `{ error }` | exact case; `arraysToSheet` writes error cells |
+
+A field is tried as a number, then a date, then a boolean, then an error. `dateFormats` tokens: `YYYY` (4 digits), `MM` `DD` `HH` `mm` `ss` (2 digits), `M` `D` `H` `m` `s` (1 or 2 digits); `[text]` is literal and any other character must match itself. Each format needs `YYYY`, a month and a day; a bad format throws `CsvError` `BAD_OPTION`. Day/month order is always the format's, never guessed. Impossible values (`31/02/2024`, month 13, `24:00`) stay text and the next format is tried; ISO dates are checked the same way. Dates are UTC wall clock by default (`04/11/2019` with `DD/MM/YYYY` is `2019-11-04T00:00Z`), consistent with `Workbook` dates; use `localDates` together with `new Workbook({ localDates: true })`.
+
+Decoding (`csvRows` byte chunks; string chunks are used as is): option `encoding` is any `TextDecoder` label (`'windows-1252'`, `'iso-8859-1'`, `'utf-16le'`, `'shift_jis'`, ...; default `'utf-8'`; an unknown label throws `RangeError` when `csvRows` is called). Invalid bytes become U+FFFD. A BOM is sniffed first and always wins over `encoding`: `EF BB BF` UTF-8, `FF FE` UTF-16LE, `FE FF` UTF-16BE (so Excel's "Unicode Text" export reads correctly with no option); the BOM itself is then stripped per `bom`. `encoding: 'auto'`: without a BOM, ASCII bytes stream through as they arrive (they read the same in UTF-8 and windows-1252); the first chunk that holds a non-ASCII byte decides: if that chunk (from its first non-ASCII byte to its end) is valid UTF-8 the input is read as UTF-8, otherwise as windows-1252. A UTF-8 sequence cut at the chunk end waits for the next chunk; one cut at the end of the input counts as invalid. Once decided the choice is final: invalid UTF-8 in a later chunk becomes U+FFFD. A whole-file input (`csvRows([bytes])`) is therefore checked as a whole. Decoding is chunk-safe for every encoding: a BOM or a multi-byte character split across chunks (even 1-byte chunks) decodes correctly.
 
 ## JSON
 
@@ -315,7 +331,7 @@ Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bo
 sheetToObjects(ws, { header?: number | string[], range?, defval?, raw? }): Record<string, unknown>[]
 sheetToArrays(ws, { range?, raw? }): unknown[][]
 objectsToSheet(ws, rows, { header?: string[], writeHeader?: boolean, emptyAs?: 'empty' | 'string' }): Worksheet
-arraysToSheet(ws, rows, { emptyAs?: 'empty' | 'string' }): Worksheet   // '' → no cell by default
+arraysToSheet(ws, rows, { emptyAs?: 'empty' | 'string' }): Worksheet   // '' → no cell by default; { error } → error cell
 sheetToNdjson(ws, opts?): AsyncGenerator<string>        // one JSON object + "\n" per row
 toJsonValue(cellValue): unknown
 ```

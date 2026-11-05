@@ -130,11 +130,22 @@ describe('README quick start', () => {
       ['a', 1],
       ['b', 2],
     ]);
+    expect(
+      parseCsv('TRUE,#N/A,04/11/2019', {
+        parseBooleans: true,
+        parseErrors: true,
+        dateFormats: ['DD/MM/YYYY'],
+      }),
+    ).toEqual([[true, { error: '#N/A' }, new Date('2019-11-04T00:00:00.000Z')]]);
 
     const bytes = new Uint8Array(await new Response(csvStream([[1, 'x']])).arrayBuffer());
     const got: string[][] = [];
     for await (const r of csvRows([bytes])) got.push(r);
     expect(got).toEqual([['1', 'x']]);
+    const win1252 = new Uint8Array([0x63, 0x61, 0x66, 0xe9]); // 'café' saved by Excel on Windows
+    const auto: string[][] = [];
+    for await (const r of csvRows([win1252], { encoding: 'auto' })) auto.push(r);
+    expect(auto).toEqual([['café']]);
   });
 
   it('json helpers', async () => {

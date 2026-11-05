@@ -18,7 +18,12 @@ describe('exceljs parity: csv', () => {
     const csv = toCsv(createTestBook(new Workbook(), { checkBadAlignments: false }));
     const ws = arraysToSheet(
       new Workbook().addWorksheet('sheet1'),
-      parseCsv(csv, { parseNumbers: true, parseDates: true }),
+      parseCsv(csv, {
+        parseNumbers: true,
+        parseDates: true,
+        parseBooleans: true,
+        parseErrors: true,
+      }),
     );
     expect(ws.getValue('A1')).toBe(7);
     expect(ws.getValue('B1')).toBe(testValues.str);
@@ -31,11 +36,12 @@ describe('exceljs parity: csv', () => {
     expect(ws.getValue('F1')).toBe(testValues.hyperlink.text);
     expect(ws.getValue('G1')).toBe(testValues.str2);
     expect(ws.getValue('H1')).toBe(testValues.json.string);
-    // ➖ CSV parsing does not type booleans or error codes (exceljs: true / { error })
-    expect(ws.getValue('I1')).toBe('TRUE');
-    expect(ws.getValue('J1')).toBe('FALSE');
-    expect(ws.getValue('K1')).toBe('#N/A');
-    expect(ws.getValue('L1')).toBe('#VALUE!');
+    // booleans and error codes are typed with parseBooleans / parseErrors (exceljs: always)
+    expect(ws.getValue('I1')).toBe(true);
+    expect(ws.getValue('J1')).toBe(false);
+    expect(ws.getValue('K1')).toEqual({ error: '#N/A' });
+    expect(ws.getValue('L1')).toEqual({ error: '#VALUE!' });
+    expect(ws.getKind('K1')).toBe(CellKind.Error);
     expect(ws.getValue('A2')).toBe(5);
     for (let c = 1; c <= 5; c++) expect(ws.getValue(9, c)).toBe(c);
   });
@@ -50,12 +56,16 @@ describe('exceljs parity: csv', () => {
       dateFormat: fmt,
     });
     expect(csv.split('\r\n')[0]!.split('\t')[2]).toBe(fmt(testValues.date));
-    const rows = parseCsv(csv, { delimiter: '\t', parseNumbers: true });
+    const rows = parseCsv(csv, {
+      delimiter: '\t',
+      parseNumbers: true,
+      dateFormats: ['DD/MM/YYYY HH:mm:ss'],
+    });
     expect(rows[0]![0]).toBe(7);
     expect(rows[0]![1]).toBe(testValues.str);
-    // 🚫 no custom date formats on read (exceljs: dateFormats: ['DD/MM/YYYY HH:mm:ss']); only
-    // ISO 8601 is recognized, so the date stays text
-    expect(rows[0]![2]).toBe(fmt(testValues.date));
+    // same option as exceljs; parsed as UTC (exceljs: local time; use localDates for that)
+    const d = rows[0]![2] as Date;
+    expect(Math.abs(d.getTime() - testValues.date.getTime())).toBeLessThan(1000);
   });
 
   it('empty CSV fields leave cells empty; emptyAs: "string" keeps them', () => {

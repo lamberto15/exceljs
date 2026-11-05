@@ -1,6 +1,8 @@
 // RFC 4180 push parser. Chunks may split anywhere. Only the unconsumed tail
 // (from the start of the current field) is carried across chunks.
 
+import type { CellError, ErrorCode } from '../core/types.js';
+
 /** Error raised for invalid options or limit violations. */
 export class CsvError extends Error {
   readonly code: 'FIELD_TOO_LARGE' | 'BAD_OPTION';
@@ -16,29 +18,80 @@ export interface CsvReadOptions {
   delimiter?: string;
   /** Single-character quote (default '"'). */
   quote?: string;
-  /** Strip a leading UTF-8 BOM (default true). */
+  /** Strip a leading BOM (U+FEFF) from the text (default true). */
   bom?: boolean;
   /** Convert unquoted numeric-looking fields to numbers (rows become CsvValue[]). */
   parseNumbers?: boolean;
   /** Convert unquoted ISO 8601 fields to Date (rows become CsvValue[]). */
   parseDates?: boolean;
+  /** Convert unquoted `true` / `false` (any case) to booleans (rows become CsvValue[]). */
+  parseBooleans?: boolean;
+  /** Convert unquoted Excel error literals (`#N/A`, `#DIV/0!`, ...) to `CellError` (rows become CsvValue[]). */
+  parseErrors?: boolean;
+  /**
+   * Extra date formats tried in order after ISO 8601 (implies `parseDates`). Tokens: `YYYY`, `MM`,
+   * `DD`, `HH`, `mm`, `ss` (two digits; `M`, `D`, `H`, `m`, `s` accept one or two), `[text]` is
+   * literal, anything else must match exactly. Each format needs `YYYY`, a month and a day.
+   */
+  dateFormats?: readonly string[];
+  /** Dates without a UTC offset use the local wall clock instead of UTC (like `WorkbookOptions.localDates`). */
+  localDates?: boolean;
   /** Max length of a single field in UTF-16 code units (~bytes for ASCII). Default 16 MiB. */
   maxFieldBytes?: number;
   /** Skip lines that are completely empty (default true). */
   skipEmptyLines?: boolean;
 }
 
-export type CsvValue = string | number | Date;
+/** Options that keep rows as `string[]`. */
+export type CsvStringOptions = CsvReadOptions & {
+  parseNumbers?: false;
+  parseDates?: false;
+  parseBooleans?: false;
+  parseErrors?: false;
+  dateFormats?: undefined;
+};
+
+export type CsvValue = string | number | boolean | Date | CellError;
 
 const NUM_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const DATE_RE =
-  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+  /^(\d{4})-(\d\d)-(\d\d)(?:[T ](\d\d):(\d\d)(?::(\d\d)(\.\d{1,9})?)?(Z|[+-]\d\d:?\d\d)?)?$/;
+const ERR_RE = /^#(?:N\/A|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|NULL!)$/;
 
-function convert(s: string, nums: boolean, dates: boolean): CsvValue {
+/** A compiled date format: regex + capture index of [Y, M, D, h, m, s] (0 = absent). */
+type Fmt = [RegExp, number[]];
+
+function compileFormat(f: string): Fmt {
+  const at = [0, 0, 0, 0, 0, 0];
+  let n = 0;
+  let ok = true;
+  const src = f.replace(/\[([^\]]*)\]|YYYY|MM?|DD?|HH?|mm?|ss?|./gs, (t, lit?: string) => {
+    const k = lit === undefined ? 'YMDHms'.indexOf(t[0]!) : -1;
+    if (k < 0 || (!k && t.length < 4)) return (lit ?? t).replace(/\W/g, '\\$&');
+    if (at[k]) ok = false;
+    at[k] = ++n;
+    return k ? (t.length > 1 ? '(\\d\\d)' : '(\\d\\d?)') : '(\\d{4})';
+  });
+  if (!ok || !at[0] || !at[1] || !at[2]) {
+    throw new CsvError('BAD_OPTION', `bad date format: ${f}`);
+  }
+  return [new RegExp(`^${src}$`), at];
+}
+
+/** Calendar-checked Date from wall-clock parts (UTC, or local with `local`); undefined if invalid. */
+function mkDate(p: number[], ms: number, local: boolean): Date | undefined {
+  const [y, mo, d, h, mi, s] = p as [number, number, number, number, number, number];
+  const u = new Date(Date.UTC(y, mo - 1, d, h, mi, s, ms));
+  if (u.getUTCFullYear() !== y || u.getUTCMonth() !== mo - 1 || u.getUTCDate() !== d) return;
+  if (h > 23 || mi > 59 || s > 59) return;
+  return local ? new Date(y, mo - 1, d, h, mi, s, ms) : u;
+}
+
+function convert(s: string, o: Conv): CsvValue {
   const n = s.length;
   if (n === 0 || n > 40) return s;
   const c = s.charCodeAt(0);
-  if (nums && (c === 45 || (c >= 48 && c <= 57)) && NUM_RE.test(s)) {
+  if (o.n && (c === 45 || (c >= 48 && c <= 57)) && NUM_RE.test(s)) {
     // keep long digit strings (ids) lossless
     if (n <= 15 || s.indexOf('.') >= 0 || s.indexOf('e') >= 0 || s.indexOf('E') >= 0) {
       const v = Number(s);
@@ -46,16 +99,42 @@ function convert(s: string, nums: boolean, dates: boolean): CsvValue {
     }
     return s;
   }
-  if (dates && c >= 48 && c <= 57) {
+  if (o.d) {
     const m = DATE_RE.exec(s);
     if (m) {
-      let iso = s.replace(' ', 'T');
-      if (iso.length > 10 && m[1] === undefined) iso += 'Z';
-      const d = new Date(iso);
-      if (!Number.isNaN(d.getTime())) return d;
+      const d = m[8]
+        ? new Date(s.replace(' ', 'T'))
+        : mkDate(
+            m.slice(1, 7).map((x) => +(x ?? 0)),
+            +(m[7] ?? '').slice(1, 4).padEnd(3, '0'),
+            o.l,
+          );
+      if (d && !Number.isNaN(d.getTime())) return d;
+    }
+    for (const [re, at] of o.f) {
+      const r = re.exec(s);
+      if (r) {
+        const d = mkDate(
+          at.map((k) => (k ? +r[k]! : 0)),
+          0,
+          o.l,
+        );
+        if (d) return d;
+      }
     }
   }
+  if (o.b && /^(?:true|false)$/i.test(s)) return n === 4;
+  if (o.e && ERR_RE.test(s)) return { error: s as ErrorCode };
   return s;
+}
+
+interface Conv {
+  n: boolean;
+  d: boolean;
+  b: boolean;
+  e: boolean;
+  l: boolean;
+  f: Fmt[];
 }
 
 export class CsvParser<R extends CsvValue[] = string[]> {
@@ -63,9 +142,7 @@ export class CsvParser<R extends CsvValue[] = string[]> {
   #delim: number;
   #quote: number;
   #stripBom: boolean;
-  #typed: boolean;
-  #nums: boolean;
-  #dates: boolean;
+  #conv: Conv | undefined;
   #max: number;
   #skipEmpty: boolean;
   #row: CsvValue[] = [];
@@ -88,9 +165,16 @@ export class CsvParser<R extends CsvValue[] = string[]> {
     this.#delim = d.charCodeAt(0);
     this.#quote = q.charCodeAt(0);
     this.#stripBom = o.bom ?? true;
-    this.#nums = o.parseNumbers === true;
-    this.#dates = o.parseDates === true;
-    this.#typed = this.#nums || this.#dates;
+    const f = (o.dateFormats ?? []).map(compileFormat);
+    const c: Conv = {
+      n: o.parseNumbers === true,
+      d: o.parseDates === true || f.length > 0,
+      b: o.parseBooleans === true,
+      e: o.parseErrors === true,
+      l: o.localDates === true,
+      f,
+    };
+    this.#conv = c.n || c.d || c.b || c.e ? c : undefined;
     this.#max = o.maxFieldBytes ?? 16 * 1024 * 1024;
     this.#skipEmpty = o.skipEmptyLines ?? true;
   }
@@ -127,7 +211,7 @@ export class CsvParser<R extends CsvValue[] = string[]> {
     const n = s.length;
     const delim = this.#delim;
     const quote = this.#quote;
-    const typed = this.#typed;
+    const conv = this.#conv;
     let i = 0;
     let qoff = this.#qoff;
     this.#qoff = 0;
@@ -255,7 +339,7 @@ export class CsvParser<R extends CsvValue[] = string[]> {
       }
 
       if (term === delim) {
-        this.#row.push(typed && !wasQuoted ? convert(val, this.#nums, this.#dates) : val);
+        this.#row.push(conv && !wasQuoted ? convert(val, conv) : val);
         i = after;
         continue;
       }
@@ -263,7 +347,7 @@ export class CsvParser<R extends CsvValue[] = string[]> {
       if (this.#row.length === 0 && val.length === 0 && !wasQuoted && this.#skipEmpty) {
         // empty line
       } else {
-        this.#row.push(typed && !wasQuoted ? convert(val, this.#nums, this.#dates) : val);
+        this.#row.push(conv && !wasQuoted ? convert(val, conv) : val);
         this.#emit();
       }
       i = after;
@@ -278,11 +362,8 @@ export class CsvParser<R extends CsvValue[] = string[]> {
   }
 }
 
-/** Parse a whole string. Rows are string[] unless parseNumbers/parseDates is set. */
-export function parseCsv(
-  text: string,
-  o?: CsvReadOptions & { parseNumbers?: false; parseDates?: false },
-): string[][];
+/** Parse a whole string. Rows are string[] unless a typing option is set. */
+export function parseCsv(text: string, o?: CsvStringOptions): string[][];
 export function parseCsv(text: string, o: CsvReadOptions): CsvValue[][];
 export function parseCsv(text: string, o: CsvReadOptions = {}): CsvValue[][] {
   const out: CsvValue[][] = [];
@@ -290,6 +371,16 @@ export function parseCsv(text: string, o: CsvReadOptions = {}): CsvValue[][] {
   p.write(text);
   p.end();
   return out;
+}
+
+/** Options for csvRows: read options plus the byte decoding. */
+export interface CsvRowsOptions extends CsvReadOptions {
+  /**
+   * Encoding of byte chunks (a `TextDecoder` label, e.g. 'windows-1252', 'utf-16le', 'shift_jis').
+   * Default 'utf-8'. A BOM (EF BB BF, FF FE, FE FF) always wins. 'auto': without a BOM, UTF-8,
+   * or windows-1252 if the first chunk holding non-ASCII bytes is not valid UTF-8.
+   */
+  encoding?: string;
 }
 
 type ByteOrStringSource =
@@ -314,30 +405,99 @@ async function* chunksOf(source: ByteOrStringSource): AsyncGenerator<string | Ui
   }
 }
 
-/** Stream rows from bytes/strings. Multi-byte UTF-8 split across chunks is handled. */
+const decoder = (label: string, fatal = false): TextDecoder => {
+  const d = new TextDecoder(label, { ignoreBOM: true, fatal });
+  // ignoreBOM only means something for UTF encodings; Node 22's single-byte decoders drop a
+  // leading 0xFF ('ÿ') when it is set
+  return d.encoding.startsWith('utf-') ? d : new TextDecoder(label, { fatal });
+};
+
+/**
+ * Chunk-safe byte decoder: call with each chunk, then with no argument at the end. The BOM
+ * is decoded as U+FEFF (the parser strips it). Undecided bytes (a possible BOM prefix, or for
+ * 'auto' the bytes from the first non-ASCII one) are held until the encoding is known.
+ */
+function byteDecoder(enc: string): (chunk?: Uint8Array) => string {
+  let dec: TextDecoder | undefined;
+  let head: Uint8Array = new Uint8Array(0);
+  let sniffed = false;
+  return (chunk) => {
+    const end = !chunk;
+    const opts = { stream: !end };
+    if (dec) return dec.decode(chunk, opts);
+    let b = chunk ?? head;
+    if (chunk && head.length) {
+      b = new Uint8Array(head.length + chunk.length);
+      b.set(head);
+      b.set(chunk, head.length);
+    }
+    if (!sniffed) {
+      const b0 = b[0]!;
+      if (!end && b.length < 3 && (b.length === 0 || b0 > 0xfd || b0 === 0xef)) {
+        head = b;
+        return '';
+      }
+      sniffed = true;
+      const label =
+        b0 === 0xef && b[1] === 0xbb && b[2] === 0xbf
+          ? 'utf-8'
+          : b0 === 0xff && b[1] === 0xfe
+            ? 'utf-16le'
+            : b0 === 0xfe && b[1] === 0xff
+              ? 'utf-16be'
+              : enc;
+      if (label !== 'auto') {
+        dec = decoder(label);
+        return dec.decode(b, opts);
+      }
+    }
+    // 'auto', undecided: ASCII reads the same in UTF-8 and windows-1252, so it passes through;
+    // the first chunk with non-ASCII bytes decides (an incomplete sequence waits for more bytes)
+    let i = 0;
+    while (i < b.length && b[i]! < 0x80) i++;
+    let out = i ? decoder('utf-8').decode(b.subarray(0, i)) : '';
+    const rest = b.subarray(i);
+    head = rest.slice();
+    if (rest.length) {
+      try {
+        if (decoder('utf-8', true).decode(rest, opts)) dec = decoder('utf-8');
+      } catch {
+        dec = decoder('windows-1252');
+      }
+      if (dec) out += dec.decode(rest, opts);
+    }
+    return out;
+  };
+}
+
+/**
+ * Stream rows from bytes/strings. Byte chunks are decoded chunk-safely (see
+ * `CsvRowsOptions.encoding`); string chunks are used as is.
+ */
 export function csvRows(
   source: ByteOrStringSource,
-  o?: CsvReadOptions & { parseNumbers?: false; parseDates?: false },
+  o?: CsvStringOptions & CsvRowsOptions,
 ): AsyncIterable<string[]>;
-export function csvRows(source: ByteOrStringSource, o: CsvReadOptions): AsyncIterable<CsvValue[]>;
+export function csvRows(source: ByteOrStringSource, o: CsvRowsOptions): AsyncIterable<CsvValue[]>;
 export function csvRows(
   source: ByteOrStringSource,
-  o: CsvReadOptions = {},
+  o: CsvRowsOptions = {},
 ): AsyncIterable<CsvValue[]> {
+  const enc = o.encoding ?? 'utf-8';
+  if (enc !== 'auto') decoder(enc); // throws RangeError for an unknown label
   return (async function* () {
-    const dec = new TextDecoder('utf-8', { ignoreBOM: true });
+    const dec = byteDecoder(enc);
     let pending: CsvValue[][] = [];
     const p = new CsvParser<CsvValue[]>((r) => pending.push(r), o);
     for await (const chunk of chunksOf(source)) {
-      p.write(typeof chunk === 'string' ? chunk : dec.decode(chunk, { stream: true }));
+      p.write(typeof chunk === 'string' ? chunk : dec(chunk));
       if (pending.length) {
         const batch = pending;
         pending = [];
         yield* batch;
       }
     }
-    const tail = dec.decode();
-    if (tail) p.write(tail);
+    p.write(dec());
     p.end();
     yield* pending;
   })();
