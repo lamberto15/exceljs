@@ -19,9 +19,9 @@ import {
   VALUE,
 } from '../values.js';
 
-type Rng = FormulaRange | FormulaArray;
+export type Rng = FormulaRange | FormulaArray;
 
-function rng(v: FormulaValue | undefined): Rng {
+export function rng(v: FormulaValue | undefined): Rng {
   if (isRef(v) || isArr(v)) return v;
   if (isError(v)) throw v;
   return new FormulaArray(1, 1, [v ?? null]);
@@ -37,7 +37,7 @@ function resize(v: Rng, rows: number, cols: number): Rng {
  * Visit the offsets where every (range, criterion) pair matches. Returns how many matching
  * positions lie past the used rows of every sheet involved (all blank) and were not visited.
  */
-function ifs(pairs: [Rng, Criterion][], cb: (i: number, j: number) => void): number {
+export function ifs(pairs: [Rng, Criterion][], cb: (i: number, j: number) => void): number {
   const [R, C] = dims(pairs[0]![0]);
   for (const [r] of pairs) {
     const [a, b] = dims(r);
@@ -69,7 +69,7 @@ function ifs(pairs: [Rng, Criterion][], cb: (i: number, j: number) => void): num
   return (R - lim) * C;
 }
 
-function pairsOf(
+export function pairsOf(
   args: FormulaValue[],
   from: number,
   ctx: Parameters<FormulaFunction>[1],

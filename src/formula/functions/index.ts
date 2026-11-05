@@ -8,6 +8,8 @@ import { dynamic } from './dynamic.js';
 import { logical } from './logical.js';
 import { lookup } from './lookup.js';
 import { math } from './math.js';
+import { math2 } from './math2.js';
+import { stats } from './stats.js';
 import { text } from './text.js';
 
 const info: Record<string, Builtin> = {
@@ -26,6 +28,8 @@ const info: Record<string, Builtin> = {
 /** Every built-in function, by upper-case name. */
 export const BUILTINS: Record<string, Builtin> = {
   ...math,
+  ...math2,
+  ...stats,
   ...logical,
   ...lookup,
   ...text,
