@@ -191,6 +191,11 @@ export interface BookEmitter {
   readonly slot: BookSlot;
   readonly order?: number;
   emit(ctx: BookWriteCtx): string;
+  /**
+   * The model owns this slot (even when `emit` returns ''): the element kept from a read file
+   * for this slot is not written back. Default: owned when `emit` produced something.
+   */
+  owns?(wb: Workbook): boolean;
 }
 
 // ---------------------------------------------------------------- reading

@@ -244,6 +244,8 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | --- | --- | --- | --- |
 | Tables | `ws.tables: Table[]` | `addTable(ws, AddTableOptions) -> Table` | `tablesWriter`, `tablesReader` |
 | Notes | `ws.comments: Note[]` | `addNote(ws, ref, text \| RichText \| { text, author?, visible?, width?, height?, margins?, protection?, editAs? }) -> Note` | `commentsWriter`, `commentsReader` |
+| Threaded comments | `ws.threadedComments: ThreadedComment[]` (`ref`, `text`, `author`, `date?`, `done?`, `replies?`), `wb.persons: Person[]` | `addThreadedComment(ws, ref, { text, author, date?, done?, replies? }) -> ThreadedComment` | `commentsWriter`, `commentsReader` |
+| Custom views | `wb.customViews: CustomView[]`, `ws.customSheetViews: CustomSheetView[]` | `addCustomView(wb, name, opts?) -> CustomView` | `customViewsWriter`, `customViewsReader` |
 | Pictures | `wb.images`, `ws.images`, `ws.backgroundImage` | `addImage(wb, { data \| base64, extension }) -> id`, `placeImage(ws, id, anchor, opts?) -> ImagePlacement` | `imagesWriter`, `imagesReader` |
 | Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[]) -> ConditionalFormatting` | `conditionalFormattingWriter`, `conditionalFormattingReader` |

@@ -11,6 +11,7 @@ import { cellText, evaluate, track } from '../../dist/formula.js';
 import {
   addChart,
   addConditionalFormatting,
+  addCustomView,
   addDataValidation,
   addDefinedName,
   addImage,
@@ -18,6 +19,7 @@ import {
   addTable,
   addTableColumn,
   addTableRows,
+  addThreadedComment,
   copyRange,
   copyWorksheet,
   createXlsxWriter,
@@ -1227,6 +1229,30 @@ for (const [file, what] of [
     '32-formula-engine.xlsx',
     writeXlsx(wb),
     `"Spill": D1:E5 sorted by number descending (a 5 / B 4 / b 3 / c 2 / a 1); G1:G3 b, a, c (UNIQUE ignores case, so B is a duplicate of b); H1:I3 rows with numbers > 2; K1:M2 10..35; P1 = 15 (SUM(D1#), the formula bar shows =SUM(D1#)); P2 = 3; Q1 #SPILL! (Q2 blocks it). "Tables": Amount = Qty × Unit Price (N row 50), H2 = 340, H3 = 3.5, H4 = 14, the totals row Qty = 14. No repair prompt.`,
+  );
+}
+
+// 33 — group 18: threaded comments, custom views ----------------------------------------------
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Review');
+  ws.addRow(['Item', 'Amount']);
+  ws.addRow(['Rent', 1200]);
+  addThreadedComment(ws, 'B2', {
+    text: 'Is this the new rent?',
+    author: 'Ann',
+    date: new Date('2024-05-01T10:30:00Z'),
+    replies: [{ text: 'Yes, from May', author: 'Bob', date: new Date('2024-05-02T08:00:00Z') }],
+  });
+  addThreadedComment(ws, 'A2', { text: 'Category checked', author: 'Bob', done: true });
+  addNote(ws, 'A1', 'A classic note');
+  ws.views = [{ zoomScale: 150 }];
+  addCustomView(wb, 'Zoomed');
+  ws.views = [{}];
+  save(
+    '33-threaded-comments-views.xlsx',
+    writeXlsx(wb),
+    `"Review": B2 has a threaded comment by Ann "Is this the new rent?" with Bob's reply "Yes, from May"; A2 a resolved thread by Bob; A1 a classic note "A classic note". View > Custom Views lists "Zoomed"; Show sets the zoom to 150 %. No repair prompt.`,
   );
 }
 

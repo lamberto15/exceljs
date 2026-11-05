@@ -199,7 +199,7 @@ arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
 - **Formula evaluation:** `evaluate(wb)` in `turbosheet/formula` computes formula results (90 functions, custom functions, cycles); see [formula.md](./formula.md).
 - **Charts:** `addChart` writes native bar, column, line, pie, doughnut, scatter and area charts.
 - **Encryption:** `encryptXlsx` / `decryptXlsx` / `isEncrypted` in `turbosheet/crypto` (agile read/write, standard read).
-- **Round-trip preservation:** charts, pivot tables, shapes, VBA, threaded comments, themes and unknown XML survive load, edit, save. Inspect with `listPreservedParts`.
+- **Round-trip preservation:** charts, pivot tables, shapes, VBA, themes and unknown XML survive load, edit, save. Inspect with `listPreservedParts`.
 - **`turbosheet/lite`:** the same API with features opt-in, about 25 KB write-only (see [bundle-size.md](./bundle-size.md)).
 - **Profiles and compression control:** `profile: 'low-memory' | 'balanced' | 'max-speed'`, `compression`, `strings: 'shared' | 'inline'`.
 - **Zip-bomb limits** on every read path and **JSON helpers** (`sheetToObjects`, `objectsToSheet`, NDJSON).

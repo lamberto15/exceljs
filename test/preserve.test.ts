@@ -573,9 +573,22 @@ describe('preserve: legacy VML with form controls', () => {
 });
 
 describe('preserve: threaded comments + persons', () => {
-  it('kept linked; legacy notes still modelled; one legacy VML', async () => {
+  it('modelled: threads + persons read, regenerated identically; one legacy VML', async () => {
     const wb = readXlsx(await withThreads());
-    expect(wb.worksheets[0]!.comments!.length).toBe(1);
+    // the "tc=" legacy note is generated from the thread, so it is not a note of the model
+    expect(wb.worksheets[0]!.comments).toEqual([]);
+    expect(wb.worksheets[0]!.threadedComments).toEqual([
+      {
+        ref: 'B2',
+        text: 'Looks good',
+        author: 'Ann',
+        date: new Date('2024-01-01T00:00:00Z'),
+        id: '{00000000-0000-0000-0000-0000000000AA}',
+      },
+    ]);
+    expect(wb.persons).toEqual([
+      { displayName: 'Ann', id: '{00000000-0000-0000-0000-000000000001}', userId: 'ann' },
+    ]);
     const out = writeXlsx(wb);
     const z = unzipSync(out);
     checkPackage(z);
@@ -591,12 +604,24 @@ describe('preserve: threaded comments + persons', () => {
     await exceljsLoads(out);
   });
 
-  it('threads are dropped when the sheet has no notes any more', async () => {
+  it('deleting the threads drops them, their legacy note and the persons part', async () => {
     const wb = readXlsx(await withThreads());
-    wb.worksheets[0]!.comments = [];
+    delete wb.worksheets[0]!.threadedComments;
     const z = unzipSync(writeXlsx(wb));
     checkPackage(z);
     expect(z['xl/threadedComments/threadedComment1.xml']).toBeUndefined();
+    expect(z['xl/comments1.xml']).toBeUndefined();
+    expect(z['xl/persons/person.xml']).toBeUndefined();
+  });
+
+  it('lite without the comments feature keeps them raw', async () => {
+    const { readXlsx: readLite, writeXlsx: writeLite } = await import('../src/lite.js');
+    const wb = readLite(await withThreads());
+    expect(wb.worksheets[0]!.threadedComments).toBeUndefined();
+    const z = unzipSync(writeLite(wb));
+    checkPackage(z);
+    expect(text(z, 'xl/threadedComments/threadedComment1.xml')).toBe(THREAD);
+    expect(text(z, 'xl/persons/person.xml')).toBe(PERSONS);
   });
 });
 

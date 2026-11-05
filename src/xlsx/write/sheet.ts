@@ -513,6 +513,8 @@ const BUILTIN: readonly Emitter[] = [
 const OWNED: readonly string[] = [
   'tables:tables',
   'comments:comments',
+  'threadedComments:comments',
+  'customSheetViews:custom-views',
   'images:images',
   'charts:charts',
   'backgroundImage:images',

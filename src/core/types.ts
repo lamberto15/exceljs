@@ -302,7 +302,7 @@ export interface ReadOptions {
    */
   limits?: Partial<Limits>;
   /**
-   * Keep what the model does not represent (charts, shapes, pivot tables, threaded comments,
+   * Keep what the model does not represent (charts, shapes, pivot tables,
    * VBA, themes, custom XML, unknown worksheet / workbook elements, ...) so writeXlsx /
    * xlsxStream write it back. Default true. See `listPreservedParts`.
    */

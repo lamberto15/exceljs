@@ -21,7 +21,8 @@ Each feature has a write half and a read half, so a write-only bundle never cont
 | Feature                | Model fields                         | Write half                    | Read half                     |
 | ---------------------- | ------------------------------------ | ----------------------------- | ----------------------------- |
 | tables                 | `ws.tables`                          | `tablesWriter`                | `tablesReader`                |
-| notes (comments)       | `ws.comments`                        | `commentsWriter`              | `commentsReader`              |
+| notes (comments)       | `ws.comments`, `ws.threadedComments`, `wb.persons` | `commentsWriter`    | `commentsReader`              |
+| custom views           | `wb.customViews`, `ws.customSheetViews` | `customViewsWriter`        | `customViewsReader`           |
 | images                 | `ws.images`, `ws.backgroundImage`    | `imagesWriter`                | `imagesReader`                |
 | charts                 | `ws.charts`                          | `chartsWriter`                | — (read charts are kept raw)  |
 | conditional formatting | `ws.conditionalFormatting`           | `conditionalFormattingWriter` | `conditionalFormattingReader` |
@@ -61,10 +62,10 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 38.2 KB | 37.96 KB |
-| read+write                     | root `*`                                                       | 82.4 KB | 82.08 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.8 KB | 26.54 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 45.3 KB | 45.06 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 39.7 KB | 39.43 KB |
+| read+write                     | root `*`                                                       | 85.1 KB | 84.78 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.8 KB | 26.69 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 45.3 KB | 45.12 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30.5 KB | 30.27 KB |
 | lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.8 KB | 12.47 KB |
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 30.1 KB | 29.88 KB |
@@ -73,6 +74,8 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | formula                        | `./formula` `*`                                                | 27.7 KB | 27.27 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 18 (#111, #112) costs: the root bundles +1.5 KB write / +2.7 KB read+write (threaded comments with persons and their legacy notes in the comments feature; the custom views feature); lite bundles only pay when they import `commentsWriter` / `customViewsWriter`.
 
 What group 17 (#109, #110) costs: `turbosheet/formula` +3.7 KB for 50 financial, date / time, text and information functions; nothing in the core bundles.
 
