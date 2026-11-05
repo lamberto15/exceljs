@@ -1,6 +1,6 @@
 # Migrating from ExcelJS
 
-turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to turbosheet 0.1. Every turbosheet sample here runs in CI (`test/docs-examples.test.ts`). For a test-by-test account of which ExcelJS behaviours are supported, different or missing, see [exceljs-parity.md](./exceljs-parity.md).
+turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x. The cell/row/column vocabulary and 1-based addressing are familiar, but the I/O is synchronous where it can be, features are functions instead of methods, and several rarely used APIs are not there yet. This page maps ExcelJS 4.4 to turbosheet 0.6. Every turbosheet sample here runs in CI (`test/docs-examples.test.ts`). For a test-by-test account of which ExcelJS behaviours are supported, different or missing, see [exceljs-parity.md](./exceljs-parity.md).
 
 ## The big differences
 
@@ -8,14 +8,14 @@ turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x.
 | --- | --- | --- |
 | In-memory write | `await wb.xlsx.writeBuffer()` (async, returns `Buffer`) | `writeXlsx(wb)` is **synchronous** and returns a `Uint8Array`. |
 | In-memory read | `await wb.xlsx.load(buffer)` into an existing workbook | `readXlsx(bytes)` is **synchronous** and **returns** a new `Workbook`. |
-| Files | `wb.xlsx.writeFile(path)` / `readFile(path)` | Use your runtime's file API: `writeFileSync(path, writeXlsx(wb))`, `readXlsx(readFileSync(path))`. The library has no `node:*` imports. |
-| Streaming write | `new ExcelJS.stream.xlsx.WorkbookWriter({ stream })`, `row.commit()` | `createXlsxWriter({ sink })`; rows are batched for you, no `row.commit()`. `xlsxStream(wb)` gives a web `ReadableStream`. |
-| Streaming read | `WorkbookReader` with events or `for await` | `for await (const row of xlsxRows(source))`. |
+| Files | `wb.xlsx.writeFile(path)` / `readFile(path)` | Use your runtime's file API: `writeFileSync(path, writeXlsx(wb))`, `readXlsx(readFileSync(path))`; for big files `xlsxRows(await openAsBlob(path))`. The library has no static `node:*` imports. |
+| Streaming write | `new ExcelJS.stream.xlsx.WorkbookWriter({ stream })`, `row.commit()` | `createXlsxWriter({ sink })`; rows are batched for you, no `row.commit()`; inline strings by default (`profile: 'low-memory'`). `xlsxStream(wb)` gives a web `ReadableStream`. |
+| Streaming read | `WorkbookReader` with events or `for await` | `for await (const row of xlsxRows(source))`; bytes and Blobs are read by random access, so files written by Excel or ExcelJS stream at constant memory too. |
 | Features | Methods and properties on worksheet objects (`ws.addTable`, `ws.addConditionalFormatting`, `cell.note`) | Functions that take the worksheet: `addTable(ws, ...)`, `addConditionalFormatting(ws, ...)`, `addNote(ws, ...)`. They tree-shake. |
 | Styles | Mutable objects on `cell.style`, deep-cloned | **Plain values, interned** into `wb.styles` (one `xf` per distinct style). Assign a new object to change a style; never mutate what `getStyle()` returns. |
 | Cells | Cell objects per cell | No per-cell objects. Use `ws.setCell` / `ws.getValue` in hot loops; `ws.getCell()` returns a lightweight handle for ExcelJS-style code. |
 | Runtimes | Node-oriented (`Buffer`, streams) | Web standards (`Uint8Array`, Web Streams); Node streams work where an `AsyncIterable<Uint8Array>` is accepted. |
-| Formulas | Not evaluated | Not evaluated (same). Provide `result` for the cached value. |
+| Formulas | Not evaluated | Not evaluated by reading or writing; provide `result` for the cached value. `evaluate(wb)` from [`turbosheet/formula`](./formula.md) computes them (90 functions). |
 | Unknown content | Dropped on load/save (charts, pivot tables, ...) | **Preserved** on round trip (`preserveUnknown`, default true). |
 
 Indexing: rows and columns are **1-based** everywhere in the public API, like ExcelJS. Two spots are 0-based: `XlsxRow.values` from `xlsxRows` (`values[0]` is column A) and the low-level address helpers (`decodeAddr('B3')` is `{ row: 2, col: 1 }`). `RowView.values` is 1-based like ExcelJS (index 0 unused).
@@ -54,15 +54,15 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.eachRow([options], cb)` | same (`cb(row, rowNumber)`); `{ includeEmpty: true }` visits every row from 1 to `ws.rowCount` |
 | `ws.getColumn('A').eachCell([options], cb)` | same; `cb(value, rowNumber)` receives the value. Without options only non-empty cells are visited (ExcelJS also visits empty cells of rows that have values elsewhere); `{ includeEmpty: true }` visits rows 1 to `ws.rowCount`. `eachColumnCell(ws, 'A', [options], cb)` does the same without creating a column record |
 | `ws.rowCount`, `ws.columnCount`, `ws.dimensions` | same (`dimensions` is `{ top, left, bottom, right, ref }`) |
-| `ws.mergeCells('A1:C2')` | same; throws on overlapping merges |
+| `ws.mergeCells('A1:C2')`, `ws.unMergeCells('A1')` | same; `ws.unmergeCells('A1')` (lower-case m) removes every merge intersecting the range; `mergeCells` throws on overlapping merges |
 | `ws.views = [{ state: 'frozen', ySplit: 1 }]` | same (one view per window), or `ws.freeze(1)` |
 | `ws.autoFilter = 'A1:D1'` | same |
 | `ws.state = 'hidden'` | same |
 | `ws.properties` (`tabColor`, `defaultRowHeight`, `outlineLevelRow`, ...) | same; `ws.tabColor` is an alias of `ws.properties.tabColor`. Outline levels are derived from the rows / columns (a property only raises them) and not read back |
-| `row.collapsed` / `column.collapsed` (getters derived from outline levels) | settable flags: set `collapsed` on the summary row / column, or use `groupRows(ws, from, to, { collapsed: true })` |
+| `row.collapsed` / `column.collapsed` (getters derived from outline levels) | settable flags on the summary row / column: `ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true`; or `groupRows(ws, from, to, { collapsed: true })` / `groupColumns` |
 | `ws.pageSetup`, `ws.headerFooter` | same shape (plain objects) |
 | `ws.protect(password, options)` | `ws.protection = { password, ...options }` |
-| `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues` | `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)` (functions) |
+| `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues`, `column.values` | `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`, `columnValues(ws, 'A')` (functions) |
 | `ws.insertRow(s)`, `spliceRows`, `spliceColumns`, `duplicateRow` | `insertRow(s)(ws, …)`, `spliceRows(ws, …)`, `spliceColumns(ws, …)`, `duplicateRow(ws, …)`, plus `deleteRows`, `insertColumns`, `deleteColumns`; formulas, merges, names, tables, … follow like in Excel ([details](./features.md#inserting-and-deleting-rows-and-columns)) |
 
 ### Values
@@ -87,7 +87,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `const id = wb.addImage({ buffer \| base64, extension })`; `ws.addImage(id, 'B2:D6' \| { tl, ext })` | `const id = addImage(wb, { data \| base64, extension })`; `placeImage(ws, id, 'B2:D6' \| { tl, ext })` |
 | `ws.addBackgroundImage(id)` | `ws.backgroundImage = id` |
 | Gradient fills | supported, same shape (`{ type: 'gradient', gradient: 'angle' \| 'path', ... }`) |
-| Charts | not written; existing charts are preserved on round trip |
+| Charts (no API in ExcelJS; dropped on load) | `addChart(ws, { type, series, anchor, ... })`: bar, column, line, pie, doughnut, scatter, area ([details](./features.md#charts)); charts in files you read are preserved |
 
 ### I/O
 
@@ -144,13 +144,15 @@ for await (const sheet of reader) for await (const row of sheet) { /* row.values
 
 ```ts
 // turbosheet
-import { createReadStream } from 'node:fs';
+import { openAsBlob } from 'node:fs';
 import { xlsxRows } from 'turbosheet';
 
-for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
+for await (const row of xlsxRows(await openAsBlob('big.xlsx'))) {
   // row.sheet, row.row (1-based), row.values (0-based: values[0] is column A)
 }
 ```
+
+A Blob is read lazily by random access: the sheets stream at constant memory whatever order the archive stores its parts in. A `createReadStream(...)` also works, but files from Excel and ExcelJS store the sheets before `styles.xml`, so a stream buffers them until the metadata arrives.
 
 CSV:
 
@@ -182,7 +184,7 @@ arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
 ## Behavior differences to watch for
 
 - **Synchronous reads/writes block the event loop** for large files. For big data use the streaming writer/reader, or run `readXlsx`/`writeXlsx` in a worker.
-- **Dates are UTC.** `new Date(Date.UTC(2025, 0, 15))` is the cell value `2025-01-15`: the serial is computed from the UTC instant, and reading gives UTC-based `Date`s. Build dates with `Date.UTC` to avoid time-zone surprises.
+- **Dates are UTC** (as in ExcelJS). `new Date(Date.UTC(2025, 0, 15))` is the cell value `2025-01-15`: the serial is computed from the UTC instant, and reading gives UTC-based `Date`s. Build dates with `Date.UTC`, or opt into the local wall clock with `new Workbook({ localDates: true })` and `readXlsx(bytes, { localDates: true })` / `xlsxRows(source, { localDates: true })`.
 - **Style objects are shared.** `ws.getStyle('A1')` returns an interned object; `{ ...style, font: { ...style.font, bold: true } }` then `setStyle` is the way to derive a new one.
 - **Errors are typed.** `readXlsx` throws `EncryptedFileError` for password-protected input, `XlsxParseError` for broken XML, `ZipLimitError` for hostile archives (default limits: 10,000 entries, 1 GiB per entry, 2 GiB total, compression ratio 1000).
 - **`maxRows` / `maxCols`** work as in ExcelJS (`readXlsx(bytes, { maxRows: 1000, maxCols: 50 })`, also for `xlsxRows`) but throw `SheetLimitError` (message `Max row count (1000) exceeded in sheet "Data" (row 1001)`; fields `sheet`, `limit`, `max`). They are checked against cell positions: a cell in row 1001 fails `maxRows: 1000` even when the sheet holds fewer rows; ExcelJS counts `<row>` / `<c>` elements instead. Parsing stops at the first such cell.
@@ -194,13 +196,15 @@ arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
 
 ## What turbosheet adds
 
+- **Formula evaluation:** `evaluate(wb)` in `turbosheet/formula` computes formula results (90 functions, custom functions, cycles); see [formula.md](./formula.md).
+- **Charts:** `addChart` writes native bar, column, line, pie, doughnut, scatter and area charts.
 - **Encryption:** `encryptXlsx` / `decryptXlsx` / `isEncrypted` in `turbosheet/crypto` (agile read/write, standard read).
 - **Round-trip preservation:** charts, pivot tables, shapes, VBA, threaded comments, themes and unknown XML survive load, edit, save. Inspect with `listPreservedParts`.
-- **`turbosheet/lite`:** the same API with features opt-in, 20 KB write-only (see [bundle-size.md](./bundle-size.md)).
+- **`turbosheet/lite`:** the same API with features opt-in, about 25 KB write-only (see [bundle-size.md](./bundle-size.md)).
 - **Profiles and compression control:** `profile: 'low-memory' | 'balanced' | 'max-speed'`, `compression`, `strings: 'shared' | 'inline'`.
 - **Zip-bomb limits** on every read path and **JSON helpers** (`sheetToObjects`, `objectsToSheet`, NDJSON).
 - **Web-standard runtime support:** browsers, workers and Bun/Deno are expected to work (CI covers Node 22/24).
 
 ## Not supported yet
 
-`calcProperties` beyond `fullCalcOnLoad`; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.
+ExcelJS 4.4 APIs without an equivalent: the `addRow` style codes `'i'` / `'o'` (`addRow` takes a style; `insertRows` has `inheritStyle`), the `cell.hyperlink` setter (assign a `{ text, hyperlink }` value), table editing through a table object beyond `addTableRows` (removing rows, adding / removing / renaming columns, toggling header / totals: edit cells and `ws.tables`), image sources given as `filename`, the `showRuler` / `zoomScaleNormal` / `style` view fields, and writing shared formulas (they are written as plain formulas). Neither library reads or writes `.xls` / `.xlsb` or authors pivot tables; turbosheet's decryption does not cover RC4 / extensible encryption (ExcelJS has none). If you depend on one of these, stay on ExcelJS for that path or open an issue; [exceljs-parity.md](./exceljs-parity.md) has the details.

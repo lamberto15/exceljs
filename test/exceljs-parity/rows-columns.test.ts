@@ -9,6 +9,7 @@ import {
   type CellValue,
   duplicateRow,
   getDefinedName,
+  getRows,
   insertRow,
   insertRows,
   readXlsx,
@@ -21,7 +22,7 @@ import {
 } from '../../src/index.js';
 import { sheetToArrays } from '../../src/json/index.js';
 import { unzipSync } from '../../src/zip/index.js';
-import { fixture, roundtrip } from './helpers.js';
+import { fixture, roundtrip, streamWrite } from './helpers.js';
 import { alignment, alignmentBack, font, fontBack, numFmt1, numFmt2, styles } from './test-book.js';
 
 const d1 = new Date(Date.UTC(1970, 1, 1));
@@ -940,7 +941,13 @@ describe('exceljs parity: rows and columns', () => {
   });
 
   // exceljs: spec/integration/worksheet.spec.js — "returns undefined when row range is less than 1"
-  it.skip('getRows(start, length) — not supported', () => {});
+  it('getRows with length < 1 (➖ an empty array, exceljs: undefined)', () => {
+    const ws = new Workbook().addWorksheet('blort');
+    expect(getRows(ws, 1, 0)).toEqual([]);
+    ws.setCell('A2', 'x');
+    expect(getRows(ws, 1, 3).map((r) => r.number)).toEqual([1, 2, 3]);
+    expect(getRows(ws, 1, 3)[1]!.getValue(1)).toBe('x');
+  });
 
   describe('worksheet names', () => {
     // exceljs: spec/integration/worksheet.spec.js — "save the original name"
@@ -1148,9 +1155,25 @@ describe('exceljs parity: rows and columns', () => {
     expect([1, 2, 3].map((c) => ws2.getColumn(c).outlineLevel)).toEqual([1, 2, 3]);
   });
 
-  // exceljs: spec/integration/worksheet-xlsx-writer.spec.js — "adds multiple row breaks"
   // exceljs: spec/unit/doc/worksheet.pagebreak.spec.js — "adds multiple row breaks"
-  it.skip('row page breaks (row.addPageBreak / ws.rowBreaks) — not modelled (kept raw on round trip)', () => {});
+  it('row page breaks (➖ ws.rowBreaks = row numbers, no row.addPageBreak)', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('blort');
+    for (const r of [1, 2, 3]) ws.addRow([`A${r}`, `B${r}`]);
+    ws.rowBreaks = [1, 2];
+    expect(ws.rowBreaks.length).toBe(2);
+    expect(roundtrip(wb).getWorksheet('blort')!.rowBreaks).toEqual([1, 2]);
+  });
+
+  // exceljs: spec/integration/worksheet-xlsx-writer.spec.js — "adds multiple row breaks"
+  it('row page breaks from the streaming writer', async () => {
+    const bytes = await streamWrite((w) => {
+      const s = w.addWorksheet('blort');
+      for (const r of [1, 2, 3]) s.addRow([`A${r}`, `B${r}`]);
+      s.worksheet.rowBreaks = [1, 2];
+    });
+    expect(readXlsx(bytes).getWorksheet('blort')!.rowBreaks).toEqual([1, 2]);
+  });
 
   describe('Duplicate Rows', () => {
     // exceljs: spec/integration/workbook/workbook.spec.js — "Duplicate rows with styles properly"

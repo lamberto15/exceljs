@@ -1,7 +1,7 @@
 // Every code sample in README.md and docs/*.md lives here (same code, imports from '../src').
 // If you change a sample in the docs, change it here too: this file keeps the docs honest.
 
-import { createReadStream, createWriteStream, mkdtempSync, rmSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdtempSync, openAsBlob, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
@@ -94,13 +94,23 @@ describe('README quick start', () => {
 
       let n = 0;
       let last: unknown;
-      for await (const row of xlsxRows(createReadStream(path))) {
+      for await (const row of xlsxRows(await openAsBlob(path))) {
         // row.sheet, row.row (1-based), row.values (0-based by column)
         n++;
         last = row.values[1];
       }
       expect(n).toBe(5001);
       expect(last).toBe('row 5000');
+
+      // streams work too (createXlsxWriter output is buffered per sheet when streamed)
+      let m = 0;
+      const ends: string[] = [];
+      const src = createReadStream(path);
+      for await (const row of xlsxRows(src, { onSheetEnd: ({ sheet }) => ends.push(sheet) })) {
+        if (row.sheet === 'Data') m++;
+      }
+      expect(m).toBe(5001);
+      expect(ends).toEqual(['Data']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

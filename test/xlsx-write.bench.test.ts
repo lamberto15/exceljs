@@ -11,8 +11,13 @@ import { Workbook } from '../src/core/index.js';
 import type { Profile } from '../src/core/types.js';
 import { createXlsxWriter, writeXlsx, xlsxStream } from '../src/xlsx/write/index.js';
 
-// NO_NATIVE=1 hides CompressionStream so the async writers use fflate (A/B comparison).
-if (process.env.NO_NATIVE) delete (globalThis as { CompressionStream?: unknown }).CompressionStream;
+// NO_NATIVE=1 hides node:zlib and CompressionStream so every writer uses fflate (A/B comparison).
+if (process.env.NO_NATIVE) {
+  delete (globalThis as { CompressionStream?: unknown }).CompressionStream;
+  const p = process as { getBuiltinModule?: (id: string) => unknown };
+  const get = p.getBuiltinModule?.bind(process);
+  p.getBuiltinModule = (id) => (id === 'node:zlib' || id === 'zlib' ? undefined : get?.(id));
+}
 
 const ROWS = Number(process.env.BENCH_ROWS ?? 100_000);
 const COLS = 20;
