@@ -117,7 +117,7 @@ describe('docs/migrating-from-exceljs.md', () => {
 
       const seen: unknown[] = [];
       for await (const row of xlsxRows(await openAsBlob(join(dir, 'big.xlsx')))) {
-        seen.push([row.sheet, row.row, row.values]);
+        seen.push([row.sheet, row.row, row.cells]);
       }
       expect(seen).toEqual([
         ['Data', 1, ['a', 1]],
@@ -212,7 +212,7 @@ describe('docs/features.md', () => {
       const w = createXlsxWriter({ sink });
       const out = w.addWorksheet('Orders');
       for await (const row of xlsxRows(await openAsBlob(join(dir, 'in.xlsx')))) {
-        const [item, qty, price] = row.values as [string, number, number];
+        const [item, qty, price] = row.cells as [string, number, number];
         if (row.row === 1) out.addRow([item, qty, price, 'total']);
         else if (qty) out.addRow([item, qty, price, qty * price]);
         if (row.row % 5000 === 0) await out.flush();

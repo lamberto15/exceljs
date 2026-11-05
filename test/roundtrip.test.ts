@@ -106,7 +106,7 @@ describe('round-trip: our writer → our reader', () => {
     const bytes = await bytesP;
     let n = 0;
     for await (const row of xlsxRows(bytes)) {
-      if (n === 0 || n === 49_999) expect(row.values).toEqual([n, `row ${n}`, n % 2 === 0]);
+      if (n === 0 || n === 49_999) expect(row.cells).toEqual([n, `row ${n}`, n % 2 === 0]);
       n++;
     }
     expect(n).toBe(50_000);

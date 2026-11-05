@@ -8,11 +8,11 @@ import { CellKind, Workbook } from '../src/core/index.js';
 import { readXlsx, xlsxRows } from '../src/xlsx/read/index.js';
 import {
   createXlsxWriter,
-  resolveWriteOptions,
   writeXlsx,
   type XlsxWriterOptions,
   xlsxStream,
 } from '../src/xlsx/write/index.js';
+import { resolveWriteOptions } from '../src/xlsx/write/options.js';
 import { parseXml } from '../src/xml/index.js';
 import { nativeDeflateAvailable, unzipSync } from '../src/zip/index.js';
 
@@ -689,7 +689,7 @@ describe('native deflate path', () => {
       const ours = readXlsx(buf).getWorksheet('N')!;
       expect(ours.getValue('B2999')).toBe('s48');
       let n = 0;
-      for await (const row of xlsxRows(buf)) n += row.values.length;
+      for await (const row of xlsxRows(buf)) n += row.cells.length;
       expect(n).toBe(12_000);
       const x = (await oracle(buf)).getWorksheet('N')!;
       expect(x.getCell('A3000').value).toBe(2999);

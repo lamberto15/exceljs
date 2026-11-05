@@ -3,10 +3,10 @@
 
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
+import { fontMetrics } from '../src/core/styles.js';
 import {
   addImage,
   fitImage,
-  fontMetrics,
   placeImage,
   protectSheet,
   readXlsx,

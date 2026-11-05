@@ -320,7 +320,7 @@ describe('readXlsx: exceljs round-trip', () => {
     for (const r of rows) {
       const ws = wb.getWorksheet(r.sheet)!;
       expect(r.sheetIndex).toBe(wb.worksheets.indexOf(ws));
-      r.values.forEach((v, c) => {
+      r.cells.forEach((v, c) => {
         const dom = ws.getValue(r.row, c + 1);
         // hyperlinks are not applied in streaming mode
         if (dom && typeof dom === 'object' && 'hyperlink' in dom) expect(v).toBe(dom.text);
@@ -329,8 +329,8 @@ describe('readXlsx: exceljs round-trip', () => {
     }
     const data = rows.filter((r) => r.sheet === 'Data');
     expect(data[0]!.row).toBe(1);
-    expect(data[0]!.values[5]).toEqual(new Date(Date.UTC(2024, 1, 29, 13, 45, 30)));
-    expect(data[0]!.values.length).toBe(8);
+    expect(data[0]!.cells[5]).toEqual(new Date(Date.UTC(2024, 1, 29, 13, 45, 30)));
+    expect(data[0]!.cells.length).toBe(8);
   });
 
   it('opts.sheets filters sheets in both modes', async () => {
@@ -338,9 +338,7 @@ describe('readXlsx: exceljs round-trip', () => {
     const wb = readXlsx(buf, { sheets: ['other'] });
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Other']);
     const rows = await collectRows(buf, { sheets: ['Other'] });
-    expect(rows).toEqual([
-      { sheet: 'Other', sheetIndex: 1, row: 2, values: [undefined, 'target'] },
-    ]);
+    expect(rows).toEqual([{ sheet: 'Other', sheetIndex: 1, row: 2, cells: [undefined, 'target'] }]);
   });
 
   it('accepts ArrayBuffer and ReadableStream sources', async () => {
@@ -371,7 +369,7 @@ describe('readXlsx: exceljs round-trip', () => {
       sheet: 'Big',
       sheetIndex: 0,
       row: 3000,
-      values: [3000, 's0', true, 1500],
+      cells: [3000, 's0', true, 1500],
     });
   });
 });
@@ -465,7 +463,7 @@ describe('real-world fixtures', () => {
       // streamed values equal DOM values (hyperlinks excepted)
       for (const r of rows) {
         const ws = wb.getWorksheet(r.sheet)!;
-        r.values.forEach((v, c) => {
+        r.cells.forEach((v, c) => {
           const dom = ws.getValue(r.row, c + 1);
           if (dom && typeof dom === 'object' && 'hyperlink' in dom) expect(v).toBe(dom.text);
           else expect(v).toEqual(dom);
@@ -535,7 +533,7 @@ describe('hand-crafted XML edge cases', () => {
     const wb = readXlsx(buf);
     expect(values(wb)).toEqual({ A1: 1, B1: 2, E1: 5, F1: 6, A2: 'x', A5: 9, A6: 10 });
     const rows = await collectRows(buf);
-    expect(rows.map((r) => [r.row, r.values])).toEqual([
+    expect(rows.map((r) => [r.row, r.cells])).toEqual([
       [1, [1, 2, undefined, undefined, 5, 6]],
       [2, ['x']],
       [5, [9]],
@@ -592,7 +590,7 @@ describe('hand-crafted XML edge cases', () => {
       ['Dot', 3],
     ]);
     const rows = await collectRows(buf);
-    expect(rows.map((r) => [r.sheet, r.values[0]])).toEqual([
+    expect(rows.map((r) => [r.sheet, r.cells[0]])).toEqual([
       ['Abs', 1],
       ['Up', 2],
       ['Dot', 3],
@@ -787,7 +785,7 @@ describe('hand-crafted XML edge cases', () => {
     expect(ws.getValue('B1')).toEqual(new Date(Date.UTC(2024, 0, 1, 12)));
     expect(ws.getValue('C1')).toBe(45292);
     const rows = await collectRows(buf);
-    expect(rows[0]!.values).toEqual([
+    expect(rows[0]!.cells).toEqual([
       new Date(Date.UTC(2024, 0, 1)),
       new Date(Date.UTC(2024, 0, 1, 12)),
       45292,
@@ -812,8 +810,8 @@ describe('hand-crafted XML edge cases', () => {
     const first = await collectRows(mini({ ...opts, order: 'meta-first' }));
     const last = await collectRows(chunked(mini({ ...opts, order: 'sheets-first' }), 50));
     const expected = [
-      { sheet: 'One', sheetIndex: 0, row: 1, values: ['s0', new Date(Date.UTC(1900, 0, 1))] },
-      { sheet: 'Two', sheetIndex: 1, row: 2, values: [7] },
+      { sheet: 'One', sheetIndex: 0, row: 1, cells: ['s0', new Date(Date.UTC(1900, 0, 1))] },
+      { sheet: 'Two', sheetIndex: 1, row: 2, cells: [7] },
     ];
     expect(first).toEqual(expected);
     expect(last).toEqual(expected);
@@ -847,7 +845,7 @@ describe('hand-crafted XML edge cases', () => {
       ['Sheet2', 2],
     ]);
     const rows = await collectRows(buf);
-    expect(rows.map((r) => [r.sheet, r.values])).toEqual([
+    expect(rows.map((r) => [r.sheet, r.cells])).toEqual([
       ['Sheet1', [1]],
       ['Sheet2', [2]],
     ]);
@@ -972,13 +970,13 @@ describe.runIf(process.env.RUN_BENCH === '1')('perf: 100k x 20', () => {
     });
     await measure('ours xlsxRows', async () => {
       let n = 0;
-      for await (const r of xlsxRows(chunked(buf, 64 * 1024))) n += r.values.length;
+      for await (const r of xlsxRows(chunked(buf, 64 * 1024))) n += r.cells.length;
       return n;
     });
     await measure('ours xlsxRows low-memory', async () => {
       let n = 0;
       for await (const r of xlsxRows(chunked(buf, 64 * 1024), { profile: 'low-memory' })) {
-        n += r.values.length;
+        n += r.cells.length;
       }
       return n;
     });
@@ -995,7 +993,7 @@ describe.runIf(process.env.RUN_BENCH === '1')('perf: 100k x 20', () => {
     })();
     await measure('ours xlsxRows (metadata first)', async () => {
       let n = 0;
-      for await (const r of xlsxRows(chunked(reordered, 64 * 1024))) n += r.values.length;
+      for await (const r of xlsxRows(chunked(reordered, 64 * 1024))) n += r.cells.length;
       return n;
     });
     await measure('exceljs xlsx.load', async () => {

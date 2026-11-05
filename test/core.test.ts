@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { SharedStrings } from '../src/core/sharedstrings.js';
+import { StyleRegistry } from '../src/core/styles.js';
 import {
   BUILTIN_NUM_FMTS,
   builtinFormatId,
@@ -11,8 +13,6 @@ import {
   encodeCol,
   encodeRange,
   isDateFormat,
-  SharedStrings,
-  StyleRegistry,
   serialToDate,
   Workbook,
 } from '../src/index.js';

@@ -36,7 +36,6 @@ export {
   isDateFormat,
   isDateFormatId,
 } from './numfmt.js';
-export { SharedStrings } from './sharedstrings.js';
 export {
   type ProtectAllow,
   type ProtectSheetOptions,
@@ -59,18 +58,16 @@ export {
   spliceColumns,
   spliceRows,
 } from './structure.js';
-export { fontMetrics, type NumFmt, StyleRegistry, type Xf } from './styles.js';
+export type { StyleRegistry } from './styles.js';
 export { type FillTemplateOptions, fillTemplate } from './template.js';
 export * from './types.js';
 export { Workbook, type WorkbookOptions, type WorksheetOptions } from './workbook.js';
 export {
-  type CellCallback,
   CellKind,
   CellRef,
   Column,
   type ColumnDef,
   type Dimensions,
-  RowData,
   type RowObject,
   type RowProps,
   type RowStyleOption,

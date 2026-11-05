@@ -106,7 +106,7 @@ describe('README quick start', () => {
       for await (const row of xlsxRows(await openAsBlob(path))) {
         // row.sheet, row.row (1-based), row.values (0-based by column)
         n++;
-        last = row.values[1];
+        last = row.cells[1];
       }
       expect(n).toBe(5001);
       expect(last).toBe('row 5000');

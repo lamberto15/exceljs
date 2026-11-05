@@ -22,7 +22,6 @@ export {
   xlsxRows,
 } from './xlsx/read/reader.js';
 export { writeXlsx, xlsxStream } from './xlsx/write/book.js';
-export { type ResolvedWriteOptions, resolveWriteOptions } from './xlsx/write/options.js';
 export { listPreservedParts, type PreservedPart } from './xlsx/write/preserve.js';
 export {
   type ChunkSink,

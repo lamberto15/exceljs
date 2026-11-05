@@ -109,8 +109,8 @@ describe('exceljs parity: pull requests', () => {
     );
     const rows = await allRows(bytes);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.values[0]).toEqual(rich);
-    expect(rows[0]!.values[1]).toBe('this should be the second shared string');
+    expect(rows[0]!.cells[0]).toEqual(rich);
+    expect(rows[0]!.cells[1]).toBe('this should be the second shared string');
   });
 
   // exceljs: spec/integration/pr/test-pr-1487.spec.js — "Reading 1904.xlsx"

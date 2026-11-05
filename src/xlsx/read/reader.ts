@@ -49,12 +49,13 @@ export interface XlsxRow {
   /** 1-based row number. */
   readonly row: number;
   /**
-   * Cell values, sparse and 0-BASED by column (values[0] = column A); empty cells are holes.
+   * Cell values, sparse and 0-BASED by column (`cells[0]` = column A); empty cells are holes.
+   * Named `cells`, not `values`, so it is not mistaken for the 1-based `RowView.values`.
    * Dates (numeric cells with a date format, or t="d") are `Date`s; shared strings are resolved;
    * formulas are `Formula` objects with their cached result. Hyperlinks are NOT applied (they
    * are stored after the cell data in the sheet XML).
    */
-  readonly values: CellValue[];
+  readonly cells: CellValue[];
 }
 
 // ---------------------------------------------------------------- shared helpers
@@ -718,7 +719,7 @@ class StreamReader {
     const name = s.name;
     const index = s.index;
     const h = new SheetHandler(ctx, undefined, (r0, values) => {
-      out.push({ sheet: name, sheetIndex: index, row: r0 + 1, values });
+      out.push({ sheet: name, sheetIndex: index, row: r0 + 1, cells: values });
     });
     const p = new StrictXml(h, s.path);
     const cb = this.onSheetEnd;

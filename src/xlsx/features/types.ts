@@ -1,4 +1,6 @@
-// Feature extension points. A feature is a self-contained module (see README.md) exporting a
+// Feature extension points (internal: the published types show FeatureWriter / FeatureReader as
+// opaque objects with a `name`; custom features are not covered by semver). A feature is a
+// self-contained module (see README.md) exporting a
 // `FeatureWriter` and a `FeatureReader`. The writers and the reader drive the features they are
 // given (`options.features`; the package root adds every built-in from ./registry.ts) through the
 // interfaces below; feature data lives on the model as optional Worksheet / Workbook fields
@@ -263,6 +265,7 @@ export interface SheetReader {
 export interface FeatureWriter {
   /** Unique name (diagnostics). */
   readonly name: string;
+  /** @internal */
   readonly sheet?: {
     readonly emitters?: readonly SheetEmitter[];
     /** Extra namespace declarations for `<worksheet>`, e.g. ['xmlns:x14ac="..."']. */
@@ -270,6 +273,7 @@ export interface FeatureWriter {
     /** Anchors merged into the sheet's shared drawing part (see DrawingAnchors). */
     readonly anchors?: readonly DrawingAnchors[];
   };
+  /** @internal */
   readonly book?: {
     readonly emitters?: readonly BookEmitter[];
     /** Workbook-level parts/rels, run once after all sheets were written. */
@@ -280,7 +284,8 @@ export interface FeatureWriter {
 /** Read half of a feature (DOM mode, `readXlsx`, only; `xlsxRows` ignores features). */
 export interface FeatureReader {
   readonly name: string;
+  /** @internal */
   readonly sheet?: SheetReader;
-  /** After every sheet was read: workbook-level data / parts. */
+  /** @internal After every sheet was read: workbook-level data / parts. */
   book?(ctx: PackageReadCtx): void;
 }

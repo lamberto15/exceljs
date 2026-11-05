@@ -244,7 +244,7 @@ describe('extra parts, rels and content types', () => {
       expect(seen.book, name).toBe('<bookthing/>');
       // streaming rows ignore features but still parse
       let n = 0;
-      for await (const r of xlsxRows(buf)) n += r.values.length;
+      for await (const r of xlsxRows(buf)) n += r.cells.length;
       expect(n, name).toBeGreaterThan(0);
       // and Excel-compatible readers still open the file
       expect((await oracle(buf)).worksheets.length, name).toBe(2);

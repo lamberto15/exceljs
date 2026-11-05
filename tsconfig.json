@@ -10,6 +10,7 @@
     "isolatedDeclarations": true,
     "verbatimModuleSyntax": true,
     "declaration": true,
+    "stripInternal": true,
     "skipLibCheck": true,
     "noEmit": true
   },

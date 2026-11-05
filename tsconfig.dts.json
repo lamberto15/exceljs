@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": false,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "lib": ["es2023", "dom"],
+    "types": []
+  },
+  "files": [
+    "dist/index.d.ts",
+    "dist/lite.d.ts",
+    "dist/csv.d.ts",
+    "dist/json.d.ts",
+    "dist/crypto.d.ts",
+    "dist/formula.d.ts",
+    "dist/xlsb.d.ts",
+    "dist/xls.d.ts"
+  ]
+}

@@ -69,7 +69,7 @@ describe('exceljs parity: github issues', () => {
   // exceljs: spec/integration/issues/issue-1328-xlsx-worksheet-reader-date.spec.js — "issue 1328 - should emit row with Date Object"
   it('issue 1328: streaming reader returns Date objects for date-formatted cells', async () => {
     const rows = await allRows(fixture('dateIssue.xlsx'));
-    expect(rows.map((r) => r.values[0])).toEqual(['Date', new Date('2020-11-20T00:00:00.000Z')]);
+    expect(rows.map((r) => r.cells[0])).toEqual(['Date', new Date('2020-11-20T00:00:00.000Z')]);
   });
 
   // exceljs: spec/integration/issues/issue-1339-speciel-cell-file.spec.js — "issue 1339 - Special cell value results invalid file"

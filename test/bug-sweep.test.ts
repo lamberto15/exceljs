@@ -92,8 +92,8 @@ describe('bug sweep (exceljs reports)', () => {
     ws.setStyle('B1', { numFmt: 'dd/mm/yyyy' });
     const rows: XlsxRow[] = [];
     for await (const r of xlsxRows(writeXlsx(wb))) rows.push(r);
-    expect(rows[0]!.values[0]).toEqual(d);
-    expect(rows[0]!.values[1]).toEqual(serialToDate(45000));
+    expect(rows[0]!.cells[0]).toEqual(d);
+    expect(rows[0]!.cells[1]).toEqual(serialToDate(45000));
   });
 
   it('exceljs#1615: a table without a header row writes no autoFilter', async () => {
@@ -188,7 +188,7 @@ describe('local-time dates (localDates)', () => {
     const utc = readXlsx(buf).getWorksheet('S')!.getValue('A2');
     expect(utc).toEqual(new Date(Date.UTC(2024, 1, 29)));
     for await (const r of xlsxRows(buf, { localDates: true })) {
-      if (r.row === 1) expect(r.values[0]).toEqual(local);
+      if (r.row === 1) expect(r.cells[0]).toEqual(local);
     }
   });
 });
