@@ -11,7 +11,7 @@ import {
 } from 'fflate';
 import type { Limits } from '../core/types.js';
 import { Budget, ZipLimitError, ZipPathError } from './limits.js';
-import { nativeCrc } from './node.js';
+import { nativeCrc, zlibSyncDeflater } from './node.js';
 
 export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 
@@ -81,6 +81,20 @@ function useNativeCrc(f: ZipInputFile): void {
   if (c && 'c' in f) (f as unknown as { c: unknown }).c = c;
 }
 
+/**
+ * A synchronous zip entry deflated by `zlib.deflateRawSync` (2-4x faster than fflate, slightly
+ * smaller output), or undefined without `node:zlib`.
+ */
+function zlibFile(path: string, level: number): ZipPassThrough | undefined {
+  const f = new ZipPassThrough(path);
+  const d = zlibSyncDeflater(level, (data, final) => f.ondata(null, data, final));
+  if (d === undefined) return undefined;
+  f.compression = 8;
+  (f as unknown as { process: (c: Uint8Array, final: boolean) => void }).process = (c, final) =>
+    d.push(c, final);
+  return f;
+}
+
 export class ZipStreamWriter {
   readonly #zip: Zip;
   readonly #level: number;
@@ -114,7 +128,7 @@ export class ZipStreamWriter {
         ? new ZipPassThrough(path)
         : n
           ? n.file(path, lvl)
-          : new ZipDeflate(path, { level: lvl as Level });
+          : (zlibFile(path, lvl) ?? new ZipDeflate(path, { level: lvl as Level }));
     useNativeCrc(f);
     this.#zip.add(f);
     return {

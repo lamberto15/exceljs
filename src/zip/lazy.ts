@@ -4,7 +4,8 @@
 // Limits (see limits.ts) are enforced on the ACTUAL inflated output of every access.
 
 import type { Limits } from '../core/types.js';
-import { Budget, ZipLimitError, ZipPathError } from './limits.js';
+import { Budget, RATIO_MIN_BYTES, ZipLimitError, ZipPathError } from './limits.js';
+import { zlibInflateSync } from './node.js';
 import { inflateStream } from './stream.js';
 
 export interface LazyEntry {
@@ -28,6 +29,9 @@ export interface LazyEntry {
 }
 
 /** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
+/** Largest declared size `chunks()` inflates natively in one piece (above: fflate streaming). */
+const NATIVE_CHUNKS_MAX = 64 << 20;
+
 const SLICE = 16 * 1024;
 const EMPTY = /* @__PURE__ */ new Uint8Array(0);
 
@@ -171,12 +175,42 @@ class Entry implements LazyEntry {
     this.budget.output(this.path, out, fresh, compressed, ratio);
   }
 
+  /**
+   * Inflate the whole entry with native zlib, producing at most `cap` bytes; undefined without
+   * `node:zlib` or when the output is larger than `cap` (callers then stream with fflate). The
+   * limits are enforced through zlib's `maxOutputLength`, so a bomb never allocates more than
+   * one byte past a limit.
+   */
+  private native(raw: Uint8Array, cap: number): Uint8Array | undefined {
+    const L = this.budget.limits;
+    const ratioMax = Math.max(RATIO_MIN_BYTES, raw.length * L.maxCompressionRatio);
+    const max = Math.min(L.maxEntryBytes, this.budget.remaining() + this.seen, ratioMax, cap);
+    let out: Uint8Array | 'over' | undefined;
+    try {
+      out = zlibInflateSync(raw, max + 1);
+    } catch (e) {
+      // corrupt or truncated deflate data: let the fflate path report it consistently
+      if ((e as { code?: string }).code?.startsWith('Z_')) return undefined;
+      throw e;
+    }
+    if (out === undefined) return undefined;
+    if (out === 'over') {
+      if (max === cap) return undefined;
+      this.account(max + 1, raw.length, true); // throws the matching ZipLimitError
+      return undefined;
+    }
+    this.account(out.length, raw.length, true);
+    return out;
+  }
+
   bytes(): Uint8Array {
     const raw = this.raw();
     if (this.compression === 0) {
       this.account(raw.length, raw.length, false);
       return raw;
     }
+    const whole = this.native(raw, Infinity);
+    if (whole) return whole;
     const parts: Uint8Array[] = [];
     let n = 0;
     for (const c of this.chunks(1 << 20)) {
@@ -203,6 +237,12 @@ class Entry implements LazyEntry {
         this.account(end, end, false);
         yield raw.subarray(i, end);
       }
+      return;
+    }
+    // moderate entries: one native inflate, then slices (memory bounded by NATIVE_CHUNKS_MAX)
+    const whole = this.size <= NATIVE_CHUNKS_MAX ? this.native(raw, NATIVE_CHUNKS_MAX) : undefined;
+    if (whole) {
+      for (let i = 0; i < whole.length; i += step) yield whole.subarray(i, i + step);
       return;
     }
     const pending: Uint8Array[] = [];

@@ -25,42 +25,43 @@ conclusions.
 
 ## Machine
 
-Node v26.13.0, Apple M1 Pro, macOS (Darwin 25.6.0, arm64), 2026-11-04.
+Node v26.13.0, Apple M1 Pro, macOS (Darwin 25.6.0, arm64), 2026-11-05 (after native zlib, #71 / #75).
 
 ## Write
 
 | case                                                 | time ms | size MB | peak heap MB | peak RSS MB |
 | ---------------------------------------------------- | ------: | ------: | -----------: | ----------: |
-| turbosheet `writeXlsx` (balanced)                    |    2134 |    8.77 |          147 |         292 |
-| turbosheet `writeXlsx` (low-memory)                  |    2092 |    8.77 |          145 |          21 |
-| turbosheet `writeXlsx` (max-speed)                   |    1357 |   11.54 |          147 |          24 |
-| turbosheet `createXlsxWriter` (balanced)             |    1390 |    8.37 |           77 |          64 |
-| turbosheet `createXlsxWriter` (low-memory)           |    1211 |    8.46 |           47 |          14 |
-| turbosheet `createXlsxWriter` (max-speed)            |    1226 |    8.46 |           46 |          10 |
-| turbosheet `createXlsxWriter` + `flush` (balanced)   |    1354 |    8.37 |           46 |           4 |
-| turbosheet `createXlsxWriter` + `flush` (low-memory) |    1230 |    8.46 |           31 |           1 |
-| turbosheet `createXlsxWriter` + `flush` (max-speed)  |    1196 |    8.46 |           31 |           1 |
-| turbosheet `xlsxStream` (balanced)                   |    1057 |    8.37 |          159 |         131 |
-| turbosheet `xlsxStream` (low-memory)                 |     899 |    8.46 |          147 |           5 |
-| turbosheet `xlsxStream` (max-speed)                  |     918 |    8.46 |          146 |           5 |
-| ExcelJS `xlsx.writeBuffer`                           |    6685 |    8.51 |         2113 |        2091 |
-| ExcelJS `WorkbookWriter` (shared strings)            |    3485 |   11.39 |           73 |           0 |
-| ExcelJS `WorkbookWriter` (inline strings)            |    3393 |   10.89 |           39 |           0 |
+| turbosheet `writeXlsx` (balanced)                    |    1222 |    8.38 |          150 |         280 |
+| turbosheet `writeXlsx` (low-memory)                  |    1061 |    8.49 |          155 |          22 |
+| turbosheet `writeXlsx` (max-speed)                   |     557 |   11.16 |          150 |          19 |
+| turbosheet `createXlsxWriter` (balanced)             |    1177 |    8.37 |           71 |          54 |
+| turbosheet `createXlsxWriter` (low-memory)           |    1060 |    8.46 |           65 |          18 |
+| turbosheet `createXlsxWriter` (max-speed)            |     535 |   11.15 |           64 |           1 |
+| turbosheet `createXlsxWriter` + `flush` (balanced)   |    1184 |    8.37 |           47 |           9 |
+| turbosheet `createXlsxWriter` + `flush` (low-memory) |     975 |    8.46 |           35 |           0 |
+| turbosheet `createXlsxWriter` + `flush` (max-speed)  |     528 |   11.15 |           51 |           0 |
+| turbosheet `xlsxStream` (balanced)                   |    1023 |    8.37 |          161 |          13 |
+| turbosheet `xlsxStream` (low-memory)                 |     858 |    8.46 |          147 |         132 |
+| turbosheet `xlsxStream` (max-speed)                  |     438 |   11.15 |          164 |          19 |
+| ExcelJS `xlsx.writeBuffer`                           |    6598 |    8.51 |         2113 |        2093 |
+| ExcelJS `WorkbookWriter` (shared strings)            |    3446 |   11.39 |           64 |          28 |
+| ExcelJS `WorkbookWriter` (inline strings)            |    3284 |   10.89 |           42 |           3 |
 
 `xlsxStream` builds the whole workbook in memory and then streams the compressed output, so its heap is the
 in-memory workbook's. `createXlsxWriter` with `flush` is the low-memory streaming path: rows are written as
-they are added.
+they are added. In Node, deflate runs on native zlib (sync batches in `writeXlsx`, off-thread in the
+streaming writers), so `max-speed` (level 1) is now about twice as fast as the default level.
 
 ## Read
 
 | case                                   | time ms | peak heap + buffers MB |
 | -------------------------------------- | ------: | ---------------------: |
-| turbosheet `readXlsx` (DOM)            |    1213 |                    139 |
-| turbosheet `xlsxRows`                  |    1170 |                     83 |
-| turbosheet `xlsxRows` (low-memory)     |    2189 |                     27 |
-| turbosheet `xlsxRows` (metadata first) |    1186 |                      7 |
-| ExcelJS `xlsx.load` (DOM)              |    3441 |                   1188 |
-| ExcelJS `WorkbookReader` (streaming)   |    1793 |                     70 |
+| turbosheet `readXlsx` (DOM)            |    1213 |                    142 |
+| turbosheet `xlsxRows`                  |    1195 |                     85 |
+| turbosheet `xlsxRows` (low-memory)     |    2220 |                     28 |
+| turbosheet `xlsxRows` (metadata first) |    1189 |                      4 |
+| ExcelJS `xlsx.load` (DOM)              |    3628 |                    721 |
+| ExcelJS `WorkbookReader` (streaming)   |    1785 |                     72 |
 
 "Metadata first" is the same data with workbook metadata (`styles.xml`, `sharedStrings.xml`) stored before
 the sheet, as `writeXlsx` writes it, so `xlsxRows` needs no buffering. Excel 16.x and ExcelJS store the sheet

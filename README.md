@@ -8,19 +8,19 @@ Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript run
 
 ## Why
 
-- **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.2 s vs 3.4-4.7 s for `xlsx.load`.
+- **Fast.** 100k rows x 20 columns: `writeXlsx` 1.2 s (0.6 s with `profile: 'max-speed'`) vs 6.6-7.6 s for ExcelJS `writeBuffer`; reading takes 1.2 s vs 3.4-4.7 s for `xlsx.load`.
 - **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
 - **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
-- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/` (in Node, Bun and Deno, `node:zlib` is looked up at runtime for faster deflate and CRC-32).
+- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/` (in Node, Bun and Deno, `node:zlib` is looked up at runtime for faster deflate, inflate and CRC-32).
 - **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
 
 Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data. Methodology and full tables: [docs/benchmarks.md](./docs/benchmarks.md); reproduce with `pnpm bench`.
 
 | 100k rows x 20 cols     | turbosheet                               | ExcelJS 4.4.0           |
 | ----------------------- | ------------------------------------- | ----------------------- |
-| write, in memory        | 2.2 s `writeXlsx` (balanced)          | 7.6 s `writeBuffer`     |
-| write, in memory, fast  | 1.4 s `writeXlsx` (`max-speed`)       |                         |
-| write, streaming        | 1.0-1.5 s `xlsxStream` / `createXlsxWriter` | 3.5 s `WorkbookWriter` |
+| write, in memory        | 1.2 s `writeXlsx` (balanced)          | 6.6-7.6 s `writeBuffer` |
+| write, in memory, fast  | 0.6 s `writeXlsx` (`max-speed`)       |                         |
+| write, streaming        | 0.4-1.2 s `xlsxStream` / `createXlsxWriter` | 3.3-3.5 s `WorkbookWriter` |
 | read into a workbook    | 1.2 s `readXlsx`                      | 3.4-4.7 s `xlsx.load`   |
 | read, streaming rows    | 1.2 s `xlsxRows`                      | 1.8-3.7 s `WorkbookReader` |
 | peak JS heap, in-memory write | ~145 MB (cells are partly off-heap) | 2.1 GB              |
