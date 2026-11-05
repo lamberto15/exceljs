@@ -405,8 +405,12 @@ async function* chunksOf(source: ByteOrStringSource): AsyncGenerator<string | Ui
   }
 }
 
-const decoder = (label: string, fatal = false) =>
-  new TextDecoder(label, { ignoreBOM: true, fatal });
+const decoder = (label: string, fatal = false): TextDecoder => {
+  const d = new TextDecoder(label, { ignoreBOM: true, fatal });
+  // ignoreBOM only means something for UTF encodings; Node 22's single-byte decoders drop a
+  // leading 0xFF ('ÿ') when it is set
+  return d.encoding.startsWith('utf-') ? d : new TextDecoder(label, { fatal });
+};
 
 /**
  * Chunk-safe byte decoder: call with each chunk, then with no argument at the end. The BOM
