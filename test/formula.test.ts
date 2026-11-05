@@ -165,8 +165,8 @@ describe('parseFormula', () => {
       ['"abc', 'Unterminated string'],
       ['1 2', 'Unexpected "2"'],
       ['{1,2;3}', 'Array rows must have the same length'],
-      ['Table1[Col]', 'Structured references are not supported'],
-      ['[1]Sheet1!A1', 'External or structured references are not supported'],
+      ['[1]Sheet1!A1', 'External references are not supported'],
+      ['Table1[#Nope]', 'Unknown structured reference item'],
       ['Sheet1:Sheet3!A1', '3-D references are not supported'],
       ['(A1,B1)', 'Union references are not supported'],
       ['#FOO!', 'Unknown error literal'],
@@ -337,7 +337,7 @@ describe('evaluate', () => {
     const wb = book();
     const ws = wb.getWorksheet()!;
     ws.setCell('A1', { formula: 'SUM(1,' });
-    ws.setCell('A2', { formula: 'Table1[Col]' });
+    ws.setCell('A2', { formula: '[1]Sheet1!A1' });
     ws.setCell('A3', { formula: 'A1' });
     const rep = evaluate(wb);
     expect(rep.errors.map((e) => e.address)).toEqual(['Sheet1!A1', 'Sheet1!A2']);

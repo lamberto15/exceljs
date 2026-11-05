@@ -65,7 +65,30 @@ export type FormulaNode =
   | { readonly type: 'call'; readonly name: string; readonly args: readonly FormulaNode[] }
   | { readonly type: 'array'; readonly rows: readonly (readonly ArrayLiteral[])[] }
   /** An omitted argument: IF(A1,,1). */
-  | { readonly type: 'missing' };
+  | { readonly type: 'missing' }
+  /**
+   * Structured reference: `Sales[Amount]`, `[@Qty]`, `Sales[[#Totals],[A]:[B]]`. `table`
+   * undefined = the table holding the formula. `areas` empty = the data rows; `from` / `to`
+   * undefined = every column.
+   */
+  | {
+      readonly type: 'structured';
+      readonly table: string | undefined;
+      readonly areas: readonly StructuredArea[];
+      readonly from: string | undefined;
+      readonly to: string | undefined;
+    };
+
+/** Row areas of a structured reference (`#All`, `#Data`, `#Headers`, `#Totals`, `#This Row` / `@`). */
+export type StructuredArea = 'all' | 'data' | 'headers' | 'totals' | 'thisRow';
+
+const AREAS: Record<string, StructuredArea> = {
+  '#all': 'all',
+  '#data': 'data',
+  '#headers': 'headers',
+  '#totals': 'totals',
+  '#this row': 'thisRow',
+};
 
 /** Thrown by parseFormula; `position` is the 0-based offset in the formula text. */
 export class FormulaParseError extends SyntaxError {
@@ -254,7 +277,7 @@ class Parser {
       const sheet = this.#quotedSheet();
       return this.#qualified(sheet);
     }
-    if (c === 91) this.#fail('External or structured references are not supported');
+    if (c === 91) return this.#structured(undefined);
     if (identChar(c)) {
       const r = this.#lines(undefined);
       if (r) return r;
@@ -279,12 +302,75 @@ class Parser {
     if (next === '!') return this.#qualified(id);
     if (next === ':' && /^:(?:[\w.]+|'[^']*')!/.test(s.slice(e)))
       this.#fail('3-D references are not supported');
-    if (next === '[') this.#fail('Structured references are not supported');
+    if (next === '[') return this.#structured(id);
     const cell = this.#cell(undefined, id);
     if (cell) return cell;
     const up = id.toUpperCase();
     if (up === 'TRUE' || up === 'FALSE') return { type: 'boolean', value: up === 'TRUE' };
     return { type: 'name', name: id };
+  }
+
+  /** A structured reference's brackets, at '[' (after the table name, if any). */
+  #structured(table: string | undefined): FormulaNode {
+    const s = this.#s;
+    const at = this.#p;
+    this.#p++;
+    const areas: StructuredArea[] = [];
+    const cols: string[] = [];
+    let range = false;
+    /** Text up to the closing ']' of an item (' escapes the next character). */
+    const item = (): string => {
+      let out = '';
+      for (;;) {
+        const ch = s[this.#p];
+        if (ch === undefined) this.#fail('Unterminated structured reference', at);
+        if (ch === ']') return out;
+        if (ch === "'") this.#p++;
+        out += s[this.#p];
+        this.#p++;
+      }
+    };
+    const add = (raw: string): void => {
+      const t = raw.trim();
+      if (t.startsWith('#')) {
+        const a = AREAS[t.toLowerCase()];
+        if (!a) this.#fail(`Unknown structured reference item "${t}"`, at);
+        areas.push(a);
+      } else cols.push(raw);
+    };
+    if (s[this.#p] === '@') {
+      this.#p++;
+      areas.push('thisRow');
+    }
+    this.#ws();
+    if (s[this.#p] === '[') {
+      for (;;) {
+        this.#ws();
+        this.#expect('[');
+        add(item());
+        this.#p++;
+        this.#ws();
+        const d = s[this.#p];
+        if (d === ',' || d === ':') {
+          if (d === ':') range = true;
+          this.#p++;
+          continue;
+        }
+        this.#expect(']');
+        break;
+      }
+    } else {
+      const raw = item();
+      this.#p++;
+      if (raw !== '') add(raw);
+    }
+    if (table === undefined && /^[\w'.\\]/.test(s.slice(this.#p, this.#p + 1))) {
+      this.#fail('External references are not supported', at);
+    }
+    if (cols.length > 2 || (range && cols.length !== 2) || (!range && cols.length > 1)) {
+      this.#fail('Invalid structured reference', at);
+    }
+    return { type: 'structured', table, areas, from: cols[0], to: cols[1] ?? cols[0] };
   }
 
   #cell(sheet: string | undefined, id: string): FormulaNode | undefined {

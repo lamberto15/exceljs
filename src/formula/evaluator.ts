@@ -12,6 +12,7 @@ import type {
 } from '../core/types.js';
 import type { Workbook } from '../core/workbook.js';
 import type { RowData, Worksheet } from '../core/worksheet.js';
+import type { Table } from '../xlsx/features/tables.js';
 import {
   broadcast,
   type FormulaFunction,
@@ -20,6 +21,10 @@ import {
   toArr,
 } from './helpers.js';
 import { type BinaryOp, CELL_RE, colIndex, type FormulaNode, parseFormula } from './parser.js';
+
+/** A structured reference node. */
+type StructNode = Extract<FormulaNode, { type: 'structured' }>;
+
 import {
   type CellReader,
   compare,
@@ -121,6 +126,7 @@ interface Parsed {
     | (
         | readonly [string | undefined, number, number, number, number]
         | readonly [string | undefined, string]
+        | readonly [StructNode]
       )[]
     | undefined;
   calls: string[] | undefined;
@@ -145,6 +151,9 @@ function collect(n: FormulaNode, p: Parsed): void {
       return;
     case 'name':
       p.refs!.push([n.sheet, n.name]);
+      return;
+    case 'structured':
+      p.refs!.push([n]);
       return;
     case 'unary':
     case 'percent':
@@ -440,39 +449,134 @@ class Run implements CellReader {
     return sheet === undefined ? global : undefined;
   }
 
-  /** Push the formula nodes `p` statically depends on (evaluated on host sheet `si`). */
-  depsOf(p: Parsed, si: SheetIndex, out: number[], depth: number): void {
+  /**
+   * Push the formula nodes `p` statically depends on (evaluated on host sheet `si`, in cell
+   * (`row`, `col`) when known: `[@Col]` then depends on that row only).
+   */
+  depsOf(p: Parsed, si: SheetIndex, out: number[], depth: number, row = -1, col = -1): void {
     for (const ref of p.refs!) {
       if (ref.length === 2) {
         if (depth > 16) continue;
         const d = this.definedName(ref[1], ref[0], si);
-        if (d) this.depsOf(this.ev.parsed(d.value), si, out, depth + 1);
+        if (d) this.depsOf(this.ev.parsed(d.value), si, out, depth + 1, row, col);
+        continue;
+      }
+      if (ref.length === 1) {
+        const a = this.tableRef(ref[0], si, row, col, true);
+        if (!isError(a)) this.#depsIn(a[0], a[1], a[2], a[3], a[4], out);
         continue;
       }
       const t = this.sheetFor(ref[0], si);
-      if (!t) continue;
-      const [, top, left, bottom, right] = ref;
-      const rows = t.rows;
-      let lo = 0;
-      let hi = rows.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (rows[mid]! < top) lo = mid + 1;
-        else hi = mid;
-      }
-      const nC = this.#nC;
-      for (let k = lo; k < rows.length && rows[k]! <= bottom; k++) {
-        const end = t.first[k + 1]!;
-        for (let id = t.first[k]!; id < end; id++) {
-          const c = nC[id]!;
-          if (c > right) break;
-          if (c >= left && this.#state[id] !== 2) out.push(id);
+      if (t) this.#depsIn(t, ref[1], ref[2], ref[3], ref[4], out);
+    }
+  }
+
+  #tables: Map<string, { si: SheetIndex; t: Table }> | undefined;
+
+  /**
+   * The range of a structured reference: [sheet, top, left, bottom, right], or an error
+   * (#REF! for an unknown table / column / missing header or totals row, #VALUE! for `@`
+   * outside the data rows). `deps`: for dependency collection, where `@` without a host row
+   * means every data row.
+   */
+  tableRef(
+    n: StructNode,
+    host: SheetIndex,
+    row: number,
+    col: number,
+    deps: boolean,
+  ): [SheetIndex, number, number, number, number] | CellError {
+    if (!this.#tables) {
+      this.#tables = new Map();
+      for (const si of this.sheets) {
+        for (const t of si.ws.tables ?? []) {
+          this.#tables.set(t.name.toLowerCase(), { si, t });
+          if (t.displayName) this.#tables.set(t.displayName.toLowerCase(), { si, t });
         }
       }
-      if (t.arrays) {
-        for (const a of t.arrays) {
-          if (a[0]! <= bottom && a[2]! >= top && a[1]! <= right && a[3]! >= left) out.push(a[4]!);
+    }
+    let hit: { si: SheetIndex; t: Table } | undefined;
+    let box: [number, number, number, number] | undefined;
+    if (n.table !== undefined) {
+      hit = this.#tables.get(n.table.toLowerCase());
+      if (hit) box = decodeRangeSafe(hit.t.ref);
+    } else {
+      for (const t of host.ws.tables ?? []) {
+        const b = decodeRangeSafe(t.ref);
+        if (b && row >= b[0] && row <= b[2] && col >= b[1] && col <= b[3]) {
+          hit = { si: host, t };
+          box = b;
+          break;
         }
+      }
+    }
+    if (!hit || !box) return REF;
+    const t = hit.t;
+    const [top, left, bottom, right] = box;
+    const header = t.headerRow !== false ? top : -1;
+    const totals = t.totalsRow === true ? bottom : -1;
+    const first = top + (header >= 0 ? 1 : 0);
+    const last = bottom - (totals >= 0 ? 1 : 0);
+    let r0 = first;
+    let r1 = last;
+    const a = n.areas;
+    if (a.length > 0) {
+      const has = (x: string) => a.includes(x as never);
+      if (has('all')) {
+        r0 = top;
+        r1 = bottom;
+      } else if (has('thisRow')) {
+        if (hit.si === host && row >= first && row <= last) r0 = r1 = row;
+        else if (!deps) return VALUE;
+      } else {
+        const h = has('headers');
+        const d = has('data');
+        const tt = has('totals');
+        if ((h && header < 0) || (tt && totals < 0 && !d)) return REF;
+        r0 = h ? header : d ? first : totals;
+        r1 = tt && totals >= 0 ? totals : d ? last : h ? header : totals;
+      }
+    }
+    let c0 = left;
+    let c1 = right;
+    if (n.from !== undefined) {
+      const i = colOf(t, n.from);
+      const j = colOf(t, n.to ?? n.from);
+      if (i < 0 || j < 0) return REF;
+      c0 = left + Math.min(i, j);
+      c1 = left + Math.max(i, j);
+    }
+    return [hit.si, r0, c0, r1, c1];
+  }
+
+  #depsIn(
+    t: SheetIndex,
+    top: number,
+    left: number,
+    bottom: number,
+    right: number,
+    out: number[],
+  ): void {
+    const rows = t.rows;
+    let lo = 0;
+    let hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (rows[mid]! < top) lo = mid + 1;
+      else hi = mid;
+    }
+    const nC = this.#nC;
+    for (let k = lo; k < rows.length && rows[k]! <= bottom; k++) {
+      const end = t.first[k + 1]!;
+      for (let id = t.first[k]!; id < end; id++) {
+        const c = nC[id]!;
+        if (c > right) break;
+        if (c >= left && this.#state[id] !== 2) out.push(id);
+      }
+    }
+    if (t.arrays) {
+      for (const a of t.arrays) {
+        if (a[0]! <= bottom && a[2]! >= top && a[1]! <= right && a[3]! >= left) out.push(a[4]!);
       }
     }
   }
@@ -499,7 +603,7 @@ class Run implements CellReader {
         const si = this.#nS[v]!;
         const p = this.ev.parsed(this.#nF[v]!.formula);
         this.#nP[v] = p;
-        this.depsOf(p, si, deps, 0);
+        this.depsOf(p, si, deps, 0, this.#nR[v]!, this.#nC[v]!);
         for (const name of p.calls!) {
           if (!this.ev.fns.has(name) && !this.#unsupported.has(name)) {
             this.#unsupported.set(name, this.#addr(v));
@@ -847,6 +951,12 @@ function cellAt(a: string): [number, number] {
   return [+m[2]! - 1, colIndex(m[1]!)];
 }
 
+/** 0-based index of a table column by name (case-insensitive), or -1. */
+function colOf(t: Table, name: string): number {
+  const k = name.trim().toLowerCase();
+  return t.columns.findIndex((c) => c.name.toLowerCase() === k);
+}
+
 function colName(c: number): string {
   let s = '';
   for (let n = c + 1; n > 0; n = Math.floor((n - 1) / 26))
@@ -940,6 +1050,8 @@ const pct = (x: FormulaScalar): FormulaScalar => {
   return typeof n === 'number' ? n / 100 : n;
 };
 
+const localKey = (name: string): string => name.toLowerCase().replace(/^_xlpm\./, '');
+
 /** Evaluation context of one formula (implements FunctionContext for the functions). */
 export class EvalContext implements FunctionContext {
   /** @internal */
@@ -950,6 +1062,8 @@ export class EvalContext implements FunctionContext {
   readonly col: number;
   readonly array: boolean;
   #depth = 0;
+  /** LET names in scope (lower-case, without `_xlpm.`). */
+  #locals: Map<string, FormulaValue> | undefined;
 
   constructor(run: Run, si: SheetIndex, row: number, col: number, array: boolean) {
     this.#run = run;
@@ -976,6 +1090,16 @@ export class EvalContext implements FunctionContext {
     if (this.array) return this;
     const c = new EvalContext(this.#run, this.#si, this.row, this.col, true);
     c.#depth = this.#depth;
+    c.#locals = this.#locals;
+    return c;
+  }
+
+  /** @internal This context with one more LET name bound to `v`. */
+  withLocal(name: string, v: FormulaValue): EvalContext {
+    const c = new EvalContext(this.#run, this.#si, this.row, this.col, this.array);
+    c.#depth = this.#depth;
+    c.#locals = new Map(this.#locals);
+    c.#locals.set(localKey(name), v);
     return c;
   }
 
@@ -1010,7 +1134,15 @@ export class EvalContext implements FunctionContext {
       case 'missing':
         return null;
       case 'name':
+        if (this.#locals && n.sheet === undefined) {
+          const v = this.#locals.get(localKey(n.name));
+          if (v !== undefined) return v;
+        }
         return this.#name(n.name, n.sheet);
+      case 'structured': {
+        const a = this.#run.tableRef(n, this.#si, this.row, this.col, false);
+        return isError(a) ? a : new FormulaRange(this.#run, a[0].ws, a[1], a[2], a[3], a[4]);
+      }
       case 'array': {
         const data: FormulaScalar[] = [];
         for (const row of n.rows) for (const x of row) data.push(isError(x) ? errOf(x.error) : x);
@@ -1083,7 +1215,7 @@ export class EvalContext implements FunctionContext {
   reference(text: string): FormulaValue {
     const p = this.#run.ev.parsed(text.trim());
     const t = p.ast?.type;
-    if (t !== 'cell' && t !== 'range' && t !== 'name') return REF;
+    if (t !== 'cell' && t !== 'range' && t !== 'name' && t !== 'structured') return REF;
     const v = this.ev(p.ast!);
     return isRef(v) ? v : REF;
   }

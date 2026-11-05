@@ -4,8 +4,8 @@
 // strip it (only when it is the canonical one, so round trips are exact).
 // Source: Microsoft, "Issue: An _xlfn. prefix is displayed in front of a formula" and MS-XLSX.
 // Every dotted built-in name is a future function except ERROR.TYPE (BETA.DIST, STDEV.S,
-// NETWORKDAYS.INTL, ...), so only the undotted ones are listed. LET / LAMBDA parameter names
-// (`_xlpm.`) are left as they are.
+// NETWORKDAYS.INTL, ...), so only the undotted ones are listed. LET names are written with the
+// `_xlpm.` prefix files need (Excel shows a blank / broken cell without it); readers keep it.
 
 const UNDOTTED =
   ' ACOT ACOTH AGGREGATE ANCHORARRAY ARABIC ARRAYTOTEXT BASE BITAND BITLSHIFT BITOR BITRSHIFT' +
@@ -38,7 +38,8 @@ const STRIP =
  * a prefix on a name that needs none is left as written.
  */
 export function addXlfn(formula: string): string {
-  const f = formula.includes('[@') ? expandThisRow(formula) : formula;
+  let f = formula.includes('[@') ? expandThisRow(formula) : formula;
+  if (/LET\s*\(/i.test(f)) f = addXlpm(f);
   return f.indexOf('(') < 0
     ? f
     : f.replace(ADD, (m, q?: string, p?: string, name?: string) => {
@@ -90,4 +91,57 @@ export function stripXlfn(formula: string): string {
     : formula.replace(STRIP, (m, q?: string, p?: string, name?: string) =>
         q || prefixOf(name!) !== p!.toLowerCase() ? m : name!,
       );
+}
+
+const TOKEN =
+  /("(?:[^"]|"")*")|('(?:[^']|'')*')|(\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\])|([A-Za-z_\\][\w.\\]*)|(\s+|[\s\S])/g;
+
+/** Prefix LET names (and their uses inside the LET) with `_xlpm.` (idempotent). */
+export function addXlpm(f: string): string {
+  const toks: string[] = [];
+  const ident: boolean[] = [];
+  for (const m of f.matchAll(TOKEN)) {
+    toks.push(m[0]);
+    ident.push(m[4] !== undefined);
+  }
+  const next = (i: number): number => {
+    let j = i + 1;
+    while (j < toks.length && /^\s+$/.test(toks[j]!)) j++;
+    return j;
+  };
+  for (let i = 0; i < toks.length; i++) {
+    if (!ident[i] || !/^(?:_xlfn\.)?LET$/i.test(toks[i]!)) continue;
+    const open = next(i);
+    if (toks[open] !== '(') continue;
+    // split the arguments at depth 1; find the closing parenthesis
+    const args: number[][] = [[]];
+    let depth = 0;
+    let close = toks.length;
+    for (let j = open + 1; j < toks.length; j++) {
+      const t = toks[j]!;
+      if (t === '(' || t === '{') depth++;
+      else if ((t === ')' || t === '}') && depth > 0) depth--;
+      else if (t === ')') {
+        close = j;
+        break;
+      } else if (t === ',' && depth === 0) {
+        args.push([]);
+        continue;
+      }
+      if (!/^\s+$/.test(t)) args[args.length - 1]!.push(j);
+    }
+    const names = new Set<string>();
+    for (let a = 0; a + 1 < args.length; a += 2) {
+      const arg = args[a]!;
+      if (arg.length === 1 && ident[arg[0]!])
+        names.add(toks[arg[0]!]!.toLowerCase().replace(/^_xlpm\./, ''));
+    }
+    for (let j = open + 1; j < close; j++) {
+      if (!ident[j] || toks[j - 1] === '!' || toks[next(j)] === '(' || toks[next(j)] === '!')
+        continue;
+      const t = toks[j]!;
+      if (!/^_xlpm\./i.test(t) && names.has(t.toLowerCase())) toks[j] = `_xlpm.${t}`;
+    }
+  }
+  return toks.join('');
 }
