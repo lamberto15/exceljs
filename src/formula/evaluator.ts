@@ -67,7 +67,7 @@ export type FormulaResult = number | string | boolean | CellError;
 /** Lazy built-in: receives the argument ASTs (IF, IFERROR, CHOOSE, ...). */
 export type LazyFunction = (args: readonly FormulaNode[], ctx: EvalContext) => FormulaValue;
 
-/** @internal Built-in table entry. */
+/** A built-in function table entry (eager function, lazy, or array-mode). */
 export type Builtin =
   | FormulaFunction
   | { readonly lazy: LazyFunction }

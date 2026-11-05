@@ -128,7 +128,7 @@ describe('bug sweep 2 (exceljs reports)', () => {
     for await (const r of xlsxRows(tiny())) rows.push(r);
     expect(rows.length).toBe(300);
     expect(rows[0]!.sheet).toBe('数据');
-    for (let i = 0; i < 300; i++) expect(rows[i]!.values[0]).toBe(texts[i % texts.length]);
+    for (let i = 0; i < 300; i++) expect(rows[i]!.cells[0]).toBe(texts[i % texts.length]);
   });
 
   it('exceljs#2234: merging over a table throws instead of corrupting the file', () => {

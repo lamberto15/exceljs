@@ -74,7 +74,7 @@ describe('metadata before worksheets (#74)', () => {
       let last: unknown[] = [];
       for await (const r of xlsxRows(src.it)) {
         if (firstAt < 0) firstAt = src.fed();
-        if (r.sheet === 'S') last = r.values;
+        if (r.sheet === 'S') last = r.cells;
         n++;
       }
       expect(n, name).toBe(40_001);

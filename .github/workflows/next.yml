@@ -49,6 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm build
+      - run: pnpm check:dts
       - run: pnpm size
       - name: LibreOffice opens generated files
         run: |

@@ -52,7 +52,7 @@ function sizes(buf: Uint8Array): { sheet: number; meta: number; order: string[] 
 async function collect(src: Parameters<typeof xlsxRows>[0], opts?: Parameters<typeof xlsxRows>[1]) {
   const rows: { sheet: string; row: number; values: unknown[] }[] = [];
   for await (const r of xlsxRows(src, opts))
-    rows.push({ sheet: r.sheet, row: r.row, values: r.values });
+    rows.push({ sheet: r.sheet, row: r.row, values: r.cells });
   return rows;
 }
 

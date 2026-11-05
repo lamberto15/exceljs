@@ -12,7 +12,7 @@ describe('exceljs parity: streaming read', () => {
   // exceljs: spec/integration/workbook-xlsx-reader.spec.js — "xlsx file" (checkTestBookReader)
   it('reads the test book row by row', async () => {
     const rows = await allRows(writeXlsx(createTestBook(new Workbook())));
-    const byRow = new Map(rows.map((r) => [r.row, r.values]));
+    const byRow = new Map(rows.map((r) => [r.row, r.cells]));
     // ➖ rows without values (row 3: only merged cells) are skipped; exceljs emits 11 rows
     expect([...byRow.keys()]).toEqual([1, 2, 4, 5, 6, 7, 8, 9, 10, 11]);
     const r1 = byRow.get(1)!;

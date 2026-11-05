@@ -8,7 +8,6 @@ import { WRITERS, withAll } from '../features/registry.js';
 import { writeXlsx as writeCore, xlsxStream as xlsxStreamCore } from './book.js';
 import { XlsxWriter as XlsxWriterCore, type XlsxWriterOptions } from './stream-writer.js';
 
-export { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 export { listPreservedParts, type PreservedPart } from './preserve.js';
 export {
   type ChunkSink,

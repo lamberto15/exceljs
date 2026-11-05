@@ -108,7 +108,7 @@ describe('stream transform recipe (docs/features.md)', () => {
         current = row.sheet;
         out = w.addWorksheet(row.sheet);
       }
-      const [item, qty, price] = row.values;
+      const [item, qty, price] = row.cells;
       if (row.row === 1) out.addRow([item, qty, price, 'total']);
       else if (qty) out.addRow([item, qty, price, (qty as number) * (price as number)]); // drop qty 0
       if (row.row % 500 === 0) await out.flush(); // backpressure

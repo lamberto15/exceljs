@@ -96,7 +96,7 @@ Gradient fills use ExcelJS's shape: `{ type: 'gradient', gradient: 'angle', degr
 
 Excel-like defaults:
 
-- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. Column widths are in units of that font's digit width, so pixel conversions (pictures, `fitImage`) and the default row height follow it (`fontMetrics(font)`; approximations for fonts other than Calibri). `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
+- **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. Column widths are in units of that font's digit width, so pixel conversions (pictures, `fitImage`) and the default row height follow it (approximations for fonts other than Calibri). `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
 - **Line breaks**: text containing `\n` gets `alignment.wrapText` merged into its style, as when typing Alt+Enter in Excel (line breaks only show in wrapped cells).
 - **Hyperlinks**: a hyperlink cell stored without a style gets Excel's hyperlink look (underlined, theme hyperlink color); pass a style to choose your own.
 - **Whole sheet**: `setSheetStyle(ws, style)` formats every cell, like selecting all and formatting: existing cells, row styles and all columns get the style's properties merged over theirs, and cells created later inherit it. See [sheet protection](#sheet-protection) for unlocking all cells.
@@ -449,7 +449,7 @@ Transform recipe (constant memory both ways): read with `xlsxRows`, write with `
 const w = createXlsxWriter({ sink });
 let out = w.addWorksheet('Orders');
 for await (const row of xlsxRows(await openAsBlob('in.xlsx'))) { // node:fs
-  const [item, qty, price] = row.values;
+  const [item, qty, price] = row.cells; // 0-based: cells[0] is column A
   if (row.row === 1) out.addRow([item, qty, price, 'total']);
   else if (qty) out.addRow([item, qty, price, qty * price]);
   if (row.row % 5000 === 0) await out.flush(); // backpressure

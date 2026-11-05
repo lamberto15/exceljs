@@ -103,7 +103,7 @@ import { xlsxRows } from 'turbosheet';
 
 // Accepts bytes, a Blob / File, an AsyncIterable<Uint8Array> (Node streams) or a web ReadableStream.
 for await (const row of xlsxRows(await openAsBlob('big.xlsx'))) {
-  // row.sheet, row.row (1-based), row.values (0-based by column: values[0] is column A)
+  // row.sheet, row.row (1-based), row.cells (0-based by column: cells[0] is column A)
 }
 // merged ranges: xlsxRows(src, { onSheetEnd: ({ sheet, merges }) => ... })
 ```

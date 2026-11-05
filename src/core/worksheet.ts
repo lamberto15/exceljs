@@ -197,6 +197,7 @@ export interface Dimensions {
   ref: string;
 }
 
+/** @internal */
 export type CellCallback = (
   col: number,
   kind: number,
@@ -212,7 +213,7 @@ const E_U8 = /* @__PURE__ */ new Uint8Array(0);
 const E_F64 = /* @__PURE__ */ new Float64Array(0);
 const E_U32 = /* @__PURE__ */ new Uint32Array(0);
 
-/** Internal row record; see the module header for the layout contract. */
+/** @internal Row record; see the module header for the layout contract. */
 export class RowData {
   /** 0-based row index. */
   readonly index: number;
@@ -595,12 +596,12 @@ export class Worksheet {
 
   // ---- low-level access ----
 
-  /** Sparse array of row records indexed by 0-based row (see module header). */
+  /** @internal Sparse array of row records indexed by 0-based row (see module header). */
   get rowData(): readonly (RowData | undefined)[] {
     return this._rows;
   }
 
-  /** Sparse array of column records indexed by 0-based column. */
+  /** @internal Sparse array of column records indexed by 0-based column. */
   get columnData(): readonly (Column | undefined)[] {
     return this._cols;
   }
@@ -611,7 +612,7 @@ export class Worksheet {
   }
 
   /**
-   * Reader fast path (0-based, no value conversion, no style inheritance, no date-format
+   * @internal Reader fast path (0-based, no value conversion, no style inheritance, no date-format
    * defaulting). `obj` must match the kind contract in the module header.
    */
   setCellRaw(r0: number, c0: number, kind: number, num: number, obj: unknown, xf: number): void {
@@ -632,6 +633,7 @@ export class Worksheet {
   }
 
   /**
+   * @internal
    * Internal-but-public (readers, features): the row record for 0-based row `r0`, created when
    * missing. `capacity` pre-sizes the cell arrays (grows an existing row's capacity if smaller)
    * to avoid regrowth when the caller knows roughly how many cells will follow.
@@ -943,7 +945,7 @@ export class Worksheet {
   }
 
   /**
-   * Add a merge (0-based) WITHOUT validation (no bounds, single-cell or overlap checks) — for
+   * @internal Add a merge (0-based) WITHOUT validation (no bounds, single-cell or overlap checks) — for
    * readers and features that copy merges from a trusted source. Overlapping merges produce
    * files Excel repairs.
    */
@@ -1349,7 +1351,7 @@ export class RowView {
     return this.index + 1;
   }
 
-  /** Underlying record (undefined if the row does not exist yet). */
+  /** @internal Underlying record (undefined if the row does not exist yet). */
   get data(): RowData | undefined {
     return this.worksheet.rowData[this.index];
   }

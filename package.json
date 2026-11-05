@@ -124,6 +124,7 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
+    "check:dts": "tsc -p tsconfig.dts.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check .",
@@ -178,7 +179,7 @@
       "name": "lite write + tables + images",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addTable, tablesWriter, addImage, placeImage, imagesWriter }",
-      "limit": "30.5 KB"
+      "limit": "30.8 KB"
     },
     {
       "name": "lite autofit",

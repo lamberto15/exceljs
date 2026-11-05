@@ -18,7 +18,7 @@ turbosheet is a clean rewrite inspired by (and partly derived from) ExcelJS 4.x.
 | Formulas | Not evaluated | Not evaluated by reading or writing; provide `result` for the cached value. `evaluate(wb)` from [`turbosheet/formula`](./formula.md) computes them (90 functions). |
 | Unknown content | Dropped on load/save (charts, pivot tables, ...) | **Preserved** on round trip (`preserveUnknown`, default true). |
 
-Indexing: rows and columns are **1-based** everywhere in the public API, like ExcelJS. Two spots are 0-based: `XlsxRow.values` from `xlsxRows` (`values[0]` is column A) and the low-level address helpers (`decodeAddr('B3')` is `{ row: 2, col: 1 }`). `RowView.values` is 1-based like ExcelJS (index 0 unused).
+Indexing: rows and columns are **1-based** everywhere in the public API, like ExcelJS. Two spots are 0-based: `XlsxRow.cells` from `xlsxRows` (`cells[0]` is column A) and the low-level address helpers (`decodeAddr('B3')` is `{ row: 2, col: 1 }`). `RowView.values` is 1-based like ExcelJS (index 0 unused).
 
 ## API map
 
@@ -148,7 +148,7 @@ import { openAsBlob } from 'node:fs';
 import { xlsxRows } from 'turbosheet';
 
 for await (const row of xlsxRows(await openAsBlob('big.xlsx'))) {
-  // row.sheet, row.row (1-based), row.values (0-based: values[0] is column A)
+  // row.sheet, row.row (1-based), row.cells (0-based: cells[0] is column A)
 }
 ```
 

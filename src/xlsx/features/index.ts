@@ -74,7 +74,7 @@ export {
   setPrintArea,
   setPrintTitles,
 } from './defined-names.js';
-export { type AnchorInput, drawingEmitter } from './drawing.js';
+export type { AnchorInput } from './drawing.js';
 export {
   type IgnoredError,
   ignoredErrorsReader,
