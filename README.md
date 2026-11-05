@@ -1,6 +1,6 @@
 # turbosheet
 
-[![npm](https://img.shields.io/npm/v/turbosheet)](https://www.npmjs.com/package/turbosheet) [![CI](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml/badge.svg?branch=next)](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml?query=branch%3Anext) [![minzipped size](https://img.shields.io/bundlephobia/minzip/turbosheet)](https://bundlephobia.com/package/turbosheet) [![node](https://img.shields.io/node/v/turbosheet)](https://nodejs.org) [![license](https://img.shields.io/npm/l/turbosheet)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/turbosheet)](https://www.npmjs.com/package/turbosheet) [![CI](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml/badge.svg?branch=main)](https://github.com/lamberto15/turbosheet/actions/workflows/next.yml?query=branch%3Amain) [![minzipped size](https://img.shields.io/bundlephobia/minzip/turbosheet)](https://bundlephobia.com/package/turbosheet) [![node](https://img.shields.io/node/v/turbosheet)](https://nodejs.org) [![license](https://img.shields.io/npm/l/turbosheet)](./LICENSE)
 
 Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript runtime.
 

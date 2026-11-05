@@ -1,7 +1,10 @@
-name: next-release
+name: release
 
+# The file keeps its old name: npm trusted publishing is bound to the workflow file name
+# (next-release.yml). Renaming it requires updating npmjs.com > turbosheet > Trusted publishing.
+#
 # Changesets release flow (same pattern as lamberto15/better-auth-adapter-prisma8). On every
-# push to `next`:
+# push to `main`:
 #  - pending changeset files (.changeset/*.md, added by PRs) -> opens or updates a
 #    "Version Packages" PR that bumps package.json and rewrites CHANGELOG.md; nothing
 #    is published yet.
@@ -11,7 +14,7 @@ name: next-release
 
 on:
   push:
-    branches: [next]
+    branches: [main]
   workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}

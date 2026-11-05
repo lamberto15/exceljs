@@ -18,8 +18,8 @@ Docs-only, test-only and CI changes do not need one (no CI check enforces change
 
 ## How a release happens
 
-1. PRs with changesets land on `next`.
-2. The **next-release** workflow runs on every push to `next` (and can be run by hand). It runs
+1. PRs with changesets land on `main`.
+2. The **release** workflow (file `next-release.yml`, kept for npm trusted publishing) runs on every push to `main` (and can be run by hand). It runs
    `typecheck`, `test`, `build`, `size`, then the Changesets action:
    - with pending changesets it opens (or updates) a **"chore(release): version packages"** PR that
      bumps `package.json` and writes `CHANGELOG.md`;
@@ -67,7 +67,7 @@ git tag turbosheet@0.1.0 && git push origin turbosheet@0.1.0
 ```
 
 Then the trusted publisher was configured (above). From 0.2.0 on, every release goes through changesets and
-the **next-release** workflow, which publishes over OIDC with provenance via `pnpm run release`
+the **release** workflow, which publishes over OIDC with provenance via `pnpm run release`
 (`changeset publish`, which skips versions already on npm).
 
 ## Deprecating or fixing a bad release
