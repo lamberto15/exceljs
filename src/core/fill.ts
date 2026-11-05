@@ -11,8 +11,8 @@ type Result = Formula['result'];
  * Put `formula` (written for the top-left cell of `range`) into every cell of the range with its
  * relative references adjusted per cell, as Excel's fill handle does. `results` (optional): the
  * cached values, as a row-major array or a function of the 1-based (row, col). Cells keep their
- * styles. Each cell is stored with its own formula text (Excel's shared-formula encoding saves
- * nothing for typical formulas once the file is compressed).
+ * styles. Each cell holds its own formula text; writers emit the range as an Excel shared
+ * formula (`t="shared"`) while the cells still hold the filled formulas.
  */
 export function fillFormula(
   ws: Worksheet,
@@ -34,4 +34,5 @@ export function fillFormula(
       k++;
     }
   }
+  ws._addSharedGroup(r.top, r.left, r.bottom, r.right);
 }

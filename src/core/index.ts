@@ -73,6 +73,7 @@ export {
   RowData,
   type RowObject,
   type RowProps,
+  type RowStyleOption,
   RowView,
   type SheetState,
   Worksheet,

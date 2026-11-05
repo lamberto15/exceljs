@@ -13,6 +13,7 @@ import {
   writeXlsx,
   xlsxRows,
 } from '../src/index.js';
+import { unzipSync } from '../src/zip/index.js';
 import { streamWrite } from './exceljs-parity/helpers.js';
 
 /** Same cells in a turbosheet and an exceljs sheet: [address, value]. */
@@ -212,7 +213,7 @@ describe('{ sharedFormula } values', () => {
     expect(ws.getValue('B4')).toEqual({ formula: 'A4*2' });
   });
 
-  it('is written as a plain formula', async () => {
+  it('is written as an Excel shared formula (read back expanded)', async () => {
     const wb = new Workbook();
     const ws = wb.addWorksheet('s');
     ws.setCell('A1', 2);
@@ -220,9 +221,13 @@ describe('{ sharedFormula } values', () => {
     ws.setCell('C1', { sharedFormula: 'B1', result: 4 });
     const bytes = writeXlsx(wb);
     expect(readXlsx(bytes).worksheets[0]!.getValue('C1')).toEqual({ formula: 'B1+1', result: 4 });
+    const sheet = new TextDecoder().decode(unzipSync(bytes).get('xl/worksheets/sheet1.xml')!);
+    expect(sheet).toContain('<f t="shared" ref="B1:C1" si="0">A1+1</f>');
+    expect(sheet).toContain('<c r="C1"><f t="shared" si="0"/><v>4</v></c>');
     const x = new ExcelJS.Workbook();
     await x.xlsx.load(bytes as unknown as ArrayBuffer);
-    expect(x.worksheets[0]!.getCell('C1').value).toEqual({ formula: 'B1+1', result: 4 });
+    expect(x.worksheets[0]!.getCell('C1').value).toEqual({ sharedFormula: 'B1', result: 4 });
+    expect(x.worksheets[0]!.getCell('C1').formula).toBe('B1+1');
   });
 
   it('a master without a formula throws, and addRow stays atomic', () => {

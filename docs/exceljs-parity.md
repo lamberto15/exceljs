@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 88 | 7 | 2 | 50 | 6 | 153 |
+| integration | 90 | 7 | 1 | 49 | 6 | 153 |
 | issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
-| unit | 59 | 2 | 8 | 44 | 64 | 177 |
-| **all** | 182 | 10 | 10 | 99 | 70 | 371 |
+| unit | 61 | 2 | 6 | 44 | 64 | 177 |
+| **all** | 186 | 10 | 7 | 98 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -34,7 +34,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [data-validation](../test/exceljs-parity/data-validation.test.ts) | 2 | 0 | 0 | 1 | 0 | 3 |
 | [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 0 | 6 | 1 | 9 |
 | [formulas](../test/exceljs-parity/formulas.test.ts) | 8 | 1 | 0 | 7 | 0 | 16 |
-| [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 0 | 1 | 2 | 0 | 0 | 3 |
+| [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 2 | 1 | 0 | 0 | 0 | 3 |
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
 | [issues](../test/exceljs-parity/issues.test.ts) | 25 | 0 | 0 | 2 | 0 | 27 |
 | [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 0 | 8 | 0 | 15 |
@@ -42,7 +42,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 0 | 3 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
 | [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
-| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 50 | 2 | 1 | 37 | 0 | 90 |
+| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 52 | 2 | 0 | 36 | 0 | 90 |
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 8 | 0 | 0 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
@@ -69,12 +69,9 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 
 Compared with ExcelJS 4.4.0:
 
-- Shared-formula output: `fillFormula` and `{ sharedFormula }` values are written as plain (relative-adjusted) formulas; shared formulas in files are expanded on read.
-- `activePane` of split views (derived from the split); ExcelJS's `showRuler` / `zoomScaleNormal` / `style` view fields.
 - Table editing beyond `addTableRows` (removing rows, adding / removing / renaming columns, header / totals toggles through a table object); edit cells and `ws.tables` instead.
-- `addRow` style inheritance codes (`'i'`, `'o'`, `'n'`), the `cell.hyperlink` setter.
 
-Different by design: row / column `collapsed` is a plain settable flag here (`ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true` on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
+Different by design: shared formulas (`fillFormula`, `{ sharedFormula }` values, shared formulas read from a file) are written as Excel shared formulas but read back expanded, one plain formula per cell (no `sharedFormula` / `shareType` values). Row / column `collapsed` is a plain settable flag here (`ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true` on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
 
 Not in ExcelJS 4.4.0 either, so not counted as gaps: pivot table authoring (`ws.addPivotTable` is not a function in 4.4.0; pivot tables in read files are preserved here) and non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`). turbosheet reads both kinds of file: read pivot tables are preserved, and `csvRows` decodes other encodings.
 
@@ -90,7 +87,7 @@ Decided by the maintainer after the first audit and implemented on the same bran
 Added later to close parity gaps:
 
 - **Iteration and read limits:** `eachRow` / `row.eachCell` / `column.eachCell` / `eachColumnCell` take `{ includeEmpty }`; `ReadOptions.maxRows` / `maxCols` throw `SheetLimitError`; `getRows`, `lastRow`, `actualRowCount`, `getSheetValues` helpers.
-- **Formulas:** `fillFormula` and `{ sharedFormula }` cell values (stored as plain, relative-adjusted formulas).
+- **Formulas:** `fillFormula` and `{ sharedFormula }` cell values (stored as plain, relative-adjusted formulas; written as Excel shared formulas).
 - **Sheet and workbook metadata:** several sheet views per sheet (one window each), `ws.properties` (`tabColor`, `defaultRowHeight`, `defaultColWidth`, `outlineLevelRow/Col`, `dyDescent`), document `language` / `revision`, page breaks (`ws.rowBreaks` / `ws.colBreaks`).
 - **Styles and notes:** gradient fills, font `charset` / `outline` / `shadow` / `condense` / `extend`; note `margins`, `protection` and `editAs`.
 - **Tables:** `addTableRows` appends rows above the totals row.
@@ -382,7 +379,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | rich text | ➖ | values | 6-digit argb reads back with alpha `FF` |
 | serializes and deserializes dataValidations | ✅ | data-validation |  |
 | serializes row styles and columns properly | ➖ | styles | row style given to `addRow`; styled column without width reads Excel default width |
-| shared formula | 🐛 | formulas | the rejected row used to stay half-written and shift later rows — fixed (`fix(core)`); `{ sharedFormula }` values are now accepted and written as translated plain formulas (read back without `shareType`, ➖) |
+| shared formula | 🐛 | formulas | the rejected row used to stay half-written and shift later rows — fixed (`fix(core)`); `{ sharedFormula }` values are accepted and written as Excel shared formulas (read back expanded, without `shareType`, ➖) |
 | with background image | ✅ | images |  |
 | with background image where worksheet is commited in advance | ✅ | images |  |
 | with conditional formatting | ✅ | conditional-formatting |  |
@@ -437,15 +434,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | defined names | ➖ | defined-names | no `cell.name(s)`/`addName`/`getRanges`; `addDefinedName` with ranges; sheet names always quoted |
 | empty string | ✅ | values |  |
 | empty strings | ✅ | values |  |
-| frozen panes | ➖ | misc | only modelled view fields (no `showRuler` / `zoomScaleNormal` / `style` defaults) |
+| frozen panes | ➖ | misc | `showRuler` / `zoomScaleNormal` / `style` are modelled but have no defaults (undefined unless set) |
 | language, revision and contentStatus | ✅ | misc |  |
 | multiple book views | ➖ | misc | the first window's `activeTab` is carried by the sheets' `tabSelected`; default view fields are not materialised |
 | printTitlesColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | printTitlesRow | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | printTitlesRowAndColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | serialises and deserialises properly | ➖ | merges | slave cells read `null` (no merge proxy) |
-| serialises split panes | ➖ | misc | `activePane` not modelled |
-| shared formula | ➖ | formulas | `fillFormula` writes plain (relative-adjusted) formulas, no shared master |
+| serialises split panes | ➖ | misc | `activePane` is kept only when it differs from the one derived from the split |
+| shared formula | ➖ | formulas | `fillFormula` writes a shared master + followers; read back expanded (no `sharedFormula` values) |
 | sheets with correct names | ➖ | misc | default name is `SheetN` (exceljs `sheetN`) |
 | spliced meat and ham | ✅ | rows-columns |  |
 | styles | ➖ | merges | merging does not copy the master style; set it per cell |
@@ -493,14 +490,14 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | adds rows by contiguous array | ➖ | rows-columns | `getRows(ws, …)` is a function; `eachCell` gets values |
 | adds rows by object | ➖ | rows-columns | `getRows(ws, …)` is a function; `eachCell` gets values |
 | adds rows by sparse array | ➖ | rows-columns | 0-based arrays; `getRows(ws, …)` is a function |
-| adds rows with style option | 🚫 | rows-columns (skip) | `insertRow(s)` / style codes not supported |
+| adds rows with style option | ✅ | rows-columns | `addRow(values, 'i' / 'i+' / 'n')` |
 | assigns cell types properly | ✅ | values |  |
 | does not allow overlapping merges | ✅ | merges |  |
 | does not allow overlapping merges | ✅ | merges |  |
 | inserts rows by contiguous array | ➖ | rows-columns | function `insertRow`; `getRows(ws, …)` is a function |
 | inserts rows by object | ➖ | rows-columns | function `insertRow`; `getRows(ws, …)` is a function; `eachCell` gets values |
 | inserts rows by sparse array | ➖ | rows-columns | function `insertRow`; 0-based arrays |
-| inserts rows with style option | ➖ | rows-columns | `inheritStyle: 'above' / 'below'` instead of `i` / `o` / `n`; every inserted row is styled |
+| inserts rows with style option | ✅ | rows-columns | `insertRow(s)(ws, pos, values, 'i' / 'o' / '+' variants)`; `{ inheritStyle: 'above' / 'below' }` also accepted |
 | iterates over collumn cells | ✅ | rows-columns | `column.eachCell([options], cb)`; the callback gets the value |
 | iterates over rows | ✅ | rows-columns | `eachRow({ includeEmpty: true }, cb)` |
 | keep first 31 characters | ➖ | rows-columns | throws instead of truncating |
@@ -549,15 +546,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | --- | --- | --- | --- |
 | Cell comments supports setting margins, protection, and position properties | ➖ | notes | defaults (auto margins, `absolute`) are not materialised in the model; booleans |
 | can set comment | ➖ | notes | `protection` booleans |
-| doesn't upgrade from non-string to hyperlink | 🚫 | hyperlinks (skip) | no `cell.hyperlink` setter |
+| doesn't upgrade from non-string to hyperlink | ✅ | hyperlinks | `cell.hyperlink` setter (exceljs: internal `_upgradeToHyperlink`) |
 | escapes dangerous html | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
 | has effective types | ➖ | values | no `effectiveType`; inspect `result` |
 | inherits column styles | ✅ | styles |  |
 | inherits row styles | ✅ | styles |  |
 | merges | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
-| shares formulas | ✅ | formulas | stored as the translated plain formula (no master / shared formula types) |
+| shares formulas | ✅ | formulas | stored as the translated plain formula, written as an Excel shared formula |
 | stores values | ✅ | values |  |
-| upgrades from string to hyperlink | 🚫 | hyperlinks (skip) | no `cell.hyperlink` setter |
+| upgrades from string to hyperlink | ✅ | hyperlinks | `cell.hyperlink` setter (exceljs: internal `_upgradeToHyperlink`) |
 | validates options on construction | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
 
 ### `unit/doc/column.spec.js`

@@ -35,7 +35,7 @@ Document properties (plain fields, written to docProps and read back): `title`, 
 | --- | --- |
 | `name` (get/set), `id`, `state` (`'visible' \| 'hidden' \| 'veryHidden'`), `tabColor` | Sheet properties. |
 | `properties: WorksheetProperties` | ExcelJS `ws.properties`: `tabColor` (same value as `ws.tabColor`), `defaultRowHeight` (pt), `defaultColWidth` (characters), `outlineLevelRow`, `outlineLevelCol`, `dyDescent`. Unset = derived when writing: row height from the default font, outline levels from the rows / columns (an explicit level only raises the derived one, so set it for streamed outlines). Read back except the outline levels (derived again on write). |
-| `views: WorksheetView[]` | One per Excel window (usually one): `state` (`normal`/`frozen`/`split`), `xSplit`, `ySplit`, `topLeftCell`, `activeCell`, `showGridLines`, `showRowColHeaders`, `zoomScale`, `rightToLeft`, `tabSelected`, `workbookViewId` (the window; default: the view's position, so `[{}, { zoomScale: 50 }]` sets windows 1 and 2). |
+| `views: WorksheetView[]` | One per Excel window (usually one): `state` (`normal`/`frozen`/`split`), `xSplit`, `ySplit`, `topLeftCell`, `activeCell`, `showGridLines`, `showRowColHeaders`, `zoomScale`, `zoomScaleNormal`, `showRuler`, `style` (`'pageLayout'` / `'pageBreakPreview'`; undefined = normal), `activePane` (focused pane of a frozen / split view; default derived from the split), `rightToLeft`, `tabSelected`, `workbookViewId` (the window; default: the view's position, so `[{}, { zoomScale: 50 }]` sets windows 1 and 2). |
 | `freeze(rows, cols?)` | Freeze the first rows/columns (`freeze(1)` = header row). |
 | `autoFilter: string \| undefined` | e.g. `'A1:D1'`. |
 | `mergeCells(range)` / `mergeCells(top, left, bottom, right)` | Throws on overlap. |
@@ -52,7 +52,7 @@ All indices below are 1-based.
 
 ```ts
 ws.addRow(values, style?)    // array (index 0 -> column A) or object keyed by ws.columns[].key; returns the row number
-ws.addRows(iterable, style?)
+ws.addRows(iterable, style?)  // style: a Style, an xf index, or an ExcelJS code 'i' / 'i+' / 'n' (copy the row above's format)
 ws.getRow(n)                 // RowView handle
 ws.getRowProps(n) / ws.setRowProps(n, { height, hidden, outlineLevel, style, styleIndex })
 ws.eachRow((row, rowNumber) => {})   // rows that contain cells, ascending
@@ -76,12 +76,14 @@ ExcelJS-style handle (allocates per call; prefer the methods above in hot loops)
 const cell = ws.getCell('B3');   // CellRef
 cell.value = 42;  cell.address;  cell.row;  cell.col;  cell.kind;
 cell.style = { ... };  cell.numFmt = '0.00';  cell.font = {...};  cell.fill;  cell.border;  cell.alignment;  cell.protection;
+cell.hyperlink = 'https://...';  // a string / rich-text cell becomes a link; on a link: retarget (undefined = back to text); other cells unchanged
+cell.tooltip = 'Open';           // hyperlink cells only
 ```
 
 Insert, delete, splice and duplicate rows / columns (functions; every reference to the sheet follows, as in Excel — see [features.md](./features.md#inserting-and-deleting-rows-and-columns)):
 
 ```ts
-insertRows(ws, pos, rows | count, { inheritStyle?: 'above' | 'below' })   // rows: arrays or keyed objects, like addRow
+insertRows(ws, pos, rows | count, { inheritStyle?: 'above' | 'below' } | 'i' | 'o' | 'i+' | 'o+' | 'n')   // rows: arrays or keyed objects, like addRow
 insertRow(ws, pos, values?, opts?)
 deleteRows(ws, start, count = 1)
 spliceRows(ws, start, count, ...rows)          // ExcelJS spliceRows: overwrite min(count, rows) in place, delete / insert the rest
@@ -97,7 +99,7 @@ Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { dat
 
 Sort and templates: `sortRange(ws, range, keys: SortKey | SortKey[], { header? })` (`SortKey = { col, desc? }`); `fillTemplate(wb, data, { sheets?, missing? })` (`{{path}}`, repeated rows with `{{items[].field}}`). ExcelJS helpers: `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`.
 
-Formulas: `fillFormula(ws, range, formula, results?)`; `wb.calcProperties = { fullCalcOnLoad }`.
+Formulas: `fillFormula(ws, range, formula, results?)` (written as an Excel shared formula); `wb.calcProperties = { fullCalcOnLoad }`.
 
 Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the copy last; "Name (2)" by default) and `copyRange(src, 'A1:D10', dst, 'F2')` (values, styles, merges; relative refs adjusted). Column keys may be dotted paths (`key: 'address.city'` reads nested objects in `addRow`).
 

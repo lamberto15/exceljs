@@ -83,7 +83,8 @@ describe('exceljs parity: interop with exceljs-written files', () => {
     expect(x.getCell('C6').alignment).toMatchObject({ textRotation: -45, vertical: 'middle' });
     expect(x.getCell('A10').note).toBe('a note');
     expect(x.getCell('A11').dataValidation).toMatchObject({ type: 'list', formulae: ['"a,b"'] });
-    expect((x.getCell('E9').value as { formula: string }).formula).toBe('D9+1');
+    // E9 was an exceljs shared-formula follower: still shared after the rewrite
+    expect(x.getCell('E9').formula).toBe('D9+1');
     // gradient fills are modelled (group 10): A8's gradient survives the rewrite
     expect(x.getCell('A8').fill).toMatchObject({ type: 'gradient' });
   });
