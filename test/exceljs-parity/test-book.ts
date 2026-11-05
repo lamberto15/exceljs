@@ -4,11 +4,9 @@
 // Substitutions (see docs/exceljs-parity.md):
 // - JSON objects as cell values: exceljs stringifies them; turbosheet rejects them, the caller
 //   stores JSON.stringify(...) (➖).
-// - Fonts: `outline` is not modelled (dropped); `underline: true` reads back as
-//   'single' (🚫 / ➖).
+// - Fonts: `underline: true` reads back as 'single' (➖).
 // - Alignment: exceljs values are passed as-is (`vertical: 'middle'`, `textRotation: 'vertical'`
 //   and negative rotations are accepted); they read back in OOXML terms ('center', 255, -45 → 135).
-// - Gradient fills are not modelled (🚫): row 8 only checks the pattern fills.
 // - `{ sharedFormula }` values are not written (➖): C9:E9 are plain formulas.
 // - Merged cells: slave cells read null (exceljs returns the master value) (➖).
 // - Workbook views, `collapsed`, sheet `properties` (defaultRowHeight, dyDescent,
@@ -41,10 +39,9 @@ export const pageSetupJson: any = utilData('page-setup');
 export const headerFooter: any = utilData('header-footer');
 // biome-ignore-end lint/suspicious/noExplicitAny: untyped ExcelJS JSON fixtures
 
-/** exceljs font → turbosheet font (outline is not modelled). */
+/** exceljs font → turbosheet font (same shape). */
 export function font(f: Record<string, unknown>): Font {
-  const { outline: _outline, ...rest } = f;
-  return rest as Font;
+  return { ...f } as Font;
 }
 
 /** The font turbosheet reads back (underline true → 'single', name/size completed). */
@@ -155,14 +152,18 @@ function cells(checkBadAlignments: boolean): CellSpec[] {
     });
   }
   out.push(
-    { ref: 'A8', value: 'Blue White Horizontal Gradient' },
+    {
+      ref: 'A8',
+      value: 'Blue White Horizontal Gradient',
+      style: { fill: styles.fills.blueWhiteHGrad },
+    },
     { ref: 'B8', value: 'Red Dark Vertical', style: { fill: styles.fills.redDarkVertical } },
     {
       ref: 'C8',
       value: 'Red Green Dark Trellis',
       style: { fill: styles.fills.redGreenDarkTrellis },
     },
-    { ref: 'D8', value: 'RGB Path Gradient' },
+    { ref: 'D8', value: 'RGB Path Gradient', style: { fill: styles.fills.rgbPathGrad } },
     { ref: 'A9', value: 1 },
     { ref: 'B9', value: { formula: 'A9+1', result: 2 } },
     { ref: 'C9', value: { formula: 'B9+1', result: 3 } },
@@ -330,8 +331,10 @@ export function checkTestBook(wb: Workbook, o: BookOptions = {}): void {
         else expect(ws.getStyle(ref).alignment, ref).toBeUndefined();
       });
     }
+    expect(ws.getStyle('A8').fill).toEqual(styles.fills.blueWhiteHGrad);
     expect(ws.getStyle('B8').fill).toEqual(styles.fills.redDarkVertical);
     expect(ws.getStyle('C8').fill).toEqual(styles.fills.redGreenDarkTrellis);
+    expect(ws.getStyle('D8').fill).toEqual(styles.fills.rgbPathGrad);
   }
 
   expect(ws.getValue('A9')).toBe(1);

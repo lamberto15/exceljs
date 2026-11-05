@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 88 | 7 | 5 | 47 | 6 | 153 |
+| integration | 88 | 7 | 2 | 50 | 6 | 153 |
 | issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
-| unit | 58 | 2 | 16 | 37 | 64 | 177 |
-| **all** | 181 | 10 | 21 | 89 | 70 | 371 |
+| unit | 59 | 2 | 8 | 44 | 64 | 177 |
+| **all** | 182 | 10 | 10 | 99 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -33,7 +33,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [csv](../test/exceljs-parity/csv.test.ts) | 1 | 0 | 0 | 1 | 0 | 2 |
 | [data-validation](../test/exceljs-parity/data-validation.test.ts) | 2 | 0 | 0 | 1 | 0 | 3 |
 | [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 0 | 6 | 1 | 9 |
-| [formulas](../test/exceljs-parity/formulas.test.ts) | 8 | 1 | 7 | 0 | 0 | 16 |
+| [formulas](../test/exceljs-parity/formulas.test.ts) | 8 | 1 | 0 | 7 | 0 | 16 |
 | [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 0 | 1 | 2 | 0 | 0 | 3 |
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
 | [issues](../test/exceljs-parity/issues.test.ts) | 25 | 0 | 0 | 2 | 0 | 27 |
@@ -42,11 +42,11 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 0 | 3 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
 | [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
-| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 50 | 2 | 4 | 34 | 0 | 90 |
+| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 50 | 2 | 1 | 37 | 0 | 90 |
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 8 | 0 | 0 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
-| [tables](../test/exceljs-parity/tables.test.ts) | 0 | 0 | 7 | 2 | 0 | 9 |
+| [tables](../test/exceljs-parity/tables.test.ts) | 1 | 0 | 6 | 2 | 0 | 9 |
 | [values](../test/exceljs-parity/values.test.ts) | 12 | 6 | 0 | 4 | 0 | 22 |
 | (internals, no port) | 0 | 0 | 0 | 0 | 47 | 47 |
 
@@ -74,9 +74,9 @@ Compared with ExcelJS 4.4.0:
 - Table editing beyond `addTableRows` (removing rows, adding / removing / renaming columns, header / totals toggles through a table object); edit cells and `ws.tables` instead.
 - `addRow` style inheritance codes (`'i'`, `'o'`, `'n'`), the `cell.hyperlink` setter.
 
-Different by design: row / column `collapsed` is a plain settable flag here (set it on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
+Different by design: row / column `collapsed` is a plain settable flag here (`ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true` on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
 
-Not in ExcelJS 4.4.0 either, so not counted as gaps: pivot table authoring (`ws.addPivotTable` is not a function in 4.4.0; pivot tables in read files are preserved here) and non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`).
+Not in ExcelJS 4.4.0 either, so not counted as gaps: pivot table authoring (`ws.addPivotTable` is not a function in 4.4.0; pivot tables in read files are preserved here) and non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`). turbosheet reads both kinds of file: read pivot tables are preserved, and `csvRows` decodes other encodings.
 
 ## Additions made for parity
 
@@ -86,6 +86,15 @@ Decided by the maintainer after the first audit and implemented on the same bran
 - **ExcelJS alignment aliases** are accepted: `vertical: 'middle'` (stored as `'center'`) and `textRotation: 'vertical'` (stored as 255), next to negative rotations.
 - **Empty CSV fields leave cells empty**: `arraysToSheet` / `objectsToSheet` treat `''` as no cell (option `emptyAs: 'string'` keeps empty-string cells), so `arraysToSheet(ws, parseCsv(text))` matches ExcelJS.
 - **Hyperlinks on formula cells** are preserved raw (see the bug table).
+
+Added later to close parity gaps:
+
+- **Iteration and read limits:** `eachRow` / `row.eachCell` / `column.eachCell` / `eachColumnCell` take `{ includeEmpty }`; `ReadOptions.maxRows` / `maxCols` throw `SheetLimitError`; `getRows`, `lastRow`, `actualRowCount`, `getSheetValues` helpers.
+- **Formulas:** `fillFormula` and `{ sharedFormula }` cell values (stored as plain, relative-adjusted formulas).
+- **Sheet and workbook metadata:** several sheet views per sheet (one window each), `ws.properties` (`tabColor`, `defaultRowHeight`, `defaultColWidth`, `outlineLevelRow/Col`, `dyDescent`), document `language` / `revision`, page breaks (`ws.rowBreaks` / `ws.colBreaks`).
+- **Styles and notes:** gradient fills, font `charset` / `outline` / `shadow` / `condense` / `extend`; note `margins`, `protection` and `editAs`.
+- **Tables:** `addTableRows` appends rows above the totals row.
+- **CSV:** `parseBooleans`, `parseErrors`, `dateFormats`, `localDates`, and byte decoding with BOM sniffing / `encoding` (beyond ExcelJS, which reads UTF-8 only).
 
 ## Remaining notes for the maintainer
 
@@ -107,7 +116,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
 | Styles | ✅ | values | empty in exceljs |
-| Values | ➖ | values | no `lastColumn`/`lastRow` objects; values identical |
+| Values | ➖ | values | no `lastColumn` (`lastRow(ws)` exists); values identical |
 
 ### `integration/issues/issue-1027-sheet-defined-data-validate.spec.js`
 
@@ -428,7 +437,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | defined names | ➖ | defined-names | no `cell.name(s)`/`addName`/`getRanges`; `addDefinedName` with ranges; sheet names always quoted |
 | empty string | ✅ | values |  |
 | empty strings | ✅ | values |  |
-| frozen panes | ➖ | misc | only modelled view fields (no `workbookViewId` / `showRuler` / `zoomScaleNormal` defaults) |
+| frozen panes | ➖ | misc | only modelled view fields (no `showRuler` / `zoomScaleNormal` / `style` defaults) |
 | language, revision and contentStatus | ✅ | misc |  |
 | multiple book views | ➖ | misc | the first window's `activeTab` is carried by the sheets' `tabSelected`; default view fields are not materialised |
 | printTitlesColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
@@ -436,7 +445,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | printTitlesRowAndColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | serialises and deserialises properly | ➖ | merges | slave cells read `null` (no merge proxy) |
 | serialises split panes | ➖ | misc | `activePane` not modelled |
-| shared formula | 🚫 | formulas | no `fillFormula`; plain formulas round-trip |
+| shared formula | ➖ | formulas | `fillFormula` writes plain (relative-adjusted) formulas, no shared master |
 | sheets with correct names | ➖ | misc | default name is `SheetN` (exceljs `sheetN`) |
 | spliced meat and ham | ✅ | rows-columns |  |
 | styles | ➖ | merges | merging does not copy the master style; set it per cell |
@@ -458,7 +467,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | adds column headers by letter | ➖ | rows-columns | no `defn`/`headers`; setting `header` does not write row 1 |
 | adds column headers by number | ➖ | rows-columns | no `defn`/`headers`; setting `header` does not write row 1 |
 | adds columns | ✅ | rows-columns |  |
-| adds multiple row breaks | 🚫 | rows-columns (skip) | page breaks not modelled (kept raw) |
+| adds multiple row breaks | ➖ | rows-columns | `ws.rowBreaks` = row numbers (no `row.addPageBreak`); streaming writer too |
 | adds rows by contiguous array | ✅ | rows-columns |  |
 | adds rows by object | ✅ | rows-columns |  |
 | adds rows by sparse array | ➖ | rows-columns | arrays are 0-based (index 0 = column A) |
@@ -481,15 +490,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | adds column headers by letter | ➖ | rows-columns | no `defn`/`headers` |
 | adds column headers by number | ➖ | rows-columns | no `defn`/`headers` |
 | adds columns | ✅ | rows-columns |  |
-| adds rows by contiguous array | ➖ | rows-columns | no `getRows`; `eachCell` gets values |
-| adds rows by object | ➖ | rows-columns | no `getRows`; `eachCell` gets values |
-| adds rows by sparse array | ➖ | rows-columns | 0-based arrays; no `getRows` |
+| adds rows by contiguous array | ➖ | rows-columns | `getRows(ws, …)` is a function; `eachCell` gets values |
+| adds rows by object | ➖ | rows-columns | `getRows(ws, …)` is a function; `eachCell` gets values |
+| adds rows by sparse array | ➖ | rows-columns | 0-based arrays; `getRows(ws, …)` is a function |
 | adds rows with style option | 🚫 | rows-columns (skip) | `insertRow(s)` / style codes not supported |
 | assigns cell types properly | ✅ | values |  |
 | does not allow overlapping merges | ✅ | merges |  |
 | does not allow overlapping merges | ✅ | merges |  |
-| inserts rows by contiguous array | ➖ | rows-columns | function `insertRow`; no `getRows` |
-| inserts rows by object | ➖ | rows-columns | function `insertRow`; no `getRows`; `eachCell` gets values |
+| inserts rows by contiguous array | ➖ | rows-columns | function `insertRow`; `getRows(ws, …)` is a function |
+| inserts rows by object | ➖ | rows-columns | function `insertRow`; `getRows(ws, …)` is a function; `eachCell` gets values |
 | inserts rows by sparse array | ➖ | rows-columns | function `insertRow`; 0-based arrays |
 | inserts rows with style option | ➖ | rows-columns | `inheritStyle: 'above' / 'below'` instead of `i` / `o` / `n`; every inserted row is styled |
 | iterates over collumn cells | ✅ | rows-columns | `column.eachCell([options], cb)`; the callback gets the value |
@@ -500,7 +509,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | puts the lotion in the basket | ✅ | rows-columns |  |
 | references the same top-left value | ➖ | merges | no merge proxy |
 | returns sheet values | ➖ | rows-columns | `sheetToArrays` (dense, 0-based) |
-| returns undefined when row range is less than 1 | 🚫 | rows-columns (skip) | `getRows` not supported |
+| returns undefined when row range is less than 1 | ➖ | rows-columns | `getRows(ws, 1, 0)` returns `[]` |
 | save the original name | ✅ | rows-columns | messages differ; >31 chars throws instead of truncating (see next) |
 | sets col styles | ➖ | styles | see styles.spec |
 | sets row styles | ➖ | styles | see styles.spec |
@@ -628,15 +637,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| adds a column | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
-| adds a row | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
+| adds a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| adds a row | ✅ | tables | `addTableRows` (no `table.addRow` + `commit`) |
 | creates a table | ➖ | tables | `topLeft` (exceljs `ref`), no `totalsRowResult`/`filterButton` |
 | moves the table | ➖ | tables | placed at C2 directly (no `table.commit()`) |
-| removes a column | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
-| removes a row | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
-| removes header | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
-| removes totals | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
-| renames a column | 🚫 | tables (skip) | table editing API (`commit`, add/remove rows/columns) |
+| removes a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| removes a row | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| removes header | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| removes totals | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| renames a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
 
 ### `unit/doc/worksheet-writer.spec.js`
 
@@ -659,18 +668,18 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| adds multiple row breaks | 🚫 | rows-columns (skip) |  |
+| adds multiple row breaks | ➖ | rows-columns | `ws.rowBreaks` = row numbers (no `row.addPageBreak`) |
 
 ### `unit/doc/worksheet.shared-formula.spec.js`
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| Fills formula across using 1D array values | 🚫 | formulas (skip) | `fillFormula` |
-| Fills formula down and across using 1D array values | 🚫 | formulas (skip) | `fillFormula` |
-| Fills formula down using 1D array values | 🚫 | formulas (skip) | `fillFormula` |
-| Fills formula using 2D array values | 🚫 | formulas (skip) | `fillFormula` |
-| Fills formula using function | 🚫 | formulas (skip) | `fillFormula` |
-| Translates formulae to slave cells | 🚫 | formulas (skip) | `fillFormula` |
+| Fills formula across using 1D array values | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
+| Fills formula down and across using 1D array values | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
+| Fills formula down using 1D array values | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
+| Fills formula using 2D array values | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
+| Fills formula using function | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
+| Translates formulae to slave cells | ➖ | formulas | `fillFormula` writes plain formulas per cell (no `{ sharedFormula }` slaves); results as a flat array or a function |
 
 ### `unit/doc/worksheet.styles.spec.js`
 
@@ -713,8 +722,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | adds rows by object | ✅ | rows-columns |  |
 | adds rows by sparse array | ➖ | rows-columns |  |
 | assigns cell types properly | ✅ | values |  |
-| calculates columnCount and actualColumnCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
-| calculates rowCount and actualRowCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
+| calculates columnCount and actualColumnCount | ➖ | rows-columns | `actualRowCount(ws)` is a function; no `actualColumnCount` |
+| calculates rowCount and actualRowCount | ➖ | rows-columns | `actualRowCount(ws)` is a function; no `actualColumnCount` |
 | handles column keys | 🐛 | rows-columns | `spliceColumns` kept width / style of an overwritten column; fixed (`feat(core)` structure edits) |
 | iterates over collumn cells | ✅ | rows-columns | `column.eachCell([options], cb)` |
 | iterates over rows | ✅ | rows-columns | `eachRow({ includeEmpty: true }, cb)` |

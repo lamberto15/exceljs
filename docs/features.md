@@ -3,8 +3,8 @@
 Every feature is available on `turbosheet`. On `turbosheet/lite` you opt in per call (see [Lite](#lite-opt-in-features)). Field-by-field options are in [api.md](./api.md#features). All samples assume `wb` is a `Workbook` and `ws` one of its sheets.
 
 - [Cell values, rich text, hyperlinks, formulas](#cell-values-rich-text-hyperlinks-formulas)
-- [Styles and number formats](#styles-and-number-formats)
 - [Document properties](#document-properties)
+- [Styles and number formats](#styles-and-number-formats)
 - [Column auto-fit](#column-auto-fit)
 - [Inserting and deleting rows and columns](#inserting-and-deleting-rows-and-columns)
 - [Sorting and templates](#sorting-and-templates)
@@ -36,8 +36,9 @@ ws.setCell('C1', new Date(Date.UTC(2025, 5, 1)));        // gets a default date 
 ws.setCell('C2', { error: '#N/A' });
 ```
 
-turbosheet never evaluates formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value. Excel recalculates on open.
+Reading and writing never evaluate formulas: provide `result` if readers that do not recalculate (previewers, parsers) should see a value, or compute every result with `evaluate(wb)` from [`turbosheet/formula`](./formula.md). Excel recalculates on open.
 
+ExcelJS shared formulas are accepted as input: `{ sharedFormula: 'B3', result }` stores the formula of B3 with its relative references moved to the cell (B3 must already hold a formula). Shared formulas in files you read come back as plain formulas per cell. `richTextFromHtml('<b>Total</b> due')` turns simple HTML (`b`, `i`, `u`, `s`, `sup`/`sub`, `font color`, `span style`, `br` and block tags) into a rich-text value.
 
 Dynamic-array formulas (FILTER, SORT, UNIQUE, SEQUENCE, ... that spill in Excel 365) are written with Excel's dynamic-array metadata, so Excel shows `=SORT(A1:A9)` and spills it instead of turning it into `=@SORT(A1:A9)`. It is automatic for formulas using a spilling function; `{ formula, dynamic: true }` forces it, `dynamic: false` turns it off, and `array: 'C1:C9'` (without `dynamic`) still writes a legacy Ctrl+Shift+Enter array formula. Files read keep the flag.
 
@@ -46,6 +47,7 @@ Filling: `fillFormula(ws, 'C2:C100', 'A2*B2', results?)` puts the formula in eve
 Copying: `copyWorksheet(ws)` adds a copy to the same workbook ("Data (2)"), `copyWorksheet(ws, otherWb, 'Name')` to another one (styles re-registered, pictures re-added, table names made unique, dates converted between date systems). `copyRange(src, 'A1:D10', dst, 'F2')` copies cells, styles and merges like copy-paste, adjusting relative references.
 
 Column keys may be dotted paths: with `ws.columns = [{ key: 'address.city' }]`, `ws.addRow({ address: { city: 'Oslo' } })` fills that column.
+
 ## Document properties
 
 ```ts
@@ -354,7 +356,7 @@ Dropped on purpose: `calcChain.xml` (Excel rebuilds it), kept content that refer
 
 ## Streaming with features
 
-The streaming writer exposes metadata-only sheets, so sheet-level features work as long as they do not need the cells:
+`createXlsxWriter` defaults to `profile: 'low-memory'` (inline strings: memory stays flat however many distinct strings you write); pass `profile: 'balanced'` or `strings: 'shared'` for `sharedStrings.xml` (smaller files when strings repeat, but every distinct string is held until `end()`). `writeXlsx` / `xlsxStream` default to `'balanced'`. The streaming writer exposes metadata-only sheets, so sheet-level features work as long as they do not need the cells:
 
 ```ts
 const w = createXlsxWriter({ sink });
@@ -376,7 +378,7 @@ Transform recipe (constant memory both ways): read with `xlsxRows`, write with `
 ```ts
 const w = createXlsxWriter({ sink });
 let out = w.addWorksheet('Orders');
-for await (const row of xlsxRows(createReadStream('in.xlsx'))) {
+for await (const row of xlsxRows(await openAsBlob('in.xlsx'))) { // node:fs
   const [item, qty, price] = row.values;
   if (row.row === 1) out.addRow([item, qty, price, 'total']);
   else if (qty) out.addRow([item, qty, price, qty * price]);
@@ -385,7 +387,8 @@ for await (const row of xlsxRows(createReadStream('in.xlsx'))) {
 await w.end();
 ```
 
-Rows come with `row.sheet`: start a new `w.addWorksheet(row.sheet)` when it changes. Styles are not carried over (`xlsxRows` returns values); use `readXlsx` + `writeXlsx` when formatting must survive.
+A Blob (or `Uint8Array`) is read by random access, so sheets stream at constant memory whatever order the archive stores its parts in; a stream (`createReadStream`) is read front to back and buffers sheets stored before `styles.xml` / `sharedStrings.xml`, which is what Excel, ExcelJS and `createXlsxWriter` write. Rows come with `row.sheet`: start a new `w.addWorksheet(row.sheet)` when it changes (it commits the previous sheet). Styles are not carried over (`xlsxRows` returns values); use `readXlsx` + `writeXlsx` when formatting must survive.
+
 ## Encryption
 
 See [`turbosheet/crypto` in api.md](./api.md#crypto):

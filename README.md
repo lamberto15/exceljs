@@ -8,10 +8,10 @@ Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript run
 
 ## Why
 
-- **Fast.** 100k rows x 20 columns: `writeXlsx` 1.2 s (0.6 s with `profile: 'max-speed'`) vs 6.6-7.6 s for ExcelJS `writeBuffer`; reading takes 1.2 s vs 3.4-4.7 s for `xlsx.load`.
+- **Fast.** 100k rows x 20 columns: `writeXlsx` 1.2 s (0.6 s with `profile: 'max-speed'`) vs 6.6-7.6 s for ExcelJS `writeBuffer`; reading takes 1.3 s vs 3.4-4.8 s for `xlsx.load`.
 - **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
-- **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
-- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/` (in Node, Bun and Deno, `node:zlib` is looked up at runtime for faster deflate, inflate and CRC-32).
+- **Small.** 36 KB (min + brotli, with dependencies) for a write-only bundle; 25 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
+- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream` / `DecompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/` (in Node, Bun and Deno, `node:zlib` is looked up at runtime with `process.getBuiltinModule` for faster deflate, inflate and CRC-32).
 - **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
 
 Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data. Methodology and full tables: [docs/benchmarks.md](./docs/benchmarks.md); reproduce with `pnpm bench`.
@@ -21,9 +21,9 @@ Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple
 | write, in memory        | 1.2 s `writeXlsx` (balanced)          | 6.6-7.6 s `writeBuffer` |
 | write, in memory, fast  | 0.6 s `writeXlsx` (`max-speed`)       |                         |
 | write, streaming        | 0.4-1.2 s `xlsxStream` / `createXlsxWriter` | 3.3-3.5 s `WorkbookWriter` |
-| read into a workbook    | 1.2 s `readXlsx`                      | 3.4-4.7 s `xlsx.load`   |
+| read into a workbook    | 1.3 s `readXlsx`                      | 3.4-4.8 s `xlsx.load`   |
 | read, streaming rows    | 1.2 s `xlsxRows`                      | 1.8-3.7 s `WorkbookReader` |
-| peak JS heap, in-memory write | ~145 MB (cells are partly off-heap) | 2.1 GB              |
+| peak JS heap, in-memory write | ~150 MB (cells are partly off-heap) | 2.1 GB              |
 | peak JS heap, streaming write | 30-80 MB                        | 39-94 MB                |
 
 ## Install
@@ -93,20 +93,22 @@ await w.end();
 file.end();
 ```
 
-`xlsxStream(wb)` returns a web `ReadableStream<Uint8Array>` for an existing workbook (handy for `new Response(stream)`).
+`xlsxStream(wb)` returns a web `ReadableStream<Uint8Array>` for an existing workbook (handy for `new Response(stream)`). Like `writeXlsx`, it stores the workbook metadata before the sheets, so its first bytes come once the last sheet is encoded.
 
 ### Stream read
 
 ```ts
-import { createReadStream } from 'node:fs';
+import { openAsBlob } from 'node:fs';
 import { xlsxRows } from 'turbosheet';
 
-// Accepts bytes, an AsyncIterable<Uint8Array> (Node streams) or a web ReadableStream.
-for await (const row of xlsxRows(createReadStream('big.xlsx'))) {
+// Accepts bytes, a Blob / File, an AsyncIterable<Uint8Array> (Node streams) or a web ReadableStream.
+for await (const row of xlsxRows(await openAsBlob('big.xlsx'))) {
   // row.sheet, row.row (1-based), row.values (0-based by column: values[0] is column A)
 }
 // merged ranges: xlsxRows(src, { onSheetEnd: ({ sheet, merges }) => ... })
 ```
+
+Bytes and Blobs are read random-access (central directory first), so sheets stream at constant memory whatever order the file stores its parts in. A stream is read in archive order: a sheet stored before `styles.xml` / `sharedStrings.xml` (files saved by Excel or ExcelJS, `createXlsxWriter` output) is buffered until they arrive.
 
 Dates: Excel dates have no time zone. turbosheet reads and writes JS `Date`s by their UTC wall clock (`new Date(Date.UTC(2024, 0, 1))` is Jan 1). If your code builds dates with `new Date(2024, 0, 1)`, use `new Workbook({ localDates: true })` and `readXlsx(buf, { localDates: true })` / `xlsxRows(src, { localDates: true })`.
 
@@ -169,7 +171,7 @@ Agile (Excel 2010+) files are read and written; standard (Excel 2007) files are 
 
 ## Features
 
-Formula evaluation (`turbosheet/formula`: 90 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), outline groups, tables (append and read rows), notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
+Formula evaluation (`turbosheet/formula`: 90 functions, dependency graph, circular-reference detection), column auto-fit (`autoFitColumns`, `estimateColumnWidths` for streaming), row/column insert, delete, splice and duplicate with Excel-style reference adjustment (`insertRows`, `deleteColumns`, `spliceRows`, ...), outline groups, tables (append and read rows), notes, pictures, charts (bar, column, line, pie, doughnut, scatter, area), conditional formatting, data validation, defined names, print setup, sheet protection, rich text, hyperlinks, merged cells, frozen panes, auto-filter, shared or inline strings. Everything the model does not represent (charts read from a file, pivot tables, shapes, VBA, threaded comments, ...) is kept and written back on round trip. Details and examples: [docs/features.md](./docs/features.md).
 
 ```ts
 import { addTable, addNote, addDataValidation, addConditionalFormatting } from 'turbosheet';
@@ -204,23 +206,23 @@ addConditionalFormatting(ws, 'B2:B3', [
 
 | Import             | What                                                        | Size (min + brotli, with deps) |
 | ------------------ | ----------------------------------------------------------- | ------------------------------ |
-| `turbosheet`          | read + write, every feature on                              | 31 KB write-only, 60 KB read + write |
-| `turbosheet/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
-| `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 3.1 KB                         |
+| `turbosheet`          | read + write, every feature on                              | 36 KB write-only, 79 KB everything (`*`) |
+| `turbosheet/lite`     | same API, features opt-in via `options.features`           | 25 KB write-only, 43 KB read + write |
+| `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 3.2 KB                         |
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
 | `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
-| `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 16 KB                    |
+| `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 17 KB                    |
 
-Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook, writeXlsx }` and `*`). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
+Sizes are from `pnpm size` for the 0.6.0 build (tree-shaken imports: write-only `{ Workbook, writeXlsx }`, lite read + write `{ Workbook, readXlsx, writeXlsx }`, others `*`; budgets in [docs/bundle-size.md](./docs/bundle-size.md)). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).
 
 ## Runtime support
 
-- **Tested in CI:** Node 22 and 24 on Linux, macOS and Windows.
-- **Expected to work, not yet CI-tested:** Bun, Deno, browsers, Cloudflare Workers and other edge runtimes. The code only uses web-standard APIs (`Uint8Array`, Web Streams, `TextEncoder`, WebCrypto; async writers deflate with `node:zlib` when `process.getBuiltinModule` exists, else `CompressionStream`, else fflate). Bug reports from these runtimes are welcome.
+- **Tested in CI:** Node 22 and 24 on Linux and Windows.
+- **Expected to work, not yet CI-tested:** Bun, Deno, browsers, Cloudflare Workers and other edge runtimes. The code only uses web-standard APIs (`Uint8Array`, Web Streams, `TextEncoder`, WebCrypto). Where `process.getBuiltinModule('node:zlib')` exists (Node 22.3+, Bun, Deno), zip deflate, inflate and CRC-32 use it; otherwise async writers deflate with `CompressionStream`, `xlsxRows` inflates Blobs with `DecompressionStream`, and everything else uses fflate. Bug reports from these runtimes are welcome.
 
 ## Security
 
-- **Zip bombs:** reading enforces limits on entry count, per-entry and total uncompressed size (checked while inflating, not only from headers) and compression ratio; override with `ReadOptions.limits`. Paths with `..`, absolute paths, backslashes and NUL are rejected.
+- **Zip bombs:** reading enforces limits on entry count, per-entry and total uncompressed size (checked while inflating, not only from headers) and compression ratio; override with `ReadOptions.limits` (`xlsxRows` applies the byte limits only to parts it holds in memory; a sheet parsed as it inflates is checked against the compression ratio). Paths with `..`, absolute paths, backslashes and NUL are rejected.
 - **XML:** the tokenizer never expands DTDs or custom entities (no XXE, no billion laughs); only the five predefined entities and numeric character references are decoded.
 - **CSV injection:** `writeCsv(rows, { escapeFormulas: true })` prefixes `'` to text starting with `=`, `+`, `-`, `@`, TAB or CR. It is off by default; turn it on when exporting untrusted data for spreadsheet users.
 - **Encryption:** reads reject tampered files (HMAC check) and absurd password-hash iteration counts.

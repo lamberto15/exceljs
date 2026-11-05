@@ -10,11 +10,14 @@ Shared value/style types live in `src/core/types.ts` — import from there, neve
 
 Rules for every module:
 - Web-standard APIs only in `src/` (Uint8Array, TextEncoder/TextDecoder, Web Streams, async iterators). No `node:*` imports, no `Buffer`.
+  The one exception is `src/zip/node.ts`: it looks up `node:zlib` at runtime with `process.getBuiltinModule`
+  (Node >= 22.3, Bun, Deno 2), and every caller falls back to Web APIs / fflate when that fails.
 - Only runtime dependency: `fflate`.
 - No per-item allocation in hot loops where avoidable; prefer string chunk arrays, typed arrays, char-code scanning.
 - `sideEffects: false` — no top-level side effects.
 - TS strict + `isolatedDeclarations`: exported functions need explicit return types.
-- Tests in `test/<module>.test.ts` (vitest). Old exceljs specs in `../spec/` are reference material for edge cases.
+- Tests in `test/<module>.test.ts` (vitest). ExcelJS's specs are ported in `test/exceljs-parity/` (each test cites
+  the original) and its sample files live in `test/fixtures/exceljs/`.
 
 ## src/xml — XML writer + streaming tokenizer
 ```ts
@@ -42,56 +45,75 @@ export function parseXml(xml: string, h: XmlHandler): void;
 ```
 Security: never expand DTD/custom entities (ignore `<!DOCTYPE ...>` entirely); only the 5 predefined + numeric char refs. Names keep their prefix (`x:c`) — consumers strip if needed via exported `localName(name)`.
 
-## src/zip — fflate wrapper with safety limits
+## src/zip — fflate wrapper, native zlib, safety limits
 ```ts
 export interface ZipEntryIn { path: string; data: Uint8Array | string; level?: number }
 export function zipSync(entries: ZipEntryIn[], level: number): Uint8Array;
 export class ZipStreamWriter {                       // streaming, emits Uint8Array chunks
-  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number);
+  constructor(onData: (chunk: Uint8Array, final: boolean) => void, level: number,
+              opts?: { compressor?: AsyncCompressor });
   file(path: string, level?: number): { push(data: Uint8Array | string, final?: boolean): void };
-  end(): void;
+  ready(maxBytes: number): Promise<void> | undefined; idle(): Promise<void>; end(): void;
 }
 export function unzipSync(data: Uint8Array, limits?: Partial<Limits>): Map<string, Uint8Array>;
 export function unzipStream(source: AsyncIterable<Uint8Array>, limits?: Partial<Limits>):
-  AsyncIterable<{ path: string; chunks: AsyncIterable<Uint8Array> }>;  // optional/may be phase 2
-export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<string, LazyEntry>;
+  AsyncGenerator<{ path: string; chunks: AsyncIterable<Uint8Array>; unbounded(): void }>;
+export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>, opts?: { deferSizeCheck? }):
+  Map<string, LazyEntry>;
 //   LazyEntry { path, size, compressedSize, compression, bytes(): Uint8Array,
-//               chunks(chunkSize?): Iterable<Uint8Array> }  — central directory only; inflate on demand
+//               chunks(chunkSize?, unbounded?): Iterable<Uint8Array> }  — central directory only; inflate on demand
+export function unzipBlob(blob: Blob, limits?, opts?): Promise<Map<string, BlobEntry>>;
+//   BlobEntry: same fields, chunks(unbounded?): AsyncIterable — reads blob.slice() ranges on demand
 export function deflateStream(level, onData): ByteStream;   // raw DEFLATE push streams, so no
 export function inflateStream(onData): ByteStream;          // module outside src/zip imports fflate
-export class ZipLimitError extends Error {}
+export function nativeCompressor(): AsyncCompressor | undefined; // + nativeDeflateAvailable()
+export class ZipLimitError extends Error {}  // ZipPathError extends it (unsafe / duplicate paths)
 ```
 Limit accounting lives in `src/zip/limits.ts` (`Budget`) and is shared by every unzip path.
-Async writers (`xlsxStream`, `createXlsxWriter`) pass `{ compressor: nativeCompressor() }` to
-`ZipStreamWriter` (kept out of the sync path so write-only bundles don't ship it): entries
-are deflated by `CompressionStream('deflate-raw')` when the runtime has it (off the main thread in
-Node), inside fflate's Zip container (data descriptors). Level 0 still stores; sync `writeXlsx` always
-uses fflate. Async mode exposes `ready(maxBytes)` (backpressure) and `idle()` (all output emitted).
+`unbounded()` (unzipStream) / `unbounded = true` (lazy and Blob `chunks`) is for callers that keep
+nothing: only `maxCompressionRatio` applies then (`xlsxRows` uses it for sheets it parses as they inflate).
+
+Native compression (`src/zip/node.ts`, `src/zip/native.ts`; fflate everywhere else):
+- Sync zip writing (`writeXlsx`): entries are deflated with `zlib.deflateRawSync` in ~1 MiB sync-flushed
+  batches, else fflate. CRC-32 uses `zlib.crc32` when present, in every writer.
+- Async writers (`xlsxStream`, `createXlsxWriter`) pass `{ compressor: nativeCompressor() }` to
+  `ZipStreamWriter` (kept out of the sync path so write-only bundles don't ship it): entries are deflated
+  off the main thread by `zlib.createDeflateRaw({ level })`, else by `CompressionStream('deflate-raw')`
+  (no level knob), inside fflate's Zip container (data descriptors). Level 0 still stores. Async mode
+  exposes `ready(maxBytes)` (backpressure) and `idle()` (all output emitted).
+- `unzipLazy` (`readXlsx`, `xlsxRows` on bytes) inflates entries up to 64 MiB with `zlib.inflateRawSync`,
+  limits enforced through `maxOutputLength`; larger entries and other runtimes stream through fflate.
+  `unzipBlob` inflates with `DecompressionStream('deflate-raw')` when present, else fflate.
 Enforce `Limits` (from types.ts): entry count, per-entry & total uncompressed bytes (checked while inflating, not just from headers), compression ratio; reject paths with `..`, absolute paths, backslashes, NUL.
 
 ## src/csv — RFC 4180 streaming read/write
 ```ts
-export interface CsvReadOptions { delimiter?: string; quote?: string; bom?: boolean /*strip, default true*/; 
-  parseNumbers?: boolean; parseDates?: boolean; maxFieldBytes?: number }
-export class CsvParser { constructor(onRow: (row: string[]) => void, o?: CsvReadOptions); write(chunk: string): void; end(): void; }
-export function parseCsv(text: string, o?: CsvReadOptions): string[][];
-export function csvRows(source: AsyncIterable<string | Uint8Array> | ReadableStream<Uint8Array>, o?): AsyncIterable<string[]>;
+export interface CsvReadOptions { delimiter?: string; quote?: string; bom?: boolean /*strip, default true*/;
+  parseNumbers?, parseDates?, parseBooleans?, parseErrors?: boolean; dateFormats?: readonly string[];
+  localDates?: boolean; maxFieldBytes?: number; skipEmptyLines?: boolean /* default true */ }
+// any typing option turns rows into CsvValue[] (string | number | boolean | Date | CellError)
+export class CsvParser<R> { constructor(onRow: (row: R) => void, o?: CsvReadOptions); write(chunk: string): void; end(): void; }
+export function parseCsv(text: string, o?: CsvReadOptions): string[][] | CsvValue[][];
+export function csvRows(source: AsyncIterable<string | Uint8Array> | Iterable<...> | ReadableStream<Uint8Array>,
+  o?: CsvReadOptions & { encoding?: string /* TextDecoder label or 'auto'; BOM wins */ }): AsyncIterable<string[] | CsvValue[]>;
 export interface CsvWriteOptions { delimiter?: string; quote?: string; eol?: string; bom?: boolean;
   escapeFormulas?: boolean /* prefix ' to = + - @ \t \r, default false */; dateFormat?: (d: Date) => string }
 export function formatCsvRow(row: readonly CellValue[], o?: CsvWriteOptions): string;
 export function writeCsv(rows: Iterable<readonly CellValue[]>, o?): string;
 export function csvStream(rows: AsyncIterable<readonly CellValue[]> | Iterable<...>, o?): ReadableStream<Uint8Array>;
 ```
-Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunks split anywhere.
+Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunks split anywhere
+(byte chunks are decoded chunk-safely). Errors are `CsvError`.
 
 ## src/core — workbook model
-- `Workbook` → `Worksheet[]`, shared `StyleRegistry`, optional `SharedStrings`.
+- `Workbook` → `Worksheet[]`, shared `StyleRegistry`. `SharedStrings` (`core/sharedstrings.ts`) is built by the
+  writers (strings `'shared'`) and the reader, not kept on the model.
 - Cell storage is row-major (XLSX is row-major) and object-free per cell:
   each row keeps parallel growable typed arrays (`col: Uint16Array`, `kind: Uint8Array`, `num: Float64Array`, `style: Uint32Array`)
   plus a sparse `obj: unknown[]` slot only for strings/formulas/rich values. Rows live in a sparse array indexed by row number.
 - `StyleRegistry.intern(style: Style): number` dedupes by canonical key → xf index; also exposes fonts/fills/borders/numFmts tables for writing.
 - Addresses: 0-based `(row, col)` internally; helpers `encodeCol(0)="A"`, `decodeCol`, `encodeAddr`, `decodeAddr("B3")`, `decodeRange("A1:C3")`.
-- Dates: `dateToSerial(d, date1904)`, `serialToDate(n, date1904)` (UTC based, Excel 1900 leap-year bug honored).
+- Dates: `dateToSerial(d, date1904, local?)`, `serialToDate(n, date1904, local?)` (UTC based unless `local`, Excel 1900 leap-year bug honored).
 - Built-in number formats table (ids 0–49) and `isDateFormat(fmt)` detection.
 - `StyleRegistry.internDxf(style)` → dxf index (`<dxfs>`, for conditional formatting / tables).
 - `Workbook.definedNames: DefinedName[]` (sheet scope = index into `worksheets`; `_xlnm._FilterDatabase`
@@ -101,14 +123,23 @@ Handles quoted fields with delimiters/newlines/escaped quotes, CRLF/LF/CR, chunk
   `src/core/features.ts` and merged into `Worksheet` / `Workbook`.
 
 ## src/xlsx — read / write / features
-- `write/`: `writeXlsx` (sync, fflate), `xlsxStream` and `createXlsxWriter` (async, native deflate when
-  available). Sheet XML = head emitters + `encodeRow` (shared hot loop) + tail emitters. Package order:
-  each sheet part, then its feature parts and rels; workbook-level parts (workbook.xml, styles, sst,
-  rels, `[Content_Types].xml`, docProps) last, from `bookParts()` shared by all writers.
+- `write/`: `writeXlsx` (sync; `zlib.deflateRawSync` batches in Node / Bun / Deno, else fflate),
+  `xlsxStream` and `createXlsxWriter` (async, off-thread native deflate when available). Default profile
+  `balanced` (shared strings), except `createXlsxWriter`: `low-memory` (inline strings, constant memory).
+  Sheet XML = head emitters + `encodeRow` (shared hot loop) + tail emitters. Package order: each sheet
+  part, then its feature parts and rels; workbook-level parts come from `bookParts()`, shared by all
+  writers. `writeXlsx` / `xlsxStream` reserve the metadata entries (`[Content_Types].xml`, `_rels/.rels`,
+  workbook.xml + rels, styles, sst) at the start of the archive (`ZipOut.reserve`; the zip holds later
+  output back until they are filled) so streaming readers get them before the sheets;
+  `createXlsxWriter` writes every workbook-level part at `end()`, after the sheets.
   The implementations (`book.ts`, `stream-writer.ts`) are feature-agnostic: they run the
   `FeatureWriter`s in `options.features` (resolved to `ResolvedWriteOptions.writers`; one emitter
   plan per write, `sheetPlan`). `write/index.ts` (the root API) wraps them with every built-in.
 - `read/`: `readXlsx` (DOM; lazy unzip, one part inflated at a time) and `xlsxRows` (streaming rows).
+  `xlsxRows` reads bytes and `Blob`s by the central directory (`unzipLazy` / `unzipBlob`), metadata
+  parts first, then each sheet inflated as it is parsed; streams go through `unzipStream` in archive
+  order, buffering a sheet that arrives before the metadata. Both enforce `maxRows` / `maxCols`
+  (`SheetLimitError`).
   `readXlsx` throws `EncryptedFileError` (a `XlsxParseError`) for OLE/CFB input, pointing at `./crypto`.
   Same split: `read/reader.ts` runs `options.features` readers, `read/index.ts` adds all built-ins.
 - `features/`: extension points (`types.ts`), one module per feature exporting its `<name>Writer` /

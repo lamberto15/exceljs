@@ -9,8 +9,8 @@ conclusions.
 - **Data.** Write benchmark: 100,000 rows x 20 columns, 8 numbers, 6 short strings, 3 dates, 3 styled numbers,
   and every 10th row bold. Read benchmark: a 7.9 MB file of the same size (numbers, strings, booleans) written
   by ExcelJS.
-- **Timing.** Wall-clock `performance.now()` around one run of each case, after a forced GC. Each case is a
-  single sample, so expect noise (see Variance).
+- **Timing.** Wall-clock `performance.now()` around one run of each case, after a forced GC (the read
+  benchmark runs three GCs with short pauses). Each case is a single sample, so expect noise (see Variance).
 - **Memory.** A 5 ms sampler records the peak above the pre-case baseline. The write benchmark reports JS
   heap (`heapUsed`) and RSS; the read benchmark reports heap plus `ArrayBuffer`s, because decompressed bytes
   live outside the V8 heap. Peak RSS rarely shrinks, so later cases under-report it; run a case alone with
@@ -25,7 +25,8 @@ conclusions.
 
 ## Machine
 
-Node v26.13.0, Apple M1 Pro, macOS (Darwin 25.6.0, arm64), 2026-11-05 (after native zlib, #71 / #75).
+Node v26.13.0, Apple M1 Pro, macOS (Darwin 25.6.0, arm64), 2026-11-05: write table after native zlib (#71 /
+#75), read table after the random-access `xlsxRows` change (#86).
 
 ## Write
 
@@ -56,21 +57,25 @@ streaming writers), so `max-speed` (level 1) is now about twice as fast as the d
 
 | case                                   | time ms | peak heap + buffers MB |
 | -------------------------------------- | ------: | ---------------------: |
-| turbosheet `readXlsx` (DOM)            |    1213 |                    142 |
-| turbosheet `xlsxRows`                  |    1195 |                     85 |
-| turbosheet `xlsxRows` (low-memory)     |    2220 |                     28 |
-| turbosheet `xlsxRows` (metadata first) |    1189 |                      4 |
-| ExcelJS `xlsx.load` (DOM)              |    3628 |                    721 |
-| ExcelJS `WorkbookReader` (streaming)   |    1785 |                     72 |
+| turbosheet `readXlsx` (DOM)            |    1286 |                    142 |
+| turbosheet `xlsxRows`                  |    1226 |                     83 |
+| turbosheet `xlsxRows` (low-memory)     |    2284 |                     19 |
+| turbosheet `xlsxRows` (metadata first) |    1234 |                      5 |
+| ExcelJS `xlsx.load` (DOM)              |    4751 |                    749 |
+| ExcelJS `WorkbookReader` (streaming)   |    1875 |                     72 |
 
-"Metadata first" is the same data with workbook metadata (`styles.xml`, `sharedStrings.xml`) stored before
-the sheet, as `writeXlsx` writes it, so `xlsxRows` needs no buffering. Excel 16.x and ExcelJS store the sheet
-first. The plain `xlsxRows` row reads the ExcelJS-written order, which buffers some
-data.
+The `xlsxRows` cases read a stream of 64 KB chunks, which is consumed in archive order. "Metadata first" is
+the same data with workbook metadata (`styles.xml`, `sharedStrings.xml`) stored before the sheet, as
+`writeXlsx` and `xlsxStream` write it, so `xlsxRows` needs no buffering. Excel 16.x and ExcelJS store the
+sheet first: the plain `xlsxRows` row reads that order from a stream, which buffers the sheet until the
+metadata arrives (`low-memory` re-deflates the buffered XML). Given the bytes or a `Blob` instead,
+`xlsxRows` reads by the central directory (metadata first, whatever the archive order) and buffers nothing:
+on this file about 1.0-1.2 s and 35-50 MB peak heap + buffers (a one-off measurement, not part of
+`pnpm bench`).
 
 ## Variance
 
-Over the runs made while preparing this page, ExcelJS varied more than turbosheet: `xlsx.load` took 3.4-4.7 s
+Over the runs made while preparing this page, ExcelJS varied more than turbosheet: `xlsx.load` took 3.4-4.8 s
 and `WorkbookReader` 1.8-3.7 s, while turbosheet's read and write times moved by about 10% or less. The README
 quotes ranges for those cases for this reason.
 

@@ -208,11 +208,21 @@ describe('exceljs parity: styles', () => {
     expect(color(5)).toBe('FF00FF00');
   });
 
-  // exceljs: spec/integration/workbook/workbook.spec.js — "xlsx file" (gradient fills of row 8)
-  it.skip('gradient fills (angle / path) — not supported: Fill is pattern-only', () => {});
-
-  // exceljs: spec/integration/workbook/workbook.spec.js — "xlsx file" (font family / outline)
-  it.skip('font charset, outline, shadow, condense, extend — not modelled (dropped on read/write)', () => {});
+  // exceljs: spec/integration/workbook/workbook.spec.js — "xlsx file" (gradient fills of row 8 and
+  // font outline are checked by the test book, test-book.ts)
+  it('font charset, outline, shadow, condense, extend round-trip', () => {
+    const wb = new Workbook();
+    const font = {
+      name: 'Arial',
+      charset: 128,
+      outline: true,
+      shadow: true,
+      condense: true,
+      extend: true,
+    };
+    wb.addWorksheet('s').setCell('A1', 'x', { font });
+    expect(roundtrip(wb).getWorksheet('s')!.getStyle('A1').font).toMatchObject(font);
+  });
 
   it('font family and scheme survive edit + save of an Excel file (gold.xlsx)', async () => {
     const wb = readXlsx(fixture('gold.xlsx'));

@@ -173,17 +173,19 @@ export const dataValidationReader: FeatureReader = {
 
 ## Rules
 
-- **Imports**: only `src/core/*`, `src/xml/*`, `./types.ts`, `./util.ts` (bool/num/attrs/
-  base64/escape helpers, rich text runs: `runsXml` / `tElem` / `StringItemBuilder`) and your own
-  files. Never import runtime code from `src/xlsx/read/*`
+- **Imports**: only `src/core/*`, `src/xml/*`, `src/xlsx/common/*` (relationships, rich text,
+  `_xlfn.` prefixes), `./types.ts`, `./util.ts` (bool/num/attrs/base64/escape helpers, rich text
+  runs: `runsXml` / `tElem` / `StringItemBuilder`), shared feature modules such as `./drawing.ts`,
+  and your own files. Never import runtime code from `src/xlsx/read/*`
   or `src/xlsx/write/*`: every built-in writer ships in the root write-only bundle and every
   reader in the read bundle (and in any lite bundle that enables the feature). Never import
   `registry.ts` from a module `./lite` reaches.
 - Web APIs only (no `node:*`, no `Buffer`); no top-level side effects (`/* @__PURE__ */` for
   module-level `new`).
-- Size budget (`pnpm build && pnpm size`, see `docs/bundle-size.md`): root write-only ≤ 32 KB,
-  read+write ≤ 60 KB brotli, shared by all features; lite write-only ≤ 21 KB (target ~20) (no feature may
-  leak into it) — keep emitters string-template based and tables small.
+- Size budget (`pnpm build && pnpm size`; limits in `package.json` `size-limit`, see
+  `docs/bundle-size.md`): root write-only ≤ 36.5 KB and root `*` ≤ 78.8 KB brotli, shared by all
+  features; lite write-only ≤ 25 KB (no feature may leak into it) — keep emitters string-template
+  based and tables small.
 - Escape everything user-provided: `escapeAttr` for attributes, `escapeText` for text (or
   `attrs({...})`, which escapes and skips undefined/false).
 
@@ -242,4 +244,4 @@ feature test, in `test/<name>.test.ts`:
 4. **Raw XML**: `unzipSync(buf)` and check element order/attributes when it matters.
 
 See `test/features.test.ts` for all four patterns (it also registers a dummy feature to cover
-every hook). Run `npx tsc --noEmit && npx vitest run && npx biome check .` before committing.
+every hook). Run `pnpm typecheck && pnpm test && pnpm lint` before committing.
