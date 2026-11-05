@@ -258,7 +258,7 @@ export function xlsxStream(wb: Workbook, opts?: WriteOptions): ReadableStream<Ui
   return new ReadableStream<Uint8Array>({
     start(controller) {
       gen = pieces(wb, o);
-      // Native CompressionStream (when available) deflates off the main thread; chunks are
+      // Native deflate (node:zlib, else CompressionStream) runs off the main thread; chunks are
       // enqueued as the compressor produces them.
       zip = new ZipOut(
         (c) => c.length > 0 && controller.enqueue(c),

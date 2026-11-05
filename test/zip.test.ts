@@ -13,6 +13,7 @@ import {
   ZipStreamWriter,
   zipSync,
 } from '../src/zip/index.js';
+import { Inflight, NativeDeflateFile, nativeCompressor } from '../src/zip/native.js';
 
 async function collect(
   src: AsyncIterable<Uint8Array>,
@@ -307,5 +308,96 @@ describe('unzipLazy', () => {
     const inf = inflateStream((c) => void outp.push(c));
     for (let i = 0; i < comp.length; i++) inf.push(comp[i]!, i === comp.length - 1);
     expect(join(outp)).toEqual(src);
+  });
+});
+
+describe('native deflate (#71)', () => {
+  // independent table CRC-32, to check the CRCs the writers store
+  const TABLE = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (d: Uint8Array): number => {
+    let c = -1;
+    for (let i = 0; i < d.length; i++) c = TABLE[(c ^ d[i]!) & 255]! ^ (c >>> 8);
+    return ~c >>> 0;
+  };
+  /** CRC-32 stored in each central directory entry. */
+  const storedCrcs = (zip: Uint8Array): Map<string, number> => {
+    const dv = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    let e = zip.length - 22;
+    while (dv.getUint32(e, true) !== 0x06054b50) e--;
+    const out = new Map<string, number>();
+    let p = dv.getUint32(e + 16, true);
+    for (let i = dv.getUint16(e + 10, true); i > 0; i--) {
+      const n = dv.getUint16(p + 28, true);
+      const name = strFromU8(zip.subarray(p + 46, p + 46 + n));
+      out.set(name, dv.getUint32(p + 16, true));
+      p += 46 + n + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+    }
+    return out;
+  };
+  const text = (n: number): Uint8Array => {
+    let s = '';
+    for (let i = 0; i < n; i++) s += `<row r="${i}"><c><v>${(i * 7919) % 100003}</v></c></row>`;
+    return strToU8(s);
+  };
+  const write = async (level: number, compressor?: ReturnType<typeof nativeCompressor>) => {
+    const parts: Uint8Array[] = [];
+    const w = new ZipStreamWriter((c) => void parts.push(c), level, { compressor });
+    const data = text(20_000);
+    const a = w.file('a.xml');
+    for (let i = 0; i < data.length; i += 10_000) a.push(data.subarray(i, i + 10_000));
+    a.push(new Uint8Array(0), true);
+    w.file('b.xml', 0).push('stored', true);
+    w.file('c.xml').push('', true);
+    w.end();
+    await w.idle();
+    const out = new Uint8Array(parts.reduce((n, c) => n + c.length, 0));
+    let o = 0;
+    for (const c of parts) out.set(c, o), (o += c.length);
+    return { out, data };
+  };
+
+  it('honors the compression level and stores correct CRCs', async () => {
+    const sizes: number[] = [];
+    for (const level of [1, 6, 9]) {
+      for (const comp of [nativeCompressor(), undefined]) {
+        const { out, data } = await write(level, comp);
+        const files = unzipSync(out);
+        expect(files.get('a.xml')).toEqual(data);
+        expect(strFromU8(files.get('b.xml')!)).toBe('stored');
+        const crcs = storedCrcs(out);
+        expect(crcs.get('a.xml')).toBe(crc32(data));
+        expect(crcs.get('b.xml')).toBe(crc32(strToU8('stored')));
+        expect(crcs.get('c.xml')).toBe(0);
+        if (comp) sizes.push(out.length);
+      }
+    }
+    // node:zlib path: level 1 < 6 <= 9 in compression ratio
+    expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+    expect(sizes[1]!).toBeGreaterThanOrEqual(sizes[2]!);
+  });
+
+  it('CompressionStream entries (browser path) are valid', async () => {
+    const q = new Inflight();
+    const parts: Uint8Array[] = [];
+    const z = new Zip((err, c) => {
+      if (err) throw err;
+      parts.push(c);
+    });
+    const f = new NativeDeflateFile('x.xml', q);
+    z.add(f);
+    const data = text(5000);
+    f.push(data.subarray(0, 1000));
+    f.push(data.subarray(1000), true);
+    z.end();
+    await q.idle();
+    const out = new Uint8Array(parts.reduce((n, c) => n + c.length, 0));
+    let o = 0;
+    for (const c of parts) out.set(c, o), (o += c.length);
+    expect(unzipSync(out).get('x.xml')).toEqual(data);
+    expect(storedCrcs(out).get('x.xml')).toBe(crc32(data));
   });
 });

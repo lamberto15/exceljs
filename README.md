@@ -11,7 +11,7 @@ Fast, small, streaming-first XLSX and CSV for TypeScript on every JavaScript run
 - **Fast.** 100k rows x 20 columns: `writeXlsx` 2.2 s (1.4 s with `profile: 'max-speed'`) vs 7.6 s for ExcelJS `writeBuffer`; reading takes 1.2 s vs 3.4-4.7 s for `xlsx.load`.
 - **Low memory.** Cells live in typed arrays, not one object per cell. The streaming writer holds only a batch of rows: heap stayed around 30-80 MB where ExcelJS `writeBuffer` peaked at 2.1 GB.
 - **Small.** 28 KB (brotli, with dependencies) for a write-only bundle; 20 KB with `turbosheet/lite`. Tree-shakable, `sideEffects: false`.
-- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/`.
+- **Web standards only.** `Uint8Array`, Web Streams, `TextEncoder`, `CompressionStream`, WebCrypto. No `Buffer`, no `node:*` imports in `src/` (in Node, Bun and Deno, `node:zlib` is looked up at runtime for faster deflate and CRC-32).
 - **Safe by default.** Zip-bomb limits, no XML entity expansion, round-trip preservation of content it does not model.
 
 Numbers are from our own benchmark against `exceljs@4.4.0` (Node v26.13.0, Apple M1 Pro, 100,000 rows x 20 columns of numbers, strings and dates; see [`test/xlsx-write.bench.test.ts`](./test/xlsx-write.bench.test.ts)). Treat them as indicative, run it on your data. Methodology and full tables: [docs/benchmarks.md](./docs/benchmarks.md); reproduce with `pnpm bench`.
@@ -213,7 +213,7 @@ Sizes are from `pnpm size` for the 0.1.0 build (tree-shaken imports `{ Workbook,
 ## Runtime support
 
 - **Tested in CI:** Node 22 and 24 on Linux, macOS and Windows.
-- **Expected to work, not yet CI-tested:** Bun, Deno, browsers, Cloudflare Workers and other edge runtimes. The code only uses web-standard APIs (`Uint8Array`, Web Streams, `TextEncoder`, WebCrypto; `CompressionStream` is used when present and fflate otherwise). Bug reports from these runtimes are welcome.
+- **Expected to work, not yet CI-tested:** Bun, Deno, browsers, Cloudflare Workers and other edge runtimes. The code only uses web-standard APIs (`Uint8Array`, Web Streams, `TextEncoder`, WebCrypto; async writers deflate with `node:zlib` when `process.getBuiltinModule` exists, else `CompressionStream`, else fflate). Bug reports from these runtimes are welcome.
 
 ## Security
 
