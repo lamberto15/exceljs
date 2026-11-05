@@ -767,6 +767,11 @@ export async function* xlsxRows(
   }
 }
 
+/** Appended to byte-limit errors of sheets a stream source had to buffer (#89). */
+const STREAM_HINT =
+  'This sheet is stored before styles.xml / sharedStrings.xml, so a stream source must buffer it. ' +
+  'Pass a Blob (`await fs.openAsBlob(path)` in Node, a File in browsers) or the bytes to stream it at constant memory';
+
 async function* xlsxRowsImpl(
   source: Source,
   opts: ReadOptions,
@@ -774,6 +779,27 @@ async function* xlsxRowsImpl(
   const st = new StreamReader(opts);
   const pkg = st.pkg;
   const out: XlsxRow[] = [];
+  const seekable =
+    source instanceof Uint8Array ||
+    source instanceof ArrayBuffer ||
+    (typeof Blob !== 'undefined' && source instanceof Blob);
+
+  /** Buffer a part; a stream source hitting a byte limit on a sheet learns how to avoid it. */
+  const buffer = async (path: string, chunks: AsyncIterable<Uint8Array>): Promise<void> => {
+    try {
+      await st.buffer(path, chunks);
+    } catch (e) {
+      if (
+        !seekable &&
+        e instanceof ZipLimitError &&
+        /too large|total uncompressed/.test(e.message) &&
+        /(^|\/)worksheets\//i.test(path)
+      ) {
+        throw new ZipLimitError(`${e.message}. ${STREAM_HINT}`);
+      }
+      throw e;
+    }
+  };
 
   function* flush(): Generator<{ sheet: ResolvedSheet; chunks: PartBuffer }> {
     st.drainBufferedMeta();
@@ -843,11 +869,11 @@ async function* xlsxRowsImpl(
         p.done();
         continue;
       }
-      await st.buffer(path, entry.chunks);
+      await buffer(path, entry.chunks);
       continue;
     }
     if (role === 'unknown' && maybeRelevant(path)) {
-      await st.buffer(path, entry.chunks);
+      await buffer(path, entry.chunks);
       yield* emitBuffered();
     }
     // role 'ignore' (or irrelevant unknown): leave the chunks unconsumed; unzipStream skips them.
