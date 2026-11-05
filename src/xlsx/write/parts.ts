@@ -41,8 +41,10 @@ export interface BookInfo {
   /** Write `fullCalcOnLoad` (formulas present, or wb.calcProperties). */
   readonly formulas: boolean;
   readonly activeTab: number;
-  /** wb.views[0]: window settings (its activeTab wins over the derived one). */
-  readonly view?: WorkbookView | undefined;
+  /** wb.views: window settings (an activeTab wins over the derived one). */
+  readonly views?: readonly WorkbookView[] | undefined;
+  /** Windows the sheets' views refer to (max workbookViewId + 1); more `<workbookView>`s are added. */
+  readonly windows?: number | undefined;
   readonly creator: string | undefined;
   readonly lastModifiedBy: string | undefined;
   readonly created: Date | undefined;
@@ -115,6 +117,8 @@ export function docProps(wb: Workbook): Record<string, string | undefined> | und
     contentStatus: wb.contentStatus,
     company: wb.company,
     manager: wb.manager,
+    language: wb.language,
+    revision: wb.revision !== undefined ? String(wb.revision) : undefined,
   };
   return Object.values(o).some((v) => v) ? o : undefined;
 }
@@ -127,6 +131,8 @@ const CORE_PROPS = [
   ['description', 'dc:description'],
   ['category', 'cp:category'],
   ['contentStatus', 'cp:contentStatus'],
+  ['language', 'dc:language'],
+  ['revision', 'cp:revision'],
 ] as const;
 
 export function corePropsXml(b: BookInfo): string {
@@ -184,19 +190,21 @@ function definedNameXml(
  */
 export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []): string {
   const at = b.at;
-  const v = b.view;
   const pos = (i: number): number => (at ? (at[i] ?? i) : i);
-  const tab = pos(v?.activeTab ?? b.activeTab);
-  const first = v?.firstSheet !== undefined ? pos(v.firstSheet) : tab > 0 ? 0 : undefined;
+  const vs = b.views ?? [];
+  let bv = '';
+  for (let i = 0, n = Math.max(vs.length, b.windows ?? 1, 1); i < n; i++) {
+    const v = vs[i] ?? vs[0];
+    const tab = pos(v?.activeTab ?? b.activeTab);
+    const first = v?.firstSheet !== undefined ? pos(v.firstSheet) : tab > 0 ? 0 : undefined;
+    bv += `<workbookView${v?.visibility && v.visibility !== 'visible' ? ` visibility="${v.visibility}"` : ''} xWindow="${v?.x ?? 0}" yWindow="${v?.y ?? 0}" windowWidth="${v?.width ?? 28800}" windowHeight="${v?.height ?? 12300}"${
+      first !== undefined ? ` firstSheet="${first}"` : ''
+    }${tab > 0 ? ` activeTab="${tab}"` : ''}/>`;
+  }
   const x = b.extraSheets;
   const parts: [number, string][] = [
     [2, `<workbookPr${b.date1904 ? ' date1904="1"' : ''}${b.prAttrs ?? ''}/>`],
-    [
-      4,
-      `<bookViews><workbookView${v?.visibility && v.visibility !== 'visible' ? ` visibility="${v.visibility}"` : ''} xWindow="${v?.x ?? 0}" yWindow="${v?.y ?? 0}" windowWidth="${v?.width ?? 28800}" windowHeight="${v?.height ?? 12300}"${
-        first !== undefined ? ` firstSheet="${first}"` : ''
-      }${tab > 0 ? ` activeTab="${tab}"` : ''}/></bookViews>`,
-    ],
+    [4, `<bookViews>${bv}</bookViews>`],
   ];
   let sheets = '<sheets>';
   let names = '';

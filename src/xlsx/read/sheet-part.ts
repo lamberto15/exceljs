@@ -9,7 +9,12 @@ import { decodeRange, encodeAddr, MAX_ROWS } from '../../core/address.js';
 import { dateToSerial, serialToDate } from '../../core/dates.js';
 import type { StyleRegistry } from '../../core/styles.js';
 import type { CellValue, ErrorCode, Formula, Hyperlink, RichText } from '../../core/types.js';
-import { CellKind, type Worksheet, type WorksheetView } from '../../core/worksheet.js';
+import {
+  CellKind,
+  type Worksheet,
+  type WorksheetProperties,
+  type WorksheetView,
+} from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import type { Relationship } from '../common/r-opc.js';
 import { stripXlfn } from '../common/xlfn.js';
@@ -166,8 +171,7 @@ export class SheetHandler implements XmlHandler {
   private readonly shared = new Map<string, { formula: string; r: number; c: number }>();
   private readonly cols: ColRange[] = [];
   private readonly links: HyperlinkRec[] = [];
-  private view: Mutable<WorksheetView> | undefined;
-  private viewDone = false;
+  private readonly views: Mutable<WorksheetView>[] = [];
   private maxCol = -1;
   /** Cells stored in the current row / in the previous non-empty row (DOM mode sizing hint). */
   private rowStored = 0;
@@ -274,6 +278,9 @@ export class SheetHandler implements XmlHandler {
           return;
         case 'sheetViews':
           this.inViews = true;
+          return;
+        case 'sheetFormatPr':
+          if (this.ws) readFormatPr(this.ws.properties, a);
           return;
         case 'autoFilter':
           if (this.ws && a.ref) this.ws.autoFilter = a.ref;
@@ -399,7 +406,7 @@ export class SheetHandler implements XmlHandler {
         if (c.xf) col.styleIndex = c.xf;
       }
     }
-    if (this.view) ws.views = [this.view];
+    if (this.views.length) ws.views = this.views;
     for (const h of this.links) this.applyLink(ws, h);
   }
 
@@ -669,11 +676,11 @@ export class SheetHandler implements XmlHandler {
 
   private openView(ln: string, d: number, a: XmlAttrs): void {
     if (ln === 'sheetView' && d === 3) {
-      if (this.view) {
-        this.viewDone = true; // only the first view is kept
-        return;
-      }
       const v: Mutable<WorksheetView> = { state: 'normal' };
+      // one view per Excel window; the id is kept when it is not the view's position
+      if (a.workbookViewId !== undefined && +a.workbookViewId !== this.views.length) {
+        v.workbookViewId = +a.workbookViewId || 0;
+      }
       if (attrBool(a.tabSelected)) v.tabSelected = true;
       if (a.showGridLines !== undefined && !attrBool(a.showGridLines)) v.showGridLines = false;
       if (a.showRowColHeaders !== undefined && !attrBool(a.showRowColHeaders)) {
@@ -681,11 +688,11 @@ export class SheetHandler implements XmlHandler {
       }
       if (a.zoomScale !== undefined && +a.zoomScale !== 100) v.zoomScale = +a.zoomScale;
       if (attrBool(a.rightToLeft)) v.rightToLeft = true;
-      this.view = v;
+      this.views.push(v);
       return;
     }
-    const v = this.view;
-    if (!v || this.viewDone || d !== 4) return;
+    const v = this.views[this.views.length - 1];
+    if (!v || d !== 4) return;
     if (ln === 'pane') {
       const frozen = a.state === 'frozen' || a.state === 'frozenSplit';
       v.state = frozen ? 'frozen' : 'split';
@@ -743,6 +750,21 @@ export class SheetHandler implements XmlHandler {
         if (h.tooltip !== undefined) link.tooltip = h.tooltip;
         ws.setCellRaw(r, c, CellKind.Hyperlink, 0, link, xf);
       }
+    }
+  }
+}
+
+/**
+ * `<sheetFormatPr>` → ws.properties. customHeight is implied by defaultRowHeight; the outline
+ * levels are not kept (writers derive them from the rows / columns, so a stale one is dropped).
+ */
+function readFormatPr(p: Mutable<WorksheetProperties>, a: XmlAttrs): void {
+  for (const k in a) {
+    const v = +a[k]!;
+    const ln = k.slice(k.indexOf(':') + 1);
+    if (v - v !== 0) continue;
+    if (ln === 'dyDescent' || (v > 0 && (ln === 'defaultRowHeight' || ln === 'defaultColWidth'))) {
+      p[ln] = v;
     }
   }
 }

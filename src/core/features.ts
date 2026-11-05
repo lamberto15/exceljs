@@ -65,6 +65,10 @@ export interface WorkbookFeatureFields {
   contentStatus?: string | undefined;
   company?: string | undefined;
   manager?: string | undefined;
+  /** Content language, e.g. "en-US" (`dc:language`). */
+  language?: string | undefined;
+  /** Revision number (`cp:revision`). */
+  revision?: number | undefined;
   /**
    * Calculation settings (ExcelJS `wb.calcProperties`). `fullCalcOnLoad`: Excel recalculates
    * every formula when opening the file. Default: on when the workbook has formulas (their
@@ -72,7 +76,10 @@ export interface WorkbookFeatureFields {
    * `evaluate`) to spare Excel the recalculation and its "save changes?" prompt.
    */
   calcProperties?: { fullCalcOnLoad?: boolean | undefined } | undefined;
-  /** Excel window settings (first entry is written; ExcelJS `wb.views`). */
+  /**
+   * Excel windows (ExcelJS `wb.views`), one `<workbookView>` each. Writers add windows when a
+   * sheet has more views than there are entries (copies of the first).
+   */
   views?: WorkbookView[] | undefined;
   /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
   images?: WorkbookImage[] | undefined;

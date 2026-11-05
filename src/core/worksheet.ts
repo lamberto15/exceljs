@@ -121,6 +121,31 @@ export interface WorksheetView {
   zoomScale?: number | undefined;
   rightToLeft?: boolean | undefined;
   tabSelected?: boolean | undefined;
+  /**
+   * Excel window (`wb.views` entry) this view belongs to. Default: the view's position in
+   * `ws.views`, so `ws.views = [{}, { zoomScale: 50 }]` sets the sheet's view in the first and
+   * the second window (writers add windows to `wb.views` as needed).
+   */
+  workbookViewId?: number | undefined;
+}
+
+/**
+ * Sheet-level properties (ExcelJS `ws.properties`, `<sheetPr>` / `<sheetFormatPr>`). Unset
+ * fields are derived when writing: default row height from the workbook's default font,
+ * outline levels from the rows / columns (an explicit level only raises the derived one).
+ */
+export interface WorksheetProperties {
+  tabColor?: Color | undefined;
+  /** Default row height in points (rows without their own height). */
+  defaultRowHeight?: number | undefined;
+  /** Default column width in characters (columns without their own width). */
+  defaultColWidth?: number | undefined;
+  /** Highest row outline level (the outline buttons Excel shows). */
+  outlineLevelRow?: number | undefined;
+  /** Highest column outline level. */
+  outlineLevelCol?: number | undefined;
+  /** Excel's font descent hint (`x14ac:dyDescent`, e.g. 0.25). */
+  dyDescent?: number | undefined;
 }
 
 export interface ColumnDef {
@@ -451,7 +476,9 @@ export class Worksheet {
   /** sheetId (1-based, stable across removals of other sheets). */
   readonly id: number;
   state: SheetState = 'visible';
-  tabColor: Color | undefined = undefined;
+  /** Sheet properties; `tabColor` is the same value as `ws.tabColor`. */
+  properties: WorksheetProperties = {};
+  /** Views (one per Excel window; usually one): frozen panes, zoom, selection, ... */
   views: WorksheetView[] = [];
   /** Auto-filter range, e.g. "A1:D1". */
   autoFilter: string | undefined = undefined;
@@ -477,6 +504,13 @@ export class Worksheet {
 
   get name(): string {
     return this._name;
+  }
+
+  get tabColor(): Color | undefined {
+    return this.properties.tabColor;
+  }
+  set tabColor(c: Color | undefined) {
+    this.properties.tabColor = c;
   }
   set name(v: string) {
     this.workbook._checkName(v, this);

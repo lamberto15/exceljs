@@ -26,15 +26,9 @@
 import { SharedStrings } from '../../core/sharedstrings.js';
 import type { CellValue, Style, WriteOptions } from '../../core/types.js';
 import { Workbook, type WorksheetOptions } from '../../core/workbook.js';
-import {
-  type ColumnDef,
-  type RowObject,
-  type RowProps,
-  Worksheet,
-  type WorksheetView,
-} from '../../core/worksheet.js';
+import { type ColumnDef, type RowObject, type RowProps, Worksheet } from '../../core/worksheet.js';
 import { nativeCompressor } from '../../zip/index.js';
-import { activeTabOf, bookParts, CHUNK, sheetEntry } from './book.js';
+import { activeTabOf, bookParts, CHUNK, sheetEntry, windowsOf } from './book.js';
 import { type ResolvedWriteOptions, resolveWriteOptions } from './options.js';
 import { PackageParts } from './package.js';
 import { type BookInfo, docProps } from './parts.js';
@@ -73,7 +67,6 @@ export interface XlsxWriterOptions extends WriteOptions {
 
 export interface StreamSheetOptions extends WorksheetOptions {
   columns?: readonly ColumnDef[] | undefined;
-  views?: WorksheetView[] | undefined;
   /** Freeze rows (and columns): `1` or `{ rows: 1, cols: 2 }`. */
   freeze?: number | { rows: number; cols?: number } | undefined;
   autoFilter?: string | undefined;
@@ -326,7 +319,6 @@ export class XlsxWriter {
     if (this._open) this._open._commitSync();
     const ws = this.workbook.addWorksheet(name, opts);
     if (opts.columns) ws.columns = opts.columns;
-    if (opts.views) ws.views = opts.views;
     if (opts.freeze !== undefined) {
       if (typeof opts.freeze === 'number') ws.freeze(opts.freeze);
       else ws.freeze(opts.freeze.rows, opts.freeze.cols ?? 0);
@@ -367,7 +359,8 @@ export class XlsxWriter {
       sharedStrings: shared,
       formulas: wb.calcProperties?.fullCalcOnLoad ?? this._formulas,
       activeTab: this._activeIndex(),
-      view: wb.views?.[0],
+      views: wb.views,
+      windows: windowsOf(sheets),
       creator: wb.creator,
       lastModifiedBy: wb.lastModifiedBy,
       created: wb.created,

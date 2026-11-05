@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 77 | 7 | 16 | 47 | 6 | 153 |
+| integration | 80 | 7 | 11 | 49 | 6 | 153 |
 | issues | 24 | 0 | 0 | 3 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
-| unit | 55 | 2 | 22 | 34 | 64 | 177 |
-| **all** | 166 | 10 | 38 | 87 | 70 | 371 |
+| unit | 55 | 2 | 18 | 38 | 64 | 177 |
+| **all** | 169 | 10 | 29 | 93 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -38,11 +38,11 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
 | [issues](../test/exceljs-parity/issues.test.ts) | 24 | 0 | 0 | 3 | 0 | 27 |
 | [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 0 | 8 | 0 | 15 |
-| [misc](../test/exceljs-parity/misc.test.ts) | 27 | 0 | 5 | 7 | 4 | 43 |
-| [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 3 | 0 | 0 | 4 |
+| [misc](../test/exceljs-parity/misc.test.ts) | 30 | 0 | 1 | 8 | 4 | 43 |
+| [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 0 | 3 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
 | [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
-| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 46 | 2 | 8 | 34 | 0 | 90 |
+| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 46 | 2 | 6 | 36 | 0 | 90 |
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 3 | 0 | 5 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
@@ -67,11 +67,17 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 
 ## Notable unsupported features
 
-- Shared-formula authoring (`fillFormula`, `{ sharedFormula }` values); shared formulas in files are expanded on read.
-- Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
-- Document properties beyond creator / lastModifiedBy / created / modified (company, manager, title, subject, keywords, category, description, language, revision, contentStatus).
-- Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`); `maxRows` / `maxCols` read limits; `getRows`, `getSheetValues`, `column.eachCell`, `eachRow({ includeEmpty })`, `actualRowCount`.
-- CSV: custom read date formats (ISO 8601 only), boolean / error typing, non-UTF-8 encodings.
+Compared with ExcelJS 4.4.0:
+
+- `{ sharedFormula }` cell values: `fillFormula` fills a range with plain (relative-adjusted) formulas instead; shared formulas in files are expanded on read.
+- `activePane` of split views (derived from the split); ExcelJS's `showRuler` / `zoomScaleNormal` / `style` view fields.
+- Table editing beyond `addTableRows` (removing rows, adding / removing / renaming columns, header / totals toggles through a table object); edit cells and `ws.tables` instead.
+- `maxRows` / `maxCols` read limits (stop iterating `xlsxRows` instead), `eachRow({ includeEmpty })`, `addRow` style inheritance codes (`'i'`, `'o'`, `'n'`), the `cell.hyperlink` setter.
+- CSV: custom read date formats (ISO 8601 only), boolean / error typing.
+
+Different by design: row / column `collapsed` is a plain settable flag here (set it on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
+
+Not in ExcelJS 4.4.0 either, so not counted as gaps: pivot table authoring (`ws.addPivotTable` is not a function in 4.4.0; pivot tables in read files are preserved here) and non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`).
 
 ## Additions made for parity
 
@@ -358,7 +364,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
 | A lot of sheets | ✅ | streaming-write |  |
-| Cell annotation supports setting margins and protection properties | 🚫 | notes (skip) | note margins/protection/editAs not modelled |
+| Cell annotation supports setting margins and protection properties | ➖ | notes | `protection` booleans instead of `'True'`/`'False'` |
 | Without styles | ✅ | values |  |
 | addRow | ✅ | streaming-write |  |
 | auto filter | ✅ | streaming-write |  |
@@ -416,21 +422,21 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Duplicate rows with styles properly | ✅ | rows-columns |  |
 | a lot of sheets to xlsx file | ✅ | misc |  |
 | auto filter | ✅ | misc |  |
-| company, manager, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
+| company, manager, etc | ✅ | misc |  |
 | creator, lastModifiedBy, etc | ✅ | misc |  |
 | csv file | ➖ | csv | via `sheetToArrays`/`writeCsv`/`parseCsv`/`arraysToSheet`; hyperlinks as text, booleans/errors untyped |
 | dataValidations | ➖ | data-validation | sqref-based model, defined name instead of `cell.name`, formulas read as text |
 | defined names | ➖ | defined-names | no `cell.name(s)`/`addName`/`getRanges`; `addDefinedName` with ranges; sheet names always quoted |
 | empty string | ✅ | values |  |
 | empty strings | ✅ | values |  |
-| frozen panes | ➖ | misc | one sheet view per sheet; only modelled view fields |
-| language, revision and contentStatus | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
-| multiple book views | 🚫 | misc (skip) | `wb.views` not supported |
+| frozen panes | ➖ | misc | only modelled view fields (no `workbookViewId` / `showRuler` / `zoomScaleNormal` defaults) |
+| language, revision and contentStatus | ✅ | misc |  |
+| multiple book views | ➖ | misc | the first window's `activeTab` is carried by the sheets' `tabSelected`; default view fields are not materialised |
 | printTitlesColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | printTitlesRow | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | printTitlesRowAndColumn | ✅ | print | `setPrintTitles` / `getPrintTitles` |
 | serialises and deserialises properly | ➖ | merges | slave cells read `null` (no merge proxy) |
-| serialises split panes | ➖ | misc | one view per sheet; `activePane` not modelled |
+| serialises split panes | ➖ | misc | `activePane` not modelled |
 | shared formula | 🚫 | formulas | no `fillFormula`; plain formulas round-trip |
 | sheets with correct names | ➖ | misc | default name is `SheetN` (exceljs `sheetN`) |
 | spliced meat and ham | ✅ | rows-columns |  |
@@ -438,7 +444,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | throw an error for wrong data type | ✅ | misc | different message |
 | throws an error when csv file not found | ❓ | misc/csv (skip) | no file system API |
 | throws an error when xlsx file not found | ❓ | misc/csv (skip) | no file system API |
-| title, subject, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
+| title, subject, etc | ✅ | misc |  |
 | xlsx file | 🐛 | values | failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
 | xlsx file with best compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
 | xlsx file with default compression | 🐛 | values | `compression` 9/default/1/0; failed on negative `textRotation` (written as invalid `textRotation="-45"`), negative `indent` and 6-digit RGB colors; fixed (`fix(styles)`). test book round trip (`test-book.ts`); subset: no gradient fills / font outline / workbook views / sharedFormula values / merged-cell value proxy |
@@ -533,8 +539,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| Cell comments supports setting margins, protection, and position properties | 🚫 | notes (skip) | note margins/protection/editAs |
-| can set comment | 🚫 | notes (skip) | note margins/protection/editAs |
+| Cell comments supports setting margins, protection, and position properties | ➖ | notes | defaults (auto margins, `absolute`) are not materialised in the model; booleans |
+| can set comment | ➖ | notes | `protection` booleans |
 | doesn't upgrade from non-string to hyperlink | 🚫 | hyperlinks (skip) | no `cell.hyperlink` setter |
 | escapes dangerous html | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
 | has effective types | ➖ | values | no `effectiveType`; inspect `result` |
@@ -722,8 +728,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| adjusts collapsed property of columns | 🚫 | rows-columns (skip) | `collapsed` not modelled |
-| adjusts collapsed property of row | 🚫 | rows-columns (skip) | `collapsed` not modelled |
+| adjusts collapsed property of columns | ➖ | rows-columns | `collapsed` is a settable flag, not derived; `ws.properties.outlineLevelCol` raises the written level |
+| adjusts collapsed property of row | ➖ | rows-columns | `collapsed` is a settable flag, not derived; `ws.properties.outlineLevelRow` raises the written level |
 | sets outline levels via column headers | ✅ | rows-columns |  |
 
 ### `unit/utils/cell-matrix.spec.js`

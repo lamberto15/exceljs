@@ -45,8 +45,6 @@ const OWNER: Partial<Record<number, (ws: Worksheet) => unknown>> = {
   [SheetSlot.pageSetup]: (ws) => ws.pageSetup,
 };
 
-const OUTLINE = / outlineLevel(Row|Col)="\d+"/g;
-
 const FILTER_COL = /<((?:\w+:)?filterColumn)\b[^>]*?\scolId="(\d+)"[^>]*?(?:\/>|>[\s\S]*?<\/\1>)/g;
 const SORT_STATE = /<((?:\w+:)?sortState)\b(?:[^>]*\/>|[\s\S]*?<\/\1>)/;
 
@@ -96,10 +94,9 @@ function sheetFrags(
     const k = f.slot;
     if (k < lo || k > hi || !fragLive(f, ws)) continue;
     if (k === SheetSlot.sheetFormatPr) {
-      // kept attributes (default widths / heights, zeroHeight, ...); the outline levels are the
-      // model's (recomputed by the built-in emitter)
-      const lv = out[k]?.match(OUTLINE)?.join('') ?? '';
-      out[k] = f.xml.replace(OUTLINE, '').replace(/\/>$/, `${lv}/>`);
+      // kept attributes the model does not cover (zeroHeight, thickTop, baseColWidth, ...),
+      // added to the built-in element (ws.properties covers the rest)
+      out[k] = (out[k] ?? '<sheetFormatPr/>').replace(/\/>$/, f.xml.slice(14));
       continue;
     }
     if (k === SheetSlot.autoFilter) {

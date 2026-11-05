@@ -57,10 +57,23 @@ wb.category = 'Finance';
 wb.contentStatus = 'Draft';
 wb.company = 'ACME';
 wb.manager = 'Jane';
+wb.language = 'en-US';
+wb.revision = 3;
 // also wb.creator, wb.lastModifiedBy, wb.created, wb.modified
 ```
 
 Written to `docProps/core.xml` / `docProps/app.xml` (File > Info in Excel) and read back.
+
+Sheet properties and views (ExcelJS shapes):
+
+```ts
+const ws = wb.addWorksheet('Data', {
+  properties: { tabColor: { argb: 'FF00B050' }, defaultRowHeight: 20, defaultColWidth: 12 },
+  views: [{ state: 'frozen', ySplit: 1 }, { zoomScale: 50 }], // one view per Excel window
+});
+```
+
+`ws.properties.outlineLevelRow` / `outlineLevelCol` only raise the levels derived from the rows / columns (useful with `createXlsxWriter`, which writes the sheet head before the rows). A sheet with two views makes Excel open the file in two windows (`wb.views` holds their positions; missing entries copy the first).
 
 ## Styles and number formats
 
@@ -188,6 +201,12 @@ tableRows(ws, 'Sales'); // [{ Region: 'North', Units: 120 }, ..., { Region: 'Wes
 addNote(ws, 'B2', 'Check this value');
 addNote(ws, 'B3', { text: 'Approved', author: 'Ann', visible: true, width: 200, height: 60 });
 addNote(ws, 'B4', { richText: [{ text: 'Important', font: { bold: true } }] });
+addNote(ws, 'B5', {
+  text: 'Locked note',
+  margins: { insetmode: 'custom', inset: [0.25, 0.25, 0.35, 0.35] }, // cm: left, top, right, bottom
+  protection: { locked: true, lockText: false }, // effective on a protected sheet
+  editAs: 'twoCells', // move and size with cells; 'oneCells': move only; default 'absolute'
+});
 ```
 
 These are classic notes (legacy comments with a VML box). Threaded comments in existing files are preserved, not modelled.

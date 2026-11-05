@@ -28,14 +28,15 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | --- | --- |
 | `new ExcelJS.Workbook()` | `new Workbook()` |
 | `wb.creator`, `lastModifiedBy`, `created`, `modified` | same |
-| `wb.addWorksheet('S', { properties: { tabColor }, state })` | `wb.addWorksheet('S', { tabColor, state })` |
+| `wb.addWorksheet('S', { properties: { tabColor }, state, views })` | same (`{ tabColor }` also works) |
 | `wb.getWorksheet('S' \| id)`, `wb.worksheets` | same (`getWorksheet` returns `undefined` when absent) |
 | `wb.eachSheet(cb)` | `for (const ws of wb.worksheets)` |
 | `wb.removeWorksheet(id)` | `wb.removeWorksheet(nameOrIdOrSheet)` |
 | `wb.definedNames.add(ref, name)` | `addDefinedName(wb, name, ref)` |
 | `ws.pageSetup.printArea` | `setPrintArea(ws, 'A1:D20')` |
 | `ws.pageSetup.printTitlesRow` | `setPrintTitles(ws, { rows: '1:1' })` |
-| `wb.calcProperties`, `wb.views` | supported (`calcProperties.fullCalcOnLoad`, `views[0]`: window, first sheet, active tab) |
+| `wb.calcProperties`, `wb.views` | supported (`calcProperties.fullCalcOnLoad`; every window: position, size, first sheet, active tab) |
+| `wb.language`, `wb.revision`, `wb.title`, ... | same |
 
 ### Rows, columns, cells
 
@@ -53,10 +54,11 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.eachRow(cb)` | same (`cb(row, rowNumber)`) |
 | `ws.rowCount`, `ws.columnCount`, `ws.dimensions` | same (`dimensions` is `{ top, left, bottom, right, ref }`) |
 | `ws.mergeCells('A1:C2')` | same; throws on overlapping merges |
-| `ws.views = [{ state: 'frozen', ySplit: 1 }]` | same, or `ws.freeze(1)` |
+| `ws.views = [{ state: 'frozen', ySplit: 1 }]` | same (one view per window), or `ws.freeze(1)` |
 | `ws.autoFilter = 'A1:D1'` | same |
 | `ws.state = 'hidden'` | same |
-| `ws.properties.tabColor` | `ws.tabColor` |
+| `ws.properties` (`tabColor`, `defaultRowHeight`, `outlineLevelRow`, ...) | same; `ws.tabColor` is an alias of `ws.properties.tabColor`. Outline levels are derived from the rows / columns (a property only raises them) and not read back |
+| `row.collapsed` / `column.collapsed` (getters derived from outline levels) | settable flags: set `collapsed` on the summary row / column, or use `groupRows(ws, from, to, { collapsed: true })` |
 | `ws.pageSetup`, `ws.headerFooter` | same shape (plain objects) |
 | `ws.protect(password, options)` | `ws.protection = { password, ...options }` |
 | `ws.actualRowCount`, `lastRow`, `getRows`, `getSheetValues` | `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)` (functions) |
@@ -78,7 +80,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | ExcelJS | turbosheet |
 | --- | --- |
 | `ws.addTable({ name, ref, columns, rows })` | `addTable(ws, { name, topLeft \| ref, columns, rows })`; columns may be plain strings; header/data/totals cells are written for you |
-| `cell.note = 'text' \| {...}` | `addNote(ws, 'A1', 'text' \| { text, author, visible, width, height })` |
+| `cell.note = 'text' \| {...}` | `addNote(ws, 'A1', 'text' \| { text, author, visible, width, height, margins, protection, editAs })`; `protection` takes booleans (ExcelJS: `'True'` / `'False'`) |
 | `cell.dataValidation = {...}` / `ws.dataValidations.add('A1:A9', {...})` | `addDataValidation(ws, { sqref: 'A1:A9', type, ... })` |
 | `ws.addConditionalFormatting({ ref, rules })` | `addConditionalFormatting(ws, ref, rules)` |
 | `const id = wb.addImage({ buffer \| base64, extension })`; `ws.addImage(id, 'B2:D6' \| { tl, ext })` | `const id = addImage(wb, { data \| base64, extension })`; `placeImage(ws, id, 'B2:D6' \| { tl, ext })` |
@@ -184,4 +186,4 @@ To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `
 
 ## Not supported yet
 
-`calcProperties` beyond `fullCalcOnLoad` and workbook views; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.
+`calcProperties` beyond `fullCalcOnLoad`; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.

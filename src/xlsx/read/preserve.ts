@@ -763,6 +763,15 @@ function styles(
   return [table, colors + ext, styleXfs !== undefined ? [styleXfs, cellStyles] : undefined];
 }
 
+/** `<sheetFormatPr>` attributes modelled by ws.properties (or derived from it). */
+const FORMAT_PR = [
+  'defaultRowHeight',
+  'defaultColWidth',
+  'customHeight',
+  'outlineLevelRow',
+  'outlineLevelCol',
+];
+
 /** Per-sheet capture state (SheetCapture for the sheet parser). */
 export class SheetCap implements SheetCapture {
   readonly frags: [number, number, string][] = [];
@@ -789,17 +798,14 @@ export class SheetCap implements SheetCapture {
   }
 
   formatPr(a: XmlAttrs): void {
-    // only worth keeping when it says more than the writer's own (defaultRowHeight 15 +
-    // outline levels, which are recomputed from the rows / columns); extension attributes
-    // (x14ac:dyDescent) are rendering hints that would need mc:Ignorable on the root: dropped
+    // attributes ws.properties does not model (zeroHeight, thickTop, baseColWidth, ...);
+    // customHeight follows defaultRowHeight; other extension attributes are dropped
     let s = '';
-    let more = false;
     for (const k in a) {
-      if (k.includes(':') || k === 'xmlns') continue;
+      if (k.includes(':') || k === 'xmlns' || FORMAT_PR.includes(k)) continue;
       s += ` ${k}="${escapeAttr(a[k]!)}"`;
-      if (k === 'defaultRowHeight' ? +a[k]! !== 15 : !k.startsWith('outlineLevel')) more = true;
     }
-    if (more) this.frags.push([SheetSlot.sheetFormatPr, 9, `<sheetFormatPr${s}/>`]);
+    if (s) this.frags.push([SheetSlot.sheetFormatPr, 9, `<sheetFormatPr${s}/>`]);
   }
 
   ref(a: XmlAttrs): void {

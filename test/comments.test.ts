@@ -255,4 +255,78 @@ describe('comments', () => {
     expect(p.get('xl/drawings/vmlDrawing2.vml')).toContain('data="3"');
     expect(readXlsx(writeXlsx(wb)).getWorksheet('S')!.comments!.length).toBe(1100);
   });
+
+  it('margins, protection and editAs: written to the VML, read back, exceljs agrees', async () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    ws.getCell('B2').value = 5;
+    ws.getCell('D2').value = 7;
+    addNote(ws, 'B2', 'plain');
+    // rich text: exceljs flattens a plain-text note to a string (dropping margins etc.)
+    const custom = { richText: [{ text: 'custom', font: { bold: true } }] };
+    addNote(ws, 'D2', {
+      text: custom,
+      margins: { insetmode: 'custom', inset: [0.25, 0.25, 0.35, 0.35] },
+      protection: { locked: false, lockText: false },
+      editAs: 'oneCells',
+    });
+    addNote(ws, 'F2', { text: 'moves', editAs: 'twoCells', protection: { locked: true } });
+    const buf = writeXlsx(wb);
+    const vml = parts(buf).get('xl/drawings/vmlDrawing1.vml')!;
+    const shapes = vml.split('<v:shape ').slice(1);
+    expect(shapes[0]).toContain('o:insetmode="auto"');
+    expect(shapes[0]).toContain('<x:MoveWithCells/><x:SizeWithCells/>');
+    expect(shapes[0]).not.toContain('Locked');
+    expect(shapes[1]).toContain('o:insetmode="custom"');
+    expect(shapes[1]).toContain('inset="2.5mm,2.5mm,3.5mm,3.5mm"');
+    expect(shapes[1]).toContain('<x:ClientData ObjectType="Note"><x:SizeWithCells/><x:Anchor>');
+    expect(shapes[1]).toContain(
+      '</x:Anchor><x:Locked>False</x:Locked><x:AutoFill>False</x:AutoFill><x:LockText>False</x:LockText><x:Row>',
+    );
+    expect(shapes[2]).toContain('<x:ClientData ObjectType="Note"><x:Anchor>');
+    expect(shapes[2]).toContain('<x:Locked>True</x:Locked>');
+
+    const back = readXlsx(buf).getWorksheet('S')!.comments!;
+    expect(back[0]).toEqual({ ref: 'B2', text: 'plain' });
+    expect(back[1]).toEqual({
+      ref: 'D2',
+      text: custom,
+      margins: { insetmode: 'custom', inset: [0.25, 0.25, 0.35, 0.35] },
+      protection: { locked: false, lockText: false },
+      editAs: 'oneCells',
+    });
+    expect(back[2]).toEqual({
+      ref: 'F2',
+      text: 'moves',
+      editAs: 'twoCells',
+      protection: { locked: true },
+    });
+
+    const x = (await oracle(buf)).getWorksheet('S')!;
+    const n = x.getCell('D2').note as unknown as {
+      margins: unknown;
+      protection: unknown;
+      editAs: string;
+    };
+    expect(n.margins).toEqual({ insetmode: 'custom', inset: [0.25, 0.25, 0.35, 0.35] });
+    expect(n.protection).toEqual({ locked: 'False', lockText: 'False' });
+    expect(n.editAs).toBe('oneCells');
+  });
+
+  it('reads exceljs-written note margins / protection', async () => {
+    const x = new ExcelJS.Workbook();
+    const xs = x.addWorksheet('S');
+    xs.getCell('A1').value = 1;
+    xs.getCell('A1').note = {
+      texts: [{ text: 'n' }],
+      margins: { insetmode: 'custom', inset: [0.13, 0.13, 0.25, 0.25] },
+      protection: { locked: 'False', lockText: 'True' },
+      editAs: 'absolute',
+    } as unknown as ExcelJS.Comment;
+    const buf = new Uint8Array(await x.xlsx.writeBuffer());
+    const n = readXlsx(buf).getWorksheet('S')!.comments![0]!;
+    expect(n.margins).toEqual({ insetmode: 'custom', inset: [0.13, 0.13, 0.25, 0.25] });
+    expect(n.protection).toEqual({ locked: false, lockText: true });
+    expect(n.editAs).toBeUndefined(); // absolute is the default
+  });
 });

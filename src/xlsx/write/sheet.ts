@@ -248,8 +248,8 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
 
 // ---- head & tail -----------------------------------------------------------------------
 
-function viewXml(v: WorksheetView | undefined, selected: boolean): string {
-  let s = '<sheetView workbookViewId="0"';
+function viewXml(v: WorksheetView | undefined, i: number, selected: boolean): string {
+  let s = `<sheetView workbookViewId="${v?.workbookViewId ?? i}"`;
   if (v?.rightToLeft) s += ' rightToLeft="1"';
   if (selected) s += ' tabSelected="1"';
   if (v?.showRowColHeaders === false) s += ' showRowColHeaders="0"';
@@ -281,7 +281,7 @@ function sameCol(a: Column, b: Column): boolean {
   );
 }
 
-function colsXml(cols: readonly (Column | undefined)[]): string {
+function colsXml(cols: readonly (Column | undefined)[], defW = 9.140625): string {
   let s = '';
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
@@ -291,7 +291,7 @@ function colsXml(cols: readonly (Column | undefined)[]): string {
     }
     let j = i;
     while (j + 1 < cols.length && cols[j + 1] && sameCol(c, cols[j + 1]!)) j++;
-    s += `<col min="${i + 1}" max="${j + 1}" width="${c.width ?? 9.140625}"${
+    s += `<col min="${i + 1}" max="${j + 1}" width="${c.width ?? defW}"${
       c.width !== undefined ? ' customWidth="1"' : ''
     }${c.hidden ? ' hidden="1"' : ''}${c.outlineLevel ? ` outlineLevel="${c.outlineLevel}"` : ''}${
       c.collapsed ? ' collapsed="1"' : ''
@@ -327,19 +327,34 @@ const BUILTIN: readonly Emitter[] = [
   },
   {
     slot: SheetSlot.sheetViews,
-    emit: (c) => `<sheetViews>${viewXml(c.ws.views[0], c.tabSelected)}</sheetViews>`,
+    emit: (c) => {
+      const vs = c.ws.views;
+      let s = '';
+      for (let i = 0; i < (vs.length || 1); i++) s += viewXml(vs[i], i, c.tabSelected);
+      return `<sheetViews>${s}</sheetViews>`;
+    },
   },
   {
     slot: SheetSlot.sheetFormatPr,
     emit: (c) => {
-      let s = `<sheetFormatPr defaultRowHeight="${fontMetrics(c.styles.defaultFont).rowPt}"`;
-      if (c.outlineLevelRow) s += ` outlineLevelRow="${c.outlineLevelRow}"`;
-      const oc = colOutline(c.ws.columnData);
+      // explicit ws.properties win; outline levels: the higher of the property and the data's
+      const p = c.ws.properties;
+      const d = fontMetrics(c.styles.defaultFont).rowPt;
+      const h = p.defaultRowHeight ?? d;
+      let s = `<sheetFormatPr${p.defaultColWidth ? ` defaultColWidth="${p.defaultColWidth}"` : ''} defaultRowHeight="${h}"`;
+      if (h !== d) s += ' customHeight="1"';
+      const or = Math.max(c.outlineLevelRow, p.outlineLevelRow ?? 0);
+      if (or) s += ` outlineLevelRow="${or}"`;
+      const oc = Math.max(colOutline(c.ws.columnData), p.outlineLevelCol ?? 0);
       if (oc) s += ` outlineLevelCol="${oc}"`;
+      if (p.dyDescent !== undefined) s += ` x14ac:dyDescent="${p.dyDescent}"`;
       return `${s}/>`;
     },
   },
-  { slot: SheetSlot.cols, emit: (c) => colsXml(c.ws.columnData) },
+  {
+    slot: SheetSlot.cols,
+    emit: (c) => colsXml(c.ws.columnData, c.ws.properties.defaultColWidth),
+  },
   {
     slot: SheetSlot.autoFilter,
     emit: (c) => (c.ws.autoFilter ? `<autoFilter ref="${escapeAttr(c.ws.autoFilter)}"/>` : ''),
@@ -474,7 +489,9 @@ function runEmitters(ctx: SheetCtx, lo: number, hi: number): string {
 /** Everything up to and including `<sheetData>`. Set ctx.dimension/outlineLevelRow/tabSelected first. */
 export function sheetHead(ctx: SheetCtx): string {
   const body = runEmitters(ctx, 0, SheetSlot.sheetData - 1);
-  return `${ctx.plan.open}${body}<sheetData>`;
+  const open = ctx.plan.open;
+  // x14ac:dyDescent (sheetFormatPr) is an Office 2010 extension: Ignorable for older readers
+  return `${ctx.ws.properties.dyDescent !== undefined ? `${open.slice(0, -1)} xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">` : open}${body}<sheetData>`;
 }
 
 /** `</sheetData>` through `</worksheet>`. Allocates the sheet's relationships (see ctx.rels). */

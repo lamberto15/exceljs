@@ -1032,6 +1032,53 @@ for (const [file, what] of [
   );
 }
 
+// 29: several sheet views (= windows), sheet properties, language / revision, note margins,
+// protection and editAs (#82)
+{
+  const wb = new Workbook();
+  wb.language = 'en-US';
+  wb.revision = 7;
+  wb.title = 'Metadata parity';
+  const ws = wb.addWorksheet('Views', {
+    properties: {
+      tabColor: { argb: 'FF00B050' },
+      defaultRowHeight: 24,
+      defaultColWidth: 14,
+      outlineLevelRow: 2,
+      dyDescent: 0.25,
+    },
+    views: [{ state: 'frozen', ySplit: 1, activeCell: 'A2' }, { zoomScale: 50 }],
+  });
+  ws.addRow(['Header', 'Value'], bold);
+  for (let i = 1; i <= 30; i++) ws.addRow([`row ${i}`, i]);
+  groupRows(ws, 3, 6);
+  const notes = wb.addWorksheet('Notes', { tabColor: { argb: 'FFC00000' } });
+  notes.getColumn(1).width = 24;
+  notes.addRow(['default note']);
+  notes.addRow(['custom margins, unlocked']);
+  notes.addRow(['moves and sizes with cells']);
+  addNote(notes, 'A1', 'Default margins; locked (Excel default).');
+  addNote(notes, 'A2', {
+    text: 'Wide custom margins (0.5 cm left/right, 0.25 cm top/bottom). Box and text unlocked.',
+    margins: { insetmode: 'custom', inset: [0.5, 0.25, 0.5, 0.25] },
+    protection: { locked: false, lockText: false },
+    editAs: 'oneCells',
+    visible: true,
+    width: 220,
+    height: 90,
+  });
+  addNote(notes, 'A3', {
+    text: 'Move and size with cells.',
+    editAs: 'twoCells',
+    protection: { locked: true, lockText: true },
+  });
+  save(
+    '29-metadata-parity.xlsx',
+    writeXlsx(wb),
+    `Opens TWO windows (Window menu: "…:1" and "…:2"). Window 1 on "Views": row 1 frozen, A2 selected; window 2 on "Views": zoom 50 %, not frozen. "Views": green tab, default rows 24 pt tall and default columns ~14 characters wide (rows 1-31 and unused rows alike), outline buttons 1-2-3 at the left with rows 3-6 grouped. "Notes": red tab; A2's note always visible with wide inner margins (Format Comment > Margins: not automatic, 0.5/0.25 cm); A1's note: automatic margins; Format Comment > Properties: A1 "Don't move or size with cells", A2 "Move but don't size", A3 "Move and size"; Format Comment > Protection: A1/A3 Locked + Lock text checked, A2 both unchecked. File > Properties (or Summary): title "Metadata parity"; revision 7 / language en-US if Excel shows them. No repair prompt.`,
+  );
+}
+
 writeFileSync(
   join(out, 'CHECKLIST.md'),
   `# Excel compatibility check

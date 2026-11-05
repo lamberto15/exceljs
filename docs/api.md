@@ -14,7 +14,7 @@ new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: bo
 
 | Member | Description |
 | --- | --- |
-| `addWorksheet(name?, { tabColor?, state? })` | Add a sheet (default name `SheetN`). Names follow Excel rules and are unique case-insensitively. |
+| `addWorksheet(name?, { tabColor?, state?, properties?, views? })` | Add a sheet (default name `SheetN`). Names follow Excel rules and are unique case-insensitively. |
 | `getWorksheet(nameOrId?)` | By name (case-insensitive) or 1-based sheet id; no argument = first sheet. `undefined` when absent. |
 | `removeWorksheet(nameOrIdOrSheet)` | Remove a sheet. |
 | `worksheets` | `readonly Worksheet[]` in tab order. |
@@ -26,15 +26,16 @@ new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: bo
 | `preserved` | Opaque round-trip data kept by `readXlsx`. Delete it to drop unmodelled content. |
 
 
-Document properties (plain fields, written to docProps and read back): `title`, `subject`, `keywords`, `description`, `category`, `contentStatus`, `company`, `manager`, plus `creator`, `lastModifiedBy`, `created`, `modified`. `fontMetrics(font)` → `{ mdw, rowPt }` (Excel's digit width in px and default row height for a default font).
+Document properties (plain fields, written to docProps and read back): `title`, `subject`, `keywords`, `description`, `category`, `contentStatus`, `company`, `manager`, `language`, `revision` (number), plus `creator`, `lastModifiedBy`, `created`, `modified`. `fontMetrics(font)` → `{ mdw, rowPt }` (Excel's digit width in px and default row height for a default font).
 
-`wb.views = [{ activeTab, firstSheet, x, y, width, height, visibility }]` (ExcelJS shape) sets Excel's window: the active tab (default: the first visible sheet with `tabSelected`), the first tab shown, window position / size in twips. Read back except `activeTab` (the sheets' `tabSelected` carries the selection).
+`wb.views = [{ activeTab, firstSheet, x, y, width, height, visibility }]` (ExcelJS shape) sets Excel's windows, one `<workbookView>` per entry: the active tab (default: the first visible sheet with `tabSelected`), the first tab shown, window position / size in twips. Read back except the first window's `activeTab` (the sheets' `tabSelected` carries the selection). When a sheet has more views than there are windows, writers add windows (copies of the first entry).
 ## Worksheet
 
 | Member | Description |
 | --- | --- |
 | `name` (get/set), `id`, `state` (`'visible' \| 'hidden' \| 'veryHidden'`), `tabColor` | Sheet properties. |
-| `views: WorksheetView[]` | `state` (`normal`/`frozen`/`split`), `xSplit`, `ySplit`, `topLeftCell`, `activeCell`, `showGridLines`, `showRowColHeaders`, `zoomScale`, `rightToLeft`, `tabSelected`. |
+| `properties: WorksheetProperties` | ExcelJS `ws.properties`: `tabColor` (same value as `ws.tabColor`), `defaultRowHeight` (pt), `defaultColWidth` (characters), `outlineLevelRow`, `outlineLevelCol`, `dyDescent`. Unset = derived when writing: row height from the default font, outline levels from the rows / columns (an explicit level only raises the derived one, so set it for streamed outlines). Read back except the outline levels (derived again on write). |
+| `views: WorksheetView[]` | One per Excel window (usually one): `state` (`normal`/`frozen`/`split`), `xSplit`, `ySplit`, `topLeftCell`, `activeCell`, `showGridLines`, `showRowColHeaders`, `zoomScale`, `rightToLeft`, `tabSelected`, `workbookViewId` (the window; default: the view's position, so `[{}, { zoomScale: 50 }]` sets windows 1 and 2). |
 | `freeze(rows, cols?)` | Freeze the first rows/columns (`freeze(1)` = header row). |
 | `autoFilter: string \| undefined` | e.g. `'A1:D1'`. |
 | `mergeCells(range)` / `mergeCells(top, left, bottom, right)` | Throws on overlap. |
@@ -200,7 +201,7 @@ Other exports: `listPreservedParts(wb)` -> `{ path, contentType }[]` of the part
 
 ```ts
 const w = createXlsxWriter({ sink?, flushRows?, highWaterMark?, creator?, lastModifiedBy?, created?, modified?, ...WriteOptions });
-const s = w.addWorksheet(name?, { columns?, views?, freeze?, autoFilter?, tabColor?, state? });
+const s = w.addWorksheet(name?, { columns?, views?, freeze?, autoFilter?, tabColor?, state?, properties? });
 s.addRow(valuesOrObject, style?, rowProps?)   // returns the 1-based row number
 await s.addRows(iterableOrAsyncIterable, style?)   // with backpressure
 s.mergeCells('A1:C1')                          // written at commit
@@ -224,7 +225,7 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Feature | Model | Helpers | Feature halves (for `/lite`) |
 | --- | --- | --- | --- |
 | Tables | `ws.tables: Table[]` | `addTable(ws, AddTableOptions) -> Table` | `tablesWriter`, `tablesReader` |
-| Notes | `ws.comments: Note[]` | `addNote(ws, ref, text \| RichText \| { text, author?, visible?, width?, height? }) -> Note` | `commentsWriter`, `commentsReader` |
+| Notes | `ws.comments: Note[]` | `addNote(ws, ref, text \| RichText \| { text, author?, visible?, width?, height?, margins?, protection?, editAs? }) -> Note` | `commentsWriter`, `commentsReader` |
 | Pictures | `wb.images`, `ws.images`, `ws.backgroundImage` | `addImage(wb, { data \| base64, extension }) -> id`, `placeImage(ws, id, anchor, opts?) -> ImagePlacement` | `imagesWriter`, `imagesReader` |
 | Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[])` | `conditionalFormattingWriter`, `conditionalFormattingReader` |

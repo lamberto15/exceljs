@@ -87,7 +87,15 @@ function addSheet(wb: Workbook, s: ResolvedSheet): Worksheet {
   }
 }
 
-const CORE_FIELDS = ['title', 'subject', 'keywords', 'description', 'category', 'contentStatus'];
+const CORE_FIELDS = [
+  'title',
+  'subject',
+  'keywords',
+  'description',
+  'category',
+  'contentStatus',
+  'language',
+];
 
 /** Company / Manager of docProps/app.xml (the rest of it is regenerated). */
 function parseApp(xml: string, wb: Workbook): void {
@@ -137,7 +145,9 @@ function parseCore(xml: string, wb: Workbook): void {
         else if (CORE_FIELDS.includes(field))
           (wb as unknown as Record<string, string>)[field] = text;
         else if (field === 'lastModifiedBy') wb.lastModifiedBy = text;
-        else if (field === 'created' || field === 'modified') {
+        else if (field === 'revision') {
+          if (+text - +text === 0) wb.revision = +text;
+        } else if (field === 'created' || field === 'modified') {
           const d = new Date(text);
           if (!Number.isNaN(d.getTime())) wb[field] = d;
         }
@@ -259,7 +269,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   const wb = new Workbook({ date1904: wbh.date1904, localDates: opts.localDates });
   if (wbh.fullCalcOnLoad) wb.calcProperties = { fullCalcOnLoad: true };
-  if (wbh.view) wb.views = [wbh.view];
+  if (wbh.views.length) wb.views = wbh.views;
 
   const app = text('docProps/app.xml');
   if (app !== undefined) parseApp(app, wb);

@@ -3,7 +3,12 @@
 import type { WorkbookFeatureFields } from './features.js';
 import { StyleRegistry } from './styles.js';
 import type { Color, DefinedName, Font } from './types.js';
-import { type SheetState, Worksheet } from './worksheet.js';
+import {
+  type SheetState,
+  Worksheet,
+  type WorksheetProperties,
+  type WorksheetView,
+} from './worksheet.js';
 
 export interface WorkbookOptions {
   /** Use the 1904 date system. Set before storing dates (serials are stored, not Dates). */
@@ -25,6 +30,9 @@ export interface WorkbookOptions {
 export interface WorksheetOptions {
   tabColor?: Color | undefined;
   state?: SheetState | undefined;
+  /** Sheet properties (ExcelJS `properties`: defaultRowHeight, outline levels, ...). */
+  properties?: WorksheetProperties | undefined;
+  views?: WorksheetView[] | undefined;
 }
 
 const INVALID_NAME = /[\\/?*[\]:]/;
@@ -75,7 +83,9 @@ export class Workbook {
     }
     this._checkName(n, undefined);
     const ws = new Worksheet(this, this._nextId++, n);
+    if (options.properties) ws.properties = { ...options.properties };
     if (options.tabColor) ws.tabColor = options.tabColor;
+    if (options.views) ws.views = options.views;
     if (options.state) ws.state = options.state;
     this._sheets.push(ws);
     return ws;
