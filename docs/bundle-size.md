@@ -66,23 +66,32 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 25 KB | 24.87 KB |
 | lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 43.4 KB | 43.35 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 28.9 KB | 28.69 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 12.1 KB | 12.03 KB |
+| lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.1 KB | 12.03 KB |
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 28.5 KB | 28.28 KB |
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 17 KB | 16.75 KB |
 
-Budget policy: each limit is at most the measured size + 0.5 KB (some are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified): worksheet model 13.5 KB, fflate (deflate) 11.6 KB, workbook / styles XML writer 10.6 KB, style registry 7.5 KB, sheet writer 7.4 KB, conditional formatting 6.6 KB, charts 6.5 KB, tables 4.2 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
 
-Native zip helpers (#71) add ~0.15 KB to every write bundle: the runtime `node:zlib` lookup and the `zlib.crc32` hook in the zip writer (the off-thread zlib deflater is only in the async writers). The two lite combo limits were raised by 0.5 KB for it. Sync native zlib (#75: `deflateRawSync` batches in `writeXlsx`, `inflateRawSync` with limit-capped `maxOutputLength` in `readXlsx`) adds ~0.2 KB to write bundles and ~0.5 KB to read+write; the root `*` and lite read+write limits were raised by 0.4 / 0.5 KB. Storing metadata parts before the worksheets (#74: `ZipOut.reserve`) adds ~0.1 KB to write bundles; lite write-only was raised to 24 KB. Sheet / workbook metadata parity (#82: several sheet views and the windows they need, `ws.properties` in `<sheetFormatPr>` incl. the `x14ac` namespace, `language` / `revision`, reading them back) adds ~0.4 KB to the core writer and ~0.45 KB to read+write; note margins / protection / `editAs` live in the comments feature (root only). Limits raised: root write-only 35.5 KB, root `*` 77 KB, lite read+write 43 KB, lite write + tables + images 28 KB, lite write + charts 27.5 KB, lite autofit 11.2 KB (`ws.properties` / the `tabColor` accessor are in the worksheet model); lite write-only stays at 24 KB (0.1 KB headroom).
+What the 0.5.0 / 0.6.0 changes cost (brotli; the limits above are the result):
 
-CSV read typing and decoding (#81: `parseBooleans`, `parseErrors`, `dateFormats`, `localDates`, `encoding` with BOM sniffing and `'auto'`) adds ~0.76 KB to `./csv` (2.38 to 3.14 KB); its limit was raised from 2.9 to 3.3 KB.
-
-ExcelJS iteration / shared-formula compatibility (#80) adds ~1 KB to every bundle with a `Workbook`: accepting `{ sharedFormula }` cell values needs `translateFormula` in the worksheet model (~0.55 KB; before, only read bundles and the row / column edit helpers had it), plus the `{ includeEmpty }` paths of `eachRow` / `row.eachCell`, the new `column.eachCell` and the master-cell lookup (~0.45 KB). Every limit that includes the worksheet model was raised to the measured size + at most 0.2 KB.
-
-After merging #80 and #82 together the root and lite write / read limits were re-set to the combined measured size + ~0.2 KB.
-
-The random-access `xlsxRows` path (#86: `unzipBlob`, metadata-first entry order, deferred size checks in `unzipLazy`) adds ~1.1 KB to root `*` (bundles importing `xlsxRows`) and ~0.15 KB to lite read+write; the `*` limit was raised to 78.8 KB.
+- Native zlib (#71, #75: the runtime `node:zlib` lookup, `zlib.crc32`, `deflateRawSync` batches in
+  `writeXlsx`, `inflateRawSync` with a limit-capped `maxOutputLength` in `readXlsx`): ~0.35 KB on write
+  bundles, ~0.5 KB more on read+write. The off-thread `createDeflateRaw` deflater is only in the async
+  writers' modules.
+- Metadata parts stored before the worksheets (#74, `ZipOut.reserve`): ~0.1 KB on write bundles.
+- Sheet / workbook metadata parity (#82: several sheet views and their windows, `ws.properties` in
+  `<sheetPr>` / `<sheetFormatPr>` incl. the `x14ac` namespace, `language` / `revision`, read back): ~0.4 KB
+  on the core writer, ~0.45 KB on read+write. Note margins / protection / `editAs` live in the comments
+  feature (root only).
+- ExcelJS iteration / shared-formula compatibility (#80): ~1 KB on every bundle with a `Workbook`:
+  `{ sharedFormula }` cell values need `translateFormula` in the worksheet model (~0.55 KB), plus the
+  `{ includeEmpty }` paths of `eachRow` / `row.eachCell`, `column.eachCell` and the master-cell lookup.
+- CSV read typing and decoding (#81: `parseBooleans`, `parseErrors`, `dateFormats`, `localDates`,
+  `encoding` with BOM sniffing and `'auto'`): `./csv` from 2.38 to 3.14 KB.
+- Random-access `xlsxRows` (#86: `unzipBlob`, metadata-first entry order, deferred size checks in
+  `unzipLazy`): ~1.1 KB on root `*` (bundles importing `xlsxRows`), ~0.15 KB on lite read+write.
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
 bundles that don't import them.
@@ -91,17 +100,15 @@ bundles that don't import them.
 not change when it was added). Its budget covers the whole evaluator, because `evaluate` reaches
 every built-in through the function table: parser (~2.3 KB), engine (dependency graph, cycles,
 array formulas, ~5 KB), coercion and comparison rules incl. date / number text parsing (~1.8 KB),
-the `TEXT` number/date formatter (~2 KB) and 87 functions (~6 KB). The 15 KB target was missed by
-about 1 KB; 16.5 KB leaves room for fixes without letting it grow unnoticed.
+the `TEXT` number/date formatter (~2 KB) and 90 functions (~6 KB). The original 15 KB target was
+missed; the 17 KB limit leaves a little room for fixes without letting it grow unnoticed.
 
 Every writer carries the future-function table (`src/xlsx/common/xlfn.ts`, about 0.6 KB): functions
 added after Excel 2007 must be stored as `_xlfn.XLOOKUP(...)` or Excel shows #NAME?. Only the ~100
-undotted names are listed (every dotted built-in except ERROR.TYPE is a future function). This is
-why the two "lite write + ..." limits moved from 24 KB to 24.5 KB.
+undotted names are listed (every dotted built-in except ERROR.TYPE is a future function).
 
-The root write-only limit is 32 KB (was 30 KB): the root may grow as features are added, because
-lite is the small path. The lite write-only limit is what guards against regressions in the core
-writer and against features leaking into lite (it has almost no headroom: keep it that way).
+The root write-only bundle may grow as features are added, because lite is the small path. The lite
+write-only limit is what guards against regressions in the core writer and against features leaking into lite (it has almost no headroom: keep it that way).
 
 How the small lite bundles are achieved:
 
@@ -116,13 +123,14 @@ How the small lite bundles are achieved:
 Check what a bundle contains with esbuild's metafile, e.g.
 
 ```sh
-echo "import { Workbook, writeXlsx } from './dist/lite.js'; console.log(Workbook, writeXlsx)" > /tmp/e.mjs
+echo "import { Workbook, writeXlsx } from '$PWD/dist/lite.js'; console.log(Workbook, writeXlsx)" > /tmp/e.mjs
 npx -y esbuild@0.25.12 /tmp/e.mjs --bundle --minify --format=esm --metafile=/tmp/meta.json --outfile=/tmp/out.js
-# inputs of /tmp/meta.json: only dist/xlsx/features/types.js (slot constants) from features/
+# outputs[...].inputs of /tmp/meta.json with bytesInOutput > 0: only dist/xlsx/features/types.js
+# (slot constants) from features/
 ```
 
 or `npx size-limit --why`.
 
-The root `*` budget (64 KB) measures importing every export at once (all features, auto-fit, charts): a worst case no app hits. The budgets that guard real-world size are the lite ones.
-
-0.3.0 headroom: after formula evaluation (the `_xlfn.` table), font family/scheme and the parity fixes, lite write-only measured 20.97 KB against a 21 KB limit, so budgets were raised by ~1 KB (lite write-only 22 KB, root write-only 33 KB, lite combos 25.5 KB) to keep ordinary fixes from failing CI. The lite write-only target remains ~20 KB.
+The root `*` budget (78.8 KB) measures importing every export at once (all features, `xlsxRows`, auto-fit,
+charts, the row / column edits): a worst case no app hits. The budgets that guard real-world size are the
+lite ones.

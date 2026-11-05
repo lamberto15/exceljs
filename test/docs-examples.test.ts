@@ -1,5 +1,5 @@
-// Code samples of docs/features.md and docs/migrating-from-exceljs.md (same code, imports from
-// '../src'). Together with readme-examples.test.ts this keeps the documentation honest.
+// Code samples of docs/features.md, docs/migrating-from-exceljs.md and docs/formula.md (same
+// code, imports from '../src'). Together with readme-examples.test.ts this keeps the documentation honest.
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -20,6 +20,7 @@ import {
   listPreservedParts,
   placeImage,
   readXlsx,
+  richTextFromHtml,
   setPrintArea,
   setPrintTitles,
   spliceRows,
@@ -27,6 +28,7 @@ import {
   Workbook,
   type Worksheet,
   writeXlsx,
+  xlsxRows,
 } from '../src/index.js';
 
 const PNG = Uint8Array.from(
@@ -93,6 +95,55 @@ describe('docs/migrating-from-exceljs.md', () => {
     ]);
   });
 
+  it('streaming write and read', async () => {
+    const { createWriteStream, mkdtempSync, openAsBlob, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'turbosheet-mig-'));
+    try {
+      const rows = [
+        ['a', 1],
+        ['b', 2],
+      ];
+      const file = createWriteStream(join(dir, 'big.xlsx'));
+      const w = createXlsxWriter({
+        sink: (chunk) => new Promise((resolve) => file.write(chunk, () => resolve())),
+      });
+      const ws = w.addWorksheet('Data');
+      for (const r of rows) ws.addRow(r);
+      await ws.commit();
+      await w.end();
+      await new Promise<void>((resolve) => file.end(resolve));
+
+      const seen: unknown[] = [];
+      for await (const row of xlsxRows(await openAsBlob(join(dir, 'big.xlsx')))) {
+        seen.push([row.sheet, row.row, row.values]);
+      }
+      expect(seen).toEqual([
+        ['Data', 1, ['a', 1]],
+        ['Data', 2, ['b', 2]],
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('api map extras', async () => {
+    const { columnValues, groupRows } = await import('../src/index.js');
+    const ws = new Workbook().addWorksheet('S');
+    ws.addRows([['x'], ['y'], ['z']]);
+    ws.mergeCells('B1:C2');
+    ws.unmergeCells('B1');
+    expect(ws.merges).toHaveLength(0);
+    expect(columnValues(ws, 'A')).toEqual([undefined, 'x', 'y', 'z']);
+    ws.setRowProps(4, { collapsed: true });
+    ws.getColumn('E').collapsed = true;
+    groupRows(ws, 2, 3, { collapsed: true });
+    const back = readXlsx(writeXlsx(ws.workbook)).getWorksheet('S')!;
+    expect(back.getRowProps(4).collapsed).toBe(true);
+    expect(back.getRowProps(2).hidden).toBe(true);
+  });
+
   it('merged cells and styles are values', () => {
     const wb = new Workbook();
     const ws = wb.addWorksheet('S');
@@ -108,6 +159,78 @@ describe('docs/migrating-from-exceljs.md', () => {
 });
 
 describe('docs/features.md', () => {
+  it('shared formulas, html rich text, notes, lite', async () => {
+    const ws = new Workbook().addWorksheet('S');
+    ws.setCell('B3', { formula: 'A3*2' });
+    ws.setCell('C3', { sharedFormula: 'B3', result: 4 });
+    expect(ws.getValue('C3')).toEqual({ formula: 'B3*2', result: 4 });
+    ws.setCell('A1', richTextFromHtml('<b>Total</b> due'));
+    expect(ws.getValue('A1')).toEqual({
+      richText: [{ text: 'Total', font: { bold: true } }, { text: ' due' }],
+    });
+    addNote(ws, 'B5', {
+      text: 'Locked note',
+      margins: { insetmode: 'custom', inset: [0.25, 0.25, 0.35, 0.35] },
+      protection: { locked: true, lockText: false },
+      editAs: 'twoCells',
+    });
+    const note = readXlsx(writeXlsx(ws.workbook)).getWorksheet('S')!.comments![0]!;
+    expect(note).toMatchObject({
+      editAs: 'twoCells',
+      protection: { locked: true, lockText: false },
+    });
+
+    const lite = await import('../src/lite.js');
+    const wb = new lite.Workbook();
+    lite.addTable(wb.addWorksheet('Data'), {
+      name: 'T',
+      columns: ['Region', 'Units'],
+      rows: [['N', 1]],
+    });
+    const bytes = lite.writeXlsx(wb, { features: [lite.tablesWriter] });
+    const back = lite.readXlsx(bytes, { features: [lite.tablesReader] });
+    expect(back.getWorksheet('Data')!.tables).toHaveLength(1);
+    expect(() => lite.writeXlsx(wb)).toThrow(/tablesWriter/);
+  });
+
+  it('transform recipe', async () => {
+    const { mkdtempSync, openAsBlob, rmSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'turbosheet-feat-'));
+    try {
+      const src = new Workbook();
+      src.addWorksheet('Orders').addRows([
+        ['item', 'qty', 'price'],
+        ['bolt', 3, 2],
+        ['nut', 0, 1],
+      ]);
+      writeFileSync(join(dir, 'in.xlsx'), writeXlsx(src));
+
+      const chunks: Uint8Array[] = [];
+      const sink = (c: Uint8Array): void => void chunks.push(c.slice());
+      const w = createXlsxWriter({ sink });
+      const out = w.addWorksheet('Orders');
+      for await (const row of xlsxRows(await openAsBlob(join(dir, 'in.xlsx')))) {
+        const [item, qty, price] = row.values as [string, number, number];
+        if (row.row === 1) out.addRow([item, qty, price, 'total']);
+        else if (qty) out.addRow([item, qty, price, qty * price]);
+        if (row.row % 5000 === 0) await out.flush();
+      }
+      await w.end();
+      const bytes = new Uint8Array(await new Blob(chunks as BlobPart[]).arrayBuffer());
+      expect(readXlsx(bytes).getWorksheet('Orders')!.getRow(2).values).toEqual([
+        undefined,
+        'bolt',
+        3,
+        2,
+        6,
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('table rows', () => {
     const ws = new Workbook().addWorksheet('T');
     addTable(ws, {
@@ -303,5 +426,42 @@ describe('docs/features.md', () => {
     await w.end();
     const out = new Uint8Array(await new Blob(chunks as BlobPart[]).arrayBuffer());
     expect(readXlsx(out).getWorksheet('Data')!.dataValidations).toHaveLength(1);
+  });
+});
+
+describe('docs/formula.md', () => {
+  it('evaluate, evaluateCell, evaluateFormula, custom functions', async () => {
+    const { createEvaluator, evaluate, evaluateCell, evaluateFormula, toNumber, toText } =
+      await import('../src/formula/index.js');
+    const src = new Workbook();
+    const s1 = src.addWorksheet('Sheet1');
+    for (let r = 2; r <= 9; r++) s1.setCell(r, 2, r);
+    s1.setCell('D10', { formula: 'SUM(B2:B9)' });
+    s1.setCell('E1', { formula: 'NPV(0.1,B2:B3)' });
+    addDefinedName(src, 'Rate', '0.5');
+    const bytes = writeXlsx(src);
+
+    const wb = readXlsx(bytes);
+    const report = evaluate(wb);
+    expect(report).toMatchObject({ evaluated: 2, circular: [], unsupported: ['NPV'], errors: [] });
+    const out = writeXlsx(wb);
+    expect(readXlsx(out).getWorksheet('Sheet1')!.getValue('D10')).toEqual({
+      formula: 'SUM(B2:B9)',
+      result: 44,
+    });
+    expect(evaluateCell(wb, 'Sheet1', 'D10')).toBe(44);
+    expect(evaluateFormula(wb, 'SUM(B2:B9)*Rate', { sheet: 'Sheet1' })).toBe(22);
+
+    const ws = wb.getWorksheet('Sheet1')!;
+    ws.setCell('F1', { formula: 'DOUBLE(B2)' });
+    ws.setCell('F2', { formula: 'GREET("Ann")' });
+    const ev = createEvaluator({
+      functions: { DOUBLE: (args) => toNumber(args[0]!) * 2 },
+      now: () => new Date(2024, 0, 15),
+    });
+    ev.registerFunction('GREET', (args) => `Hello ${toText(args[0]!)}`);
+    ev.evaluate(wb);
+    expect(ws.getValue('F1')).toMatchObject({ result: 4 });
+    expect(ws.getValue('F2')).toMatchObject({ result: 'Hello Ann' });
   });
 });

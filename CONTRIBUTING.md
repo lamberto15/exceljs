@@ -35,8 +35,8 @@ Excel is stricter than LibreOffice and ExcelJS. `node test/smoke/excel-pack.mjs 
 
 Features (tables, charts, images, ...) are self-contained modules. Follow
 [src/xlsx/features/README.md](./src/xlsx/features/README.md), add tests, and document it in
-[docs/features.md](./docs/features.md). Keep `src/` free of `node:*` imports and `Buffer`, and stay within the
-size budgets.
+[docs/features.md](./docs/features.md). Keep `src/` free of `node:*` imports and `Buffer` (Node built-ins are only
+looked up at runtime, with a fallback, in `src/zip/node.ts`), and stay within the size budgets.
 
 ## Changesets
 
@@ -52,8 +52,9 @@ CI changes do not need one.
 ## Pull requests
 
 - Use conventional commit messages (`feat:`, `fix:`, `docs:`, ...).
-- Open PRs against `next`. Required checks: the test matrix (Node 22 and 24 on ubuntu, macos and windows) and
-  `quality` (lint, build, size, LibreOffice).
+- Open PRs against `next` (the default branch). Required checks: the test matrix (Node 22 and 24 on ubuntu and
+  windows: typecheck, test, build) and `quality` (lint, build, size, LibreOffice opens the generated files).
+  There is no macOS CI job; files are verified in Excel for Mac locally with the Excel pack.
 - Keep PRs focused, with tests for behavior changes.
 
 ## Releases

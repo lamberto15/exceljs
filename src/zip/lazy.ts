@@ -37,10 +37,10 @@ export interface LazyOptions {
   deferSizeCheck?: boolean;
 }
 
-/** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
 /** Largest declared size `chunks()` inflates natively in one piece (above: fflate streaming). */
 const NATIVE_CHUNKS_MAX = 64 << 20;
 
+/** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
 const SLICE = 16 * 1024;
 const EMPTY = /* @__PURE__ */ new Uint8Array(0);
 

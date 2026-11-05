@@ -2,7 +2,7 @@
 // tables) are in issues.test.ts.
 
 import { describe, expect, it } from 'vitest';
-import { addTable, Workbook, type Worksheet } from '../../src/index.js';
+import { addTable, addTableRows, Workbook, type Worksheet } from '../../src/index.js';
 import { exceljsLoad, roundtrip } from './helpers.js';
 
 const rows = [
@@ -72,10 +72,20 @@ describe('exceljs parity: tables', () => {
     check(ws, 2, 3);
   });
 
+  // exceljs: spec/unit/doc/worksheet-table.spec.js — "adds a row"
+  it('adds a row above the totals row (addTableRows; ➖ no table.addRow + commit)', () => {
+    const ws = new Workbook().addWorksheet('blort');
+    add(ws, 'A1');
+    addTableRows(ws, 'TestTable', [[new Date('2019-08-05'), 5, 'Bird']]);
+    expect(ws.tables![0]!.ref).toBe('A1:C7');
+    expect([1, 2, 3].map((c) => ws.getValue(6, c))).toEqual([new Date('2019-08-05'), 5, 'Bird']);
+    expect(ws.getValue(7, 1)).toBe('Totals');
+    expect((ws.getValue(7, 2) as { formula: string }).formula).toBe('SUBTOTAL(104,TestTable[Id])');
+  });
+
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "removes header"
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "removes totals"
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "removes a row"
-  // exceljs: spec/unit/doc/worksheet-table.spec.js — "adds a row"
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "removes a column"
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "adds a column"
   // exceljs: spec/unit/doc/worksheet-table.spec.js — "renames a column"

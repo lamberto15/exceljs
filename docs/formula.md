@@ -9,7 +9,7 @@ import { evaluate, evaluateCell, evaluateFormula } from 'turbosheet/formula';
 
 const wb = readXlsx(bytes);
 const report = evaluate(wb); // every formula cell gets a fresh Formula.result
-// report: { evaluated, circular: ['Sheet1!A1', ...], unsupported: ['OFFSET', ...], errors: [...] }
+// report: { evaluated, circular: ['Sheet1!A1', ...], unsupported: ['NPV', ...], errors: [...] }
 const out = writeXlsx(wb); // the results are written as cached values (<v>)
 
 evaluateCell(wb, 'Sheet1', 'D10'); // one cell and what it depends on
@@ -163,10 +163,10 @@ Tested formats include `"0"`, `"0.00"`, `"#,##0"`, `"#,##0.00"`, `"$#,##0.00"`, 
 
 - Not supported (parse error → `#NAME?` and an entry in `report.errors`): structured references
   (`Table1[Col]`), external workbooks (`[1]Sheet1!A1`), 3-D references (`Sheet1:Sheet3!A1`), the
-  union (`(A1,B1)`) and intersection (space) operators, R1C1 notation.
+  union (`(A1,B1)`) and intersection (space) operators. R1C1 notation is not supported either
+  (`R1C1` reads as an unknown name: `#NAME?`).
 - Not implemented (→ `#NAME?`, listed in `unsupported`): every function not in the table, notably
-  `OFFSET`, `INDIRECT` (dynamic references), `LOOKUP`, statistical, financial and engineering
-  functions, `LET` / `LAMBDA`, and Excel 365 dynamic-array functions (`FILTER`, `SORT`, `UNIQUE`,
+  statistical, financial and engineering functions, `LET` / `LAMBDA`, and Excel 365 dynamic-array functions (`FILTER`, `SORT`, `UNIQUE`,
   `SEQUENCE`, ...). Register your own with `createEvaluator({ functions })`.
 - Dynamic-array spilling: a formula only produces several cells when it is stored as an array
   formula (`Formula.array`); otherwise legacy implicit intersection applies (see above).
@@ -197,5 +197,5 @@ repeated exact-match lookups. Numbers from `node` 26 on an Apple M1 Pro:
 | 10k `VLOOKUP` (exact) + 10k `SUMIF` over 10k rows | ~1.5 s |
 | 1000 x `SUM(A:A)/COUNT(A:A)` over 100k numbers | ~1.5 s |
 
-Bundle: about 16 KB minified and brotli-compressed for the whole entry (`pnpm size`, limit
-16.5 KB); the core bundles are unchanged.
+Bundle: about 16.8 KB minified and brotli-compressed for the whole entry (`pnpm size`, limit
+17 KB); the core bundles are unchanged.

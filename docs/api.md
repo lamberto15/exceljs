@@ -1,6 +1,6 @@
 # API reference
 
-Generated from the 0.1.0 type declarations (`dist/*.d.ts`). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json`, `turbosheet/crypto` and `turbosheet/formula` are separate entries.
+Covers 0.6.0 (the `dist/*.d.ts` type declarations have the full signatures and JSDoc). `turbosheet` and `turbosheet/lite` export the same names; the only difference is which [features](./features.md) are on by default (see [bundle-size.md](./bundle-size.md)). `turbosheet/csv`, `turbosheet/json`, `turbosheet/crypto` and `turbosheet/formula` are separate entries.
 
 Conventions: **rows and columns in the public API are 1-based** (like Excel); columns may be given as a number or a letter (`3` or `'C'`). Cell addresses are A1 strings (`'B3'`). The low-level helpers in `address` (`decodeAddr`, `decodeRange`, `encodeAddr`, `encodeRange`, `encodeCol`, `decodeCol`) are **0-based** and ranges are `{ top, left, bottom, right }`.
 
@@ -44,7 +44,7 @@ Document properties (plain fields, written to docProps and read back): `title`, 
 | `columns` (get/set) | Setting `ColumnDef[]` (`header`, `key`, `width`, `style`, `hidden`, `outlineLevel`) writes a header row when any def has a `header`. |
 | `getColumn(numberOrLetterOrKey)` | `Column`: `number`, `letter`, `key`, `header`, `width`, `hidden`, `outlineLevel`, `style`, `eachCell([options], (value, rowNumber) => {})` (non-empty cells; `{ includeEmpty: true }`: rows 1 to `rowCount`, `null` for empty cells). |
 
-Feature fields (plain properties, `undefined` until set): `pageSetup`, `headerFooter`, `comments`, `images`, `backgroundImage`, `conditionalFormatting`, `dataValidations`, `protection`, `tables`, `preserved`. See [Features](#features).
+Feature fields (plain properties, `undefined` until set): `pageSetup`, `headerFooter`, `rowBreaks`, `colBreaks`, `ignoredErrors`, `comments`, `images`, `charts`, `backgroundImage`, `conditionalFormatting`, `dataValidations`, `protection`, `tables`, `preserved`. See [Features](#features).
 
 ## Rows, cells, columns
 
@@ -134,15 +134,13 @@ Styles are **plain, immutable-by-convention objects**. They are interned into th
 interface Style {
   numFmt?: string;            // 'yyyy-mm-dd', '#,##0.00', ...
   font?: Font;                // name, size, bold, italic, underline, strike, color, vertAlign, family, scheme
-  fill?: Fill;                // { type: 'pattern', pattern, fgColor?, bgColor? }
+  fill?: Fill;                // { type: 'pattern', pattern, fgColor?, bgColor? } or a GradientFill
   border?: Border;            // top/left/bottom/right/diagonal: { style?, color? }
   alignment?: Alignment;      // horizontal, vertical, wrapText, shrinkToFit, indent, textRotation (Excel encoding; -45, 'vertical', vertical: 'middle' accepted)
   protection?: Protection;    // locked, hidden
 }
 type Color = { argb?: 'FFFF0000'; theme?: number; tint?: number; indexed?: number };
 ```
-
-Gradient fills are not modelled in 0.1.0 (only `type: 'pattern'`).
 
 `StyleRegistry` (via `wb.styles`): `intern(style) -> xf`, `get(xf) -> Style`, `internDxf(style) -> dxfId`, `numFmtId(code)`, `addFont/addFill/addBorder`, `isDateXf(xf)`, plus read-only tables `fonts`, `fills`, `borders`, `numFmts`, `xfs`, `dxfs`. Exported helpers: `BUILTIN_NUM_FMTS`, `builtinFormat(id)`, `builtinFormatId(code)`, `isDateFormat(code)`, `isDateFormatId(id)`.
 
@@ -161,8 +159,8 @@ interface WriteOptions {
   profile?: 'low-memory' | 'balanced' | 'max-speed';  // default 'balanced' ('low-memory' for createXlsxWriter)
   compression?: number;            // deflate level 0-9 (0 = store); overrides the profile
   strings?: 'shared' | 'inline';   // overrides the profile
-  date1904?: boolean;              // ignored by writeXlsx: the workbook's own flag wins
-  theme?: boolean;                 // write xl/theme/theme1.xml (default true)
+  date1904?: boolean;              // createXlsxWriter only; writeXlsx / xlsxStream use wb.date1904
+  theme?: boolean;                 // write xl/theme/theme1.xml (default true; /lite: only with themeWriter)
   features?: readonly FeatureWriter[];  // root: added to the built-ins; /lite: the only features enabled
 }
 ```
@@ -173,7 +171,7 @@ interface WriteOptions {
 | `low-memory` (default for `createXlsxWriter`) | 6 | inline | less RAM (no string table) |
 | `max-speed` | 1 | inline | fastest, files ~30% larger in our benchmark |
 
-`resolveWriteOptions(opts)` returns the resolved values. `xlsxStream` is pull-based: sheet XML is generated as the consumer reads, so a slow consumer does not make memory grow; do not modify the workbook until the stream ends. Content kept by `readXlsx` (charts, pivots, ...) is written back by `writeXlsx` and `xlsxStream`, not by `createXlsxWriter`.
+`resolveWriteOptions(opts)` returns the resolved values (profile default `'balanced'`). `writeXlsx` and `xlsxStream` store `[Content_Types].xml`, the rels, `workbook.xml`, `styles.xml` and `sharedStrings.xml` before the worksheets, so `xlsxRows` can stream their output from a stream at constant memory. `xlsxStream` is pull-based (sheet XML is generated as the stream is read), but because the metadata comes first its compressed sheets are held until the last sheet is encoded: output starts then, and memory grows up to the compressed file size. Do not modify the workbook until the stream ends. Content kept by `readXlsx` (charts, pivots, ...) is written back by `writeXlsx` and `xlsxStream`, not by `createXlsxWriter`.
 
 ## Reading
 
@@ -197,15 +195,15 @@ interface ReadOptions {
 interface XlsxRow { sheet: string; sheetIndex: number; row: number /* 1-based */; values: CellValue[] /* 0-based by column */ }
 ```
 
-`xlsxRows` accepts `Uint8Array | ArrayBuffer | Blob | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Bytes and Blobs are random-access. The central directory is read first, then the metadata parts, then each sheet as it inflates, so sheet data uses constant memory whatever the part order. That covers files saved by Excel 16.x and ExcelJS and `createXlsxWriter` output, which all store worksheets before `styles.xml`. For a large local file pass a lazily read Blob: `xlsxRows(await fs.openAsBlob(path))` in Node, or a `File` in browsers. Streams are read in archive order. With a stream, a sheet streams at constant memory only when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come first, as in `writeXlsx` / `xlsxStream` output; otherwise it is buffered. The byte limits (`maxEntryBytes`, `maxTotalBytes`) apply only to metadata and buffered parts. A streamed sheet keeps nothing, so only `maxCompressionRatio` applies to it. The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
+`xlsxRows` accepts `Uint8Array | ArrayBuffer | Blob | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>` (`File` is a `Blob`). Bytes and Blobs are random-access. The central directory is read first, then the metadata parts, then each sheet as it inflates, so sheet data uses constant memory whatever the part order. That covers files saved by Excel 16.x and ExcelJS and `createXlsxWriter` output, which all store worksheets before `styles.xml`. For a large local file pass a lazily read Blob: `xlsxRows(await fs.openAsBlob(path))` in Node, or a `File` in browsers. Streams are read in archive order. With a stream, a sheet streams at constant memory only when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come first, as in `writeXlsx` / `xlsxStream` output; otherwise it is buffered. The byte limits (`maxEntryBytes`, `maxTotalBytes`) apply only to metadata and buffered parts. A streamed sheet keeps nothing, so only `maxCompressionRatio` applies to it. The shared-string table is always held in memory. Sheets are emitted in archive order (buffered ones in tab order once their metadata is known). `maxRows` / `maxCols` throw `SheetLimitError` while the sheet is parsed; rows already yielded stay yielded. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
 
-Other exports: `listPreservedParts(wb)` -> `{ path, contentType }[]` of the parts the next write will emit from the original file; `translateFormula`; `SheetEntry`.
+Other exports: `listPreservedParts(wb)` -> `PreservedPart[]` (`{ path, contentType }`) of the parts the next write will emit from the original file; `translateFormula(formula, rowOffset, colOffset)` (moves relative references, as `fillFormula` does); `SheetEntry` (`{ name, sheetId, state, rId }`, a `<sheet>` of `workbook.xml`).
 
 ## Streaming writer
 
 ```ts
-const w = createXlsxWriter({ sink?, flushRows?, highWaterMark?, creator?, lastModifiedBy?, created?, modified?, ...WriteOptions });
-const s = w.addWorksheet(name?, { columns?, views?, freeze?, autoFilter?, tabColor?, state?, properties? });
+const w = createXlsxWriter({ sink?, flushRows?, highWaterMark?, creator?, lastModifiedBy?, created?, modified?, ...WriteOptions });   // = new XlsxWriter(opts)
+const s = w.addWorksheet(name?, { columns?, views?, freeze?, autoFilter?, tabColor?, state?, properties? });   // StreamSheet; freeze: 1 or { rows, cols? }
 s.addRow(valuesOrObject, style?, rowProps?)   // returns the 1-based row number
 await s.addRows(iterableOrAsyncIterable, style?)   // with backpressure
 s.mergeCells('A1:C1')                          // written at commit
@@ -215,12 +213,12 @@ await w.end();                                 // commits the open sheet, finish
 
 - `profile` defaults to `'low-memory'` here (inline strings: memory stays flat however many distinct strings you write). `profile: 'balanced'` / `strings: 'shared'` writes sharedStrings.xml instead: smaller files when strings repeat a lot, but the table holds every distinct string until `end()` and is serialized in one blocking pass there.
 - Its output stores the worksheets before `styles.xml` / `sharedStrings.xml`, which are only final at `end()`. Read it back with `xlsxRows` from bytes or a Blob (`fs.openAsBlob(path)`) to stream at constant memory; from a stream, each sheet is buffered.
-- Without `sink`, read the zip from `w.readable` (a `ReadableStream<Uint8Array>`). With `sink: (chunk) => void | Promise<void>` the promise applies backpressure.
+- Without `sink`, read the zip from `w.readable` (a `ReadableStream<Uint8Array>`). With `sink: (chunk) => void | Promise<void>` the promise applies backpressure. `flushRows` (default 1000) is how many rows are buffered before they are encoded; `highWaterMark` (default 1 MiB) is how many bytes `readable` queues before `flush()` waits.
 - Sheets are written one after another: `addWorksheet` commits the previous sheet. Rows cannot be changed once added.
 - `s.worksheet` is a metadata-only `Worksheet` (columns, views, merges, feature fields). Set **head** data (columns, views, freeze) before adding rows; feature fields set after the rows (tables, validations, ...) are applied at `commit()`.
 - `w.workbook` holds the shared styles, so `w.workbook.styles.intern(style)` works.
 - Async writers (`xlsxStream`, `createXlsxWriter`) deflate off the main thread: with `node:zlib` in Node, Bun and Deno (the `compression` level is honored), with `CompressionStream('deflate-raw')` elsewhere (browsers, workers: the platform's default level, ~6; `compression` only switches between store and deflate), and with fflate on the main thread when neither exists. Zip CRC-32 uses `zlib.crc32` when available.
-- `writeXlsx` deflates with `zlib.deflateRawSync` (in ~1 MiB batches) and `readXlsx` inflates with `zlib.inflateRawSync` when `node:zlib` exists, which is 2-4x faster than fflate. Zip limits still apply (through `maxOutputLength`). Parts declared larger than 64 MiB are inflated as a stream with fflate to keep memory bounded. Browsers always use fflate.
+- `writeXlsx` deflates with `zlib.deflateRawSync` (in ~1 MiB batches) and `readXlsx` inflates with `zlib.inflateRawSync` when `node:zlib` exists, which is 2-4x faster than fflate. Zip limits still apply (through `maxOutputLength`). Parts declared larger than 64 MiB are inflated as a stream with fflate to keep memory bounded. In browsers these synchronous paths use fflate; `xlsxRows` inflates Blob entries with `DecompressionStream('deflate-raw')` where it exists.
 
 ## Features
 
@@ -232,8 +230,8 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Notes | `ws.comments: Note[]` | `addNote(ws, ref, text \| RichText \| { text, author?, visible?, width?, height?, margins?, protection?, editAs? }) -> Note` | `commentsWriter`, `commentsReader` |
 | Pictures | `wb.images`, `ws.images`, `ws.backgroundImage` | `addImage(wb, { data \| base64, extension }) -> id`, `placeImage(ws, id, anchor, opts?) -> ImagePlacement` | `imagesWriter`, `imagesReader` |
 | Charts | `ws.charts: Chart[]` | `addChart(ws, Chart) -> Chart` | `chartsWriter` (write only; read charts are kept raw) |
-| Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[])` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
-| Data validation | `ws.dataValidations` | `addDataValidation(ws, dv)` | `dataValidationWriter`, `dataValidationReader` |
+| Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[]) -> ConditionalFormatting` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
+| Data validation | `ws.dataValidations` | `addDataValidation(ws, dv) -> DataValidation` | `dataValidationWriter`, `dataValidationReader` |
 | Print setup | `ws.pageSetup`, `ws.headerFooter`, `ws.rowBreaks`, `ws.colBreaks` | (plain objects) | `printSetupWriter`, `printSetupReader` |
 | Ignored errors | `ws.ignoredErrors` | (plain objects) | `ignoredErrorsWriter`, `ignoredErrorsReader` |
 | Sheet protection | `ws.protection` | `hashPassword(password, saltB64, spinCount)` | `sheetProtectionWriter`, `sheetProtectionReader` |
@@ -295,7 +293,7 @@ In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; 
 
 ### Custom features
 
-`FeatureWriter` and `FeatureReader` (exported types) are the extension points the built-in features use; see [`src/xlsx/features/README.md`](../src/xlsx/features/README.md).
+`FeatureWriter` and `FeatureReader` (exported types) are the extension points the built-in features use; `drawingEmitter` is the shared `<drawing>` emitter a feature lists when it contributes drawing anchors. See [`src/xlsx/features/README.md`](../src/xlsx/features/README.md).
 
 ## CSV
 
@@ -366,8 +364,12 @@ evaluateFormula(wb, 'SUM(A1:A9)', { sheet?, address?, array?, now? }?): FormulaR
 parseFormula(text): FormulaNode                   // throws FormulaParseError { position, formula }
 createEvaluator({ functions?, now? }): Evaluator  // per-instance functions: .registerFunction(name, impl)
 supportedFunctions(): string[]
-toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v)   // helpers for custom functions
+toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v) check(v)   // helpers for custom functions
+compare(a, b) round15(n) numToStr(n) parseNumber(text)   // Excel ordering, 15-digit rounding, number <-> text coercion
+cellText(ws, addr) formatValue(value, numFmt?, { date1904?, localDates? }?)   // displayed text (see Rows, cells, columns)
 ```
+
+Custom functions receive references as `FormulaRange` (0-based `top`/`left`/`bottom`/`right`, `sheet`) and arrays as `FormulaArray` (`rows`, `cols`, `data`, `at(i, j)`); see [formula.md](./formula.md#custom-functions). Types: `FormulaFunction`, `FunctionContext`, `FormulaValue`, `FormulaScalar`, `FormulaNode`, `BinaryOp`, `ArrayLiteral`, `EvaluatorOptions`, `EvaluateFormulaOptions`.
 
 `EvaluateOptions`: `sheets`, `writeResults` (default `true` for `evaluate`, `false` for `evaluateCell`), `maxIterations` (default 0: circular references give `#REF!`), `maxChange` (0.001), `onUnsupported(name, address)`, `now`. `EvaluationReport`: `evaluated`, `circular` (addresses), `unsupported` (function names), `errors` (`{ address, message }`), `results` (`Map` when not writing). A formula never makes evaluation throw: errors become `CellError` results. `FormulaResult` = `number | string | boolean | CellError`; dates are serials in the workbook's date system.
 
@@ -379,7 +381,7 @@ toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v)   // helpers for c
 | `EncryptedFileError` (extends `XlsxParseError`) | `readXlsx` | Input is an OLE container (password-protected, or a legacy `.xls`); use `decryptXlsx`. |
 | `SheetLimitError` | `readXlsx`, `xlsxRows` | A sheet has a cell beyond `maxRows` / `maxCols`; thrown at the first such cell. Fields `sheet`, `limit` (`'maxRows' \| 'maxCols'`), `max`. |
 | `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `turbosheet` and `turbosheet/lite`. |
-| `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
+| `RangeError`, `TypeError`, `Error` | model methods | Invalid addresses or options (`RangeError` / `TypeError`, e.g. a `{ sharedFormula }` whose master holds no formula); overlapping merges and bad sheet names throw a plain `Error`. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
 | `CsvError` | `turbosheet/csv` | Option or size-limit problem. |
 | `FormulaParseError` (extends `SyntaxError`) | `parseFormula`, `evaluateFormula` | Formula text that does not parse; `position` is the 0-based offset. `evaluate` reports such cells instead of throwing. |
@@ -393,7 +395,7 @@ encodeCol(0) // 'A'          decodeCol('XFD') // 16383
 encodeAddr(2, 1) // 'B3'     decodeAddr('B3') // { row: 2, col: 1 }
 decodeRange('A1:C3') // { top: 0, left: 0, bottom: 2, right: 2 }     encodeRange(range)
 MAX_ROWS // 1048576          MAX_COLS // 16384
-dateToSerial(date, date1904?)   serialToDate(serial, date1904?)
+dateToSerial(date, date1904?, local?)   serialToDate(serial, date1904?, local?)   // local: wall clock instead of UTC
 ```
 
-Also exported: `CellKind`, `DEFAULT_LIMITS`, `SharedStrings`, and the types `CellAddress`, `CellRange`, `Dimensions`, `WorksheetView`, `ColumnDef`, `RowProps`, `Limits`, `Profile`, `SheetState`, `ChunkSink`, `StreamSheetOptions`, `XlsxWriterOptions`, `ResolvedWriteOptions`.
+Also exported: `CellKind`, `DEFAULT_LIMITS`, `SharedStrings`, `RowData` (the internal row record behind `ws.rowData`; prefer `RowView`), and the types `CellAddress`, `CellRange`, `Dimensions`, `WorksheetView`, `WorksheetProperties`, `WorkbookView`, `WorkbookOptions`, `WorksheetOptions`, `ColumnDef`, `RowProps`, `RowObject`, `IterateOptions`, `CellValueInput`, `SharedFormulaValue`, `ErrorCode`, `RichTextRun`, `PatternFill`, `GradientStop`, `BorderEdge`, `BorderStyle`, `NumFmt`, `Xf`, `Limits`, `Profile`, `SheetState`, `ReadOptions`, `WriteOptions`, `ChunkSink`, `StreamSheetOptions`, `XlsxWriterOptions`, `ResolvedWriteOptions`, `PreservedPart`, `WorkbookFeatureFields`, `WorksheetFeatureFields`, and the option / model types of each helper (`InsertRowsOptions`, `GroupOptions`, `SortOptions`, `FillTemplateOptions`, `ProtectSheetOptions`, `ProtectAllow`, `DefinedNameOptions`, `PrintTitles`, `PageMargins`, `TotalsRowFunction`, `WorkbookImage`, `ImageSize`, `FitImageOptions`, `AnchorInput`, `ChartType`, `ConditionalFormatting`, `CfRule` and the `Cf*` rule types, `DataValidationType`, `DataValidationOperator`, `DataValidationFormula`, `CellCallback`). `turbosheet/csv` exports `CsvReadOptions`, `CsvRowsOptions`, `CsvStringOptions`, `CsvWriteOptions`; `turbosheet/json` `ToObjectsOptions`, `EmptyAs`; `turbosheet/crypto` `DecryptOptions`, `EncryptOptions`.
