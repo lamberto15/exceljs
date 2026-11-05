@@ -697,3 +697,37 @@ describe('native deflate path', () => {
     }
   });
 });
+
+describe('createXlsxWriter default profile (#72)', () => {
+  const write = async (opts: Parameters<typeof createXlsxWriter>[0]) => {
+    const chunks: Uint8Array[] = [];
+    const w = createXlsxWriter({ ...opts, sink: (c) => void chunks.push(c) });
+    const s = w.addWorksheet('S');
+    for (let i = 0; i < 100; i++) s.addRow([i, `u${i}`, 'same']);
+    await w.end();
+    const buf = await readAll(new Blob(chunks as BlobPart[]).stream());
+    return { files: rawUnzipSync(buf), buf };
+  };
+
+  it('defaults to inline strings (low-memory)', async () => {
+    const { files, buf } = await write({});
+    expect(files['xl/sharedStrings.xml']).toBeUndefined();
+    expect(new TextDecoder().decode(files['xl/worksheets/sheet1.xml'])).toContain('t="inlineStr"');
+    expect(readXlsx(buf).getWorksheet('S')!.getValue('B100')).toBe('u99');
+  });
+
+  it("profile: 'balanced' / strings: 'shared' still write sharedStrings.xml", async () => {
+    for (const o of [{ profile: 'balanced' as const }, { strings: 'shared' as const }]) {
+      const { files, buf } = await write(o);
+      expect(files['xl/sharedStrings.xml']).toBeDefined();
+      expect(readXlsx(buf).getWorksheet('S')!.getValue('B100')).toBe('u99');
+    }
+  });
+
+  it('writeXlsx / xlsxStream keep balanced (shared strings) as default', async () => {
+    const wb = new Workbook();
+    wb.addWorksheet('S').addRow(['a', 'a']);
+    expect(rawUnzipSync(writeXlsx(wb))['xl/sharedStrings.xml']).toBeDefined();
+    expect(rawUnzipSync(await readAll(xlsxStream(wb)))['xl/sharedStrings.xml']).toBeDefined();
+  });
+});
