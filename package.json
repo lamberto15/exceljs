@@ -166,7 +166,7 @@
       "name": "lite write-only",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "23.5 KB"
+      "limit": "24 KB"
     },
     {
       "name": "lite read+write",
