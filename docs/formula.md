@@ -156,8 +156,11 @@ stripped (`_xlfn.CONCAT` is `CONCAT`).
 
 Tested formats include `"0"`, `"0.00"`, `"#,##0"`, `"#,##0.00"`, `"$#,##0.00"`, `"0%"`,
 `"yyyy-mm-dd"`, `"dd/mm/yyyy"`, `"mmm d, yyyy"`, `"dddd, mmmm d"`, `"h:mm AM/PM"`, `"[h]:mm"`,
-`"0.00E+00"`. Not supported: colors and locale tags are ignored (`[Red]`, `[$-409]`), conditions
-(`[>100]`) and fractions (`# ?/?`) are not implemented.
+`"0.00E+00"`, and fractions: `# ?/?` (whole part + fraction), `?/?` (improper), up to three-digit
+denominators (`# ??/??`, `???/???`) or a fixed one (`# ?/8`). Like Excel, the fraction is the
+last continued-fraction convergent whose denominator fits (0.14159 as `??/??` is `1/7`, not
+`14/99`); the results were checked against Excel for Mac. Not supported: colors and locale tags
+are ignored (`[Red]`, `[$-409]`) and conditions (`[>100]`) are not implemented.
 
 ## Limits
 
@@ -197,5 +200,5 @@ repeated exact-match lookups. Numbers from `node` 26 on an Apple M1 Pro:
 | 10k `VLOOKUP` (exact) + 10k `SUMIF` over 10k rows | ~1.5 s |
 | 1000 x `SUM(A:A)/COUNT(A:A)` over 100k numbers | ~1.5 s |
 
-Bundle: about 16.8 KB minified and brotli-compressed for the whole entry (`pnpm size`, limit
-17 KB); the core bundles are unchanged.
+Bundle: about 17.2 KB minified and brotli-compressed for the whole entry (`pnpm size`, limit
+17.5 KB); the core bundles are unchanged.

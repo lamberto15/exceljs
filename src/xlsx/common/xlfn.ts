@@ -25,16 +25,26 @@ function prefixOf(name: string): string {
   return (n.includes('.') ? n !== 'ERROR.TYPE' : UNDOTTED.includes(` ${n} `)) ? '_xlfn.' : '';
 }
 
-// quoted strings / sheet names and [structured refs] are skipped; an identifier followed by '('
-const ADD = /("(?:[^"]|"")*"|'(?:[^']|'')*'|\[[^\]]*\])|(?<![\w.\\])[A-Za-z][\w.]*(?=\()/g;
+// quoted strings / sheet names and [structured refs] are skipped; an identifier followed by '(',
+// with any (partial) prefix the caller already wrote
+const ADD =
+  /("(?:[^"]|"")*"|'(?:[^']|'')*'|\[[^\]]*\])|(?<![\w.\\])(_xlfn\.(?:_xlws\.)?|_xlws\.)?([A-Za-z][\w.]*)(?=\()/gi;
 const STRIP =
   /("(?:[^"]|"")*"|'(?:[^']|'')*'|\[[^\]]*\])|(?<![\w.\\])(_xlfn\.(?:_xlws\.)?|_xlws\.)([A-Za-z][\w.]*)(?=\()/gi;
 
-/** Add the `_xlfn.` / `_xlfn._xlws.` prefix to future functions (idempotent, case-insensitive). */
+/**
+ * Add the `_xlfn.` / `_xlfn._xlws.` prefix to future functions (idempotent, case-insensitive).
+ * A partial prefix written by the caller is completed (`_xlfn.SORT(` → `_xlfn._xlws.SORT(`);
+ * a prefix on a name that needs none is left as written.
+ */
 export function addXlfn(formula: string): string {
   return formula.indexOf('(') < 0
     ? formula
-    : formula.replace(ADD, (m, q?: string) => (q ? m : prefixOf(m) + m));
+    : formula.replace(ADD, (m, q?: string, p?: string, name?: string) => {
+        if (q) return m;
+        const want = prefixOf(name!);
+        return want && want !== p?.toLowerCase() ? want + name! : m;
+      });
 }
 
 /** Remove canonical future-function prefixes (`_xlfn.XLOOKUP(` → `XLOOKUP(`). */
