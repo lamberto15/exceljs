@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  addPivotTable,
   CellKind,
   dateToSerial,
   decodeAddr,
@@ -325,7 +326,37 @@ describe('exceljs parity: misc', () => {
 
   describe('Pivot Tables', () => {
     // exceljs: spec/integration/workbook/pivot-tables.spec.js — "if pivot table added, then certain xml and rels files are added"
-    it.skip('addPivotTable — not supported (pivot tables in read files are preserved)', () => {});
+    it('pivot parts and rels are written when a pivot table is added (➖ addPivotTable(ws, {...}))', () => {
+      const wb = new Workbook();
+      wb.addWorksheet('Sheet1').addRows([
+        ['A', 'B', 'C', 'D', 'E'],
+        ['a1', 'b1', 'c1', 4, 5],
+        ['a1', 'b2', 'c1', 4, 5],
+        ['a2', 'b1', 'c2', 14, 24],
+        ['a2', 'b2', 'c2', 24, 35],
+        ['a3', 'b1', 'c3', 34, 45],
+        ['a3', 'b2', 'c3', 44, 45],
+      ]);
+      // ➖ exceljs: worksheet2.addPivotTable({ sourceSheet, rows: ['A','B'], columns: ['C'], values: ['E'], metric: 'sum' })
+      addPivotTable(wb.addWorksheet('Sheet2'), {
+        name: 'PivotTable1',
+        source: 'Sheet1!A1:E7',
+        ref: 'A1',
+        rows: ['A', 'B'],
+        columns: ['C'],
+        values: [{ field: 'E', fn: 'sum' }],
+      });
+      const names = partNames(writeXlsx(wb));
+      for (const p of [
+        'xl/pivotCache/pivotCacheDefinition1.xml',
+        'xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels',
+        'xl/pivotCache/pivotCacheRecords1.xml',
+        'xl/pivotTables/pivotTable1.xml',
+        'xl/pivotTables/_rels/pivotTable1.xml.rels',
+      ]) {
+        expect(names).toContain(p);
+      }
+    });
 
     // exceljs: spec/integration/workbook/pivot-tables.spec.js — "if pivot table NOT added, then certain xml and rels files are not added"
     it('no pivot parts are written when there is no pivot table', () => {

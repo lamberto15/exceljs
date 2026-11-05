@@ -234,7 +234,7 @@ This is a **0.x** release: the API may still change in minor versions, with chan
 
 Compatibility is verified in CI by opening generated files with LibreOffice and by reading and writing them with ExcelJS. A 17-file pack covering every feature (including an encrypted file, the streaming writer and real files re-saved after reading; see `test/smoke/excel-pack.mjs`) was opened in **Microsoft Excel for Mac 16.114** with no repair prompts, and its content was checked through Excel (tables, conditional formatting, pictures, protection, chart sheets). Excel for Windows has not been checked yet. If you ever see a "We found a problem with some content" dialog, please open an issue with the file attached.
 
-Not supported yet: pivot table authoring (existing ones are preserved), `.xls` and `.xlsb`. See the [roadmap](./ROADMAP.md).
+Not supported yet: `.xls` and `.xlsb`. See the [roadmap](./ROADMAP.md).
 
 ## Credits and license
 

@@ -18,6 +18,7 @@ import { customViewsReader, customViewsWriter } from './custom-views.js';
 import { dataValidationReader, dataValidationWriter } from './data-validation.js';
 import { ignoredErrorsReader, ignoredErrorsWriter } from './ignored-errors.js';
 import { imagesReader, imagesWriter } from './images.js';
+import { pivotTablesWriter } from './pivot-tables.js';
 import { printSetupReader, printSetupWriter } from './print-setup.js';
 import { sheetProtectionReader, sheetProtectionWriter } from './sheet-protection.js';
 import { tablesReader, tablesWriter } from './tables.js';
@@ -32,6 +33,7 @@ export const WRITERS: readonly FeatureWriter[] = [
   dataValidationWriter,
   ignoredErrorsWriter,
   imagesWriter,
+  pivotTablesWriter,
   printSetupWriter,
   sheetProtectionWriter,
   tablesWriter,

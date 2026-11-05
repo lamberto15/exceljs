@@ -512,6 +512,7 @@ const BUILTIN: readonly Emitter[] = [
  */
 const OWNED: readonly string[] = [
   'tables:tables',
+  'pivotTables:pivot-tables',
   'comments:comments',
   'threadedComments:comments',
   'customSheetViews:custom-views',
