@@ -69,14 +69,23 @@ export class Budget {
    * Account output of entry `name`: it has produced `out` bytes in total from `compressed` input
    * bytes, `fresh` of which were not accounted before. `ratio` = false for stored entries.
    */
-  output(name: string, out: number, fresh: number, compressed: number, ratio: boolean): void {
+  output(
+    name: string,
+    out: number,
+    fresh: number,
+    compressed: number,
+    ratio: boolean,
+    capped = true,
+  ): void {
     const L = this.limits;
-    this.total += fresh;
-    if (out > L.maxEntryBytes) {
-      throw new ZipLimitError(`Zip entry too large: ${name} (max ${L.maxEntryBytes} bytes)`);
-    }
-    if (this.total > L.maxTotalBytes) {
-      throw new ZipLimitError(`Zip total uncompressed size exceeds ${L.maxTotalBytes} bytes`);
+    if (capped) {
+      this.total += fresh;
+      if (out > L.maxEntryBytes) {
+        throw new ZipLimitError(`Zip entry too large: ${name} (max ${L.maxEntryBytes} bytes)`);
+      }
+      if (this.total > L.maxTotalBytes) {
+        throw new ZipLimitError(`Zip total uncompressed size exceeds ${L.maxTotalBytes} bytes`);
+      }
     }
     if (ratio && out > RATIO_MIN_BYTES && out / Math.max(compressed, 1) > L.maxCompressionRatio) {
       throw new ZipLimitError(

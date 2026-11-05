@@ -267,7 +267,11 @@ export interface WorkbookView {
 
 export interface ReadOptions {
   profile?: Profile;
-  /** Hard limits against zip bombs / hostile files. */
+  /**
+   * Hard limits against zip bombs / hostile files. `xlsxRows` applies the byte limits
+   * (`maxEntryBytes`, `maxTotalBytes`) only to parts it has to hold in memory, not to sheets it
+   * parses as they inflate.
+   */
   limits?: Partial<Limits>;
   /**
    * Keep what the model does not represent (charts, shapes, pivot tables, threaded comments,

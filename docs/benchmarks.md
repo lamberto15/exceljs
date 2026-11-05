@@ -62,8 +62,9 @@ they are added.
 | ExcelJS `xlsx.load` (DOM)              |    3441 |                   1188 |
 | ExcelJS `WorkbookReader` (streaming)   |    1793 |                     70 |
 
-"Metadata first" is the same data with workbook metadata stored before the sheet (Excel's order), so
-`xlsxRows` needs no buffering. The plain `xlsxRows` row reads the ExcelJS-written order, which buffers some
+"Metadata first" is the same data with workbook metadata (`styles.xml`, `sharedStrings.xml`) stored before
+the sheet, as `writeXlsx` writes it, so `xlsxRows` needs no buffering. Excel 16.x and ExcelJS store the sheet
+first. The plain `xlsxRows` row reads the ExcelJS-written order, which buffers some
 data.
 
 ## Variance

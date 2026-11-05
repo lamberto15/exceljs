@@ -597,11 +597,14 @@ class StreamReader {
  * Stream the rows of every worksheet (or `opts.sheets`) of an XLSX file.
  *
  * Memory: constant for sheet data when the archive stores workbook.xml, styles.xml and
- * sharedStrings.xml (and their relationship parts) BEFORE the worksheets — the order Excel and
- * exceljs use. When a worksheet precedes any of them (Google Sheets, LibreOffice, some
- * generators), that worksheet's decompressed XML is buffered in memory (as raw UTF-8 bytes, off
- * the JS heap) until the metadata is available — exceljs spools such sheets to temp files
- * instead. With `profile: 'low-memory'` the buffered XML is re-deflated (level 1), cutting that
+ * sharedStrings.xml (and their relationship parts) BEFORE the worksheets, as turbosheet's
+ * `writeXlsx` / `xlsxStream` do. When a worksheet precedes any of them (files saved by Excel
+ * 16.x, ExcelJS, `createXlsxWriter`, Google Sheets, LibreOffice, ...), that worksheet's
+ * decompressed XML is buffered in memory (as raw UTF-8 bytes, off the JS heap) until the
+ * metadata is available — exceljs spools such sheets to temp files instead.
+ *
+ * Limits: a sheet parsed as it inflates keeps nothing, so `maxEntryBytes` / `maxTotalBytes` do
+ * not apply to it (only `maxCompressionRatio`); buffered parts are subject to every limit. With `profile: 'low-memory'` the buffered XML is re-deflated (level 1), cutting that
  * memory ~5-10x for some extra CPU. The shared-string table is always held in memory.
  *
  * Sheets are emitted in zip order when streamed directly; buffered sheets are emitted in tab
@@ -675,6 +678,8 @@ async function* xlsxRowsImpl(
       const sheet = st.sheetFor(path);
       if (sheet && !st.wanted(sheet)) continue;
       if (sheet && st.ready()) {
+        // parsed as it inflates, nothing kept: only the ratio limit applies (#74)
+        entry.unbounded();
         const p = st.sheetParser(sheet, out);
         const dec = new TextDecoder();
         for await (const c of entry.chunks) {

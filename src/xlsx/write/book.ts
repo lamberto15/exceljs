@@ -174,6 +174,23 @@ export function sheetEntry(ws: Worksheet): SheetEntry {
   return { name: ws.name, sheetId: ws.id, state: ws.state, autoFilter: ws.autoFilter };
 }
 
+/**
+ * Parts stored first in the archive: everything a streaming reader (`xlsxRows`) needs before it
+ * can decode worksheet rows. (Excel itself stores worksheets before styles.xml and
+ * sharedStrings.xml.) Always written by `bookParts`.
+ */
+function metaFirst(o: ResolvedWriteOptions): string[] {
+  const p = [
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'xl/workbook.xml',
+    'xl/_rels/workbook.xml.rels',
+    'xl/styles.xml',
+  ];
+  if (o.strings === 'shared') p.push('xl/sharedStrings.xml');
+  return p;
+}
+
 function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, undefined> {
   const sheets = wb.worksheets;
   if (sheets.length === 0) throw new Error('Workbook has no worksheets');
@@ -241,6 +258,7 @@ export function writeXlsx(wb: Workbook, opts?: WriteOptions): Uint8Array {
   const o = resolveWriteOptions(opts);
   const chunks: Uint8Array[] = [];
   const zip = new ZipOut((c) => void chunks.push(c), o.compression);
+  zip.reserve(metaFirst(o));
   for (const p of pieces(wb, o)) zip.write(p.path, p.data, p.last);
   zip.end();
   return concatChunks(chunks);
@@ -265,6 +283,9 @@ export function xlsxStream(wb: Workbook, opts?: WriteOptions): ReadableStream<Ui
         o.compression,
         nativeCompressor(),
       );
+      // metadata first so xlsxRows can stream the output; the zip holds the compressed sheets
+      // back until it is written (memory: up to the compressed file size)
+      zip.reserve(metaFirst(o));
     },
     async pull(controller) {
       for (;;) {
