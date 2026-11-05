@@ -2,8 +2,8 @@
 // unless imported).
 
 import { decodeCol } from './address.js';
-import type { CellValue } from './types.js';
-import { CellKind, RowView, type Worksheet } from './worksheet.js';
+import type { CellValue, IterateOptions } from './types.js';
+import { CellKind, includeEmpty, iteratee, RowView, type Worksheet } from './worksheet.js';
 
 /** Number of rows holding at least one value (ExcelJS `ws.actualRowCount`). */
 export function actualRowCount(ws: Worksheet): number {
@@ -64,16 +64,27 @@ export function columnValues(ws: Worksheet, col: number | string): CellValue[] {
   return out;
 }
 
-/** Visit the non-empty cells of one column, top to bottom (ExcelJS `column.eachCell`). */
+/**
+ * Visit the non-empty cells of one column, top to bottom (ExcelJS `column.eachCell`, without
+ * creating a column record like `ws.getColumn(col).eachCell` does). `{ includeEmpty: true }`
+ * visits every row from 1 to `ws.rowCount`, passing null for empty cells.
+ */
 export function eachColumnCell(
   ws: Worksheet,
   col: number | string,
   cb: (value: CellValue, rowNumber: number) => void,
+): void;
+export function eachColumnCell(
+  ws: Worksheet,
+  col: number | string,
+  options: IterateOptions,
+  cb: (value: CellValue, rowNumber: number) => void,
+): void;
+export function eachColumnCell(
+  ws: Worksheet,
+  col: number | string,
+  a: IterateOptions | ((value: CellValue, rowNumber: number) => void),
+  b?: (value: CellValue, rowNumber: number) => void,
 ): void {
-  const c = colIndex(col);
-  ws.rowData.forEach((row, r) => {
-    if (!row) return;
-    const i = row.find(c);
-    if (i >= 0 && row.kind[i] !== CellKind.Empty) cb(ws._valueAt(row, i), r + 1);
-  });
+  ws._eachColumnCell(colIndex(col), includeEmpty(a, b), iteratee(a, b, 'eachColumnCell'));
 }

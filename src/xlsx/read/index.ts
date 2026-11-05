@@ -11,6 +11,7 @@ export { ZipLimitError, ZipPathError } from '../../zip/limits.js';
 export {
   EncryptedFileError,
   type SheetEntry,
+  SheetLimitError,
   translateFormula,
   XlsxParseError,
   type XlsxRow,
@@ -24,6 +25,7 @@ export {
  * opt-in variant with a smaller bundle.
  * - `opts.sheets`: only load these sheet names (case-insensitive); others are not created.
  * - `opts.limits`: zip-bomb limits (entry count, sizes, compression ratio).
+ * - `opts.maxRows` / `opts.maxCols`: throw SheetLimitError at the first cell beyond them.
  * - `opts.preserveUnknown` (default true): keep what the model does not represent (charts,
  *   shapes, pivot tables, threaded comments, VBA, custom XML, unknown worksheet elements, ...)
  *   so `writeXlsx` / `xlsxStream` write it back (see `listPreservedParts`). Kept parts stay
@@ -31,7 +33,8 @@ export {
  *   `false` drops all of it (and does not retain the input buffer).
  * `profile` is ignored.
  * Throws ZipLimitError / ZipPathError for hostile archives, XlsxParseError for broken XML and
- * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`).
+ * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`),
+ * SheetLimitError when a sheet exceeds `maxRows` / `maxCols`.
  */
 export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {}): Workbook {
   return readCore(data, { ...opts, features: withAll(READERS, opts.features) });

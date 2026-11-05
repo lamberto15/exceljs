@@ -15,6 +15,7 @@ export {
   EncryptedFileError,
   readXlsx,
   type SheetEntry,
+  SheetLimitError,
   translateFormula,
   XlsxParseError,
   type XlsxRow,

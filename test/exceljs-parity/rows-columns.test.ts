@@ -897,7 +897,7 @@ describe('exceljs parity: rows and columns', () => {
 
   // exceljs: spec/integration/worksheet.spec.js — "iterates over rows"
   // exceljs: spec/unit/doc/worksheet.values.spec.js — "iterates over rows"
-  it('iterates over rows (empty rows skipped)', () => {
+  it('iterates over rows (empty rows skipped; includeEmpty visits all)', () => {
     const ws = new Workbook().addWorksheet('blort');
     ws.getCell('A1').value = 1;
     ws.getCell('B2').value = 2;
@@ -906,15 +906,36 @@ describe('exceljs parity: rows and columns', () => {
     const seen: number[] = [];
     ws.eachRow((_row, n) => seen.push(n));
     expect(seen).toEqual([1, 2, 4, 6]);
-    // 🚫 no { includeEmpty: true }: loop over 1..rowCount with getRow
     const all: number[] = [];
-    for (let r = 1; r <= ws.rowCount; r++) all.push(ws.getRow(r).number);
+    ws.eachRow({ includeEmpty: true }, (row, n) => {
+      expect(row.number).toBe(n);
+      all.push(n);
+    });
     expect(all).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   // exceljs: spec/integration/worksheet.spec.js — "iterates over collumn cells"
   // exceljs: spec/unit/doc/worksheet.values.spec.js — "iterates over collumn cells"
-  it.skip('column.eachCell — not supported (iterate rows and read the column)', () => {});
+  it('iterates over column cells (empty cells skipped; includeEmpty visits all)', () => {
+    const ws = new Workbook().addWorksheet('blort');
+    ws.getCell('A1').value = 1;
+    ws.getCell('A2').value = 2;
+    ws.getCell('A4').value = 4;
+    ws.getCell('A6').value = 6;
+    const colA = ws.getColumn('A');
+    const seen: number[] = [];
+    // ➖ the callback gets the value, not a Cell
+    colA.eachCell((v, rowNumber) => {
+      expect(v).toBe(rowNumber);
+      seen.push(rowNumber);
+    });
+    expect(seen).toEqual([1, 2, 4, 6]);
+    let count = 1;
+    colA.eachCell({ includeEmpty: true }, (_v, rowNumber) => {
+      expect(rowNumber).toBe(count++);
+    });
+    expect(count).toBe(7);
+  });
 
   // exceljs: spec/integration/worksheet.spec.js — "returns undefined when row range is less than 1"
   it.skip('getRows(start, length) — not supported', () => {});
