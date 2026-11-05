@@ -22,6 +22,7 @@ import type {
 } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { runsXml } from '../common/rich-text.js';
+import { isDynamic } from '../common/spill.js';
 import { addXlfn } from '../common/xlfn.js';
 import {
   type DrawingAnchors,
@@ -107,9 +108,6 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
   };
 }
 
-/** Functions whose results spill (dynamic arrays): such formulas get the metadata by default. */
-const SPILL =
-  /(?:^|[^\w.])(?:_xlfn\.)?(?:_xlws\.)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
 
 // ---- shared formulas ------------------------------------------------------------------
 
@@ -133,8 +131,7 @@ export interface SharedWrite {
   row: number;
 }
 
-const isDynamic = (f: Formula): boolean =>
-  f.dynamic ?? (f.array === undefined && SPILL.test(f.formula));
+
 
 /**
  * Shared-formula state for encoding `ws`'s rows (`rowBase`: absolute index of `ws.rowData[0]`).

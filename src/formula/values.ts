@@ -81,6 +81,8 @@ export const REF: CellError = /* @__PURE__ */ e('#REF!');
 export const NAME: CellError = /* @__PURE__ */ e('#NAME?');
 export const NUM: CellError = /* @__PURE__ */ e('#NUM!');
 export const NA: CellError = /* @__PURE__ */ e('#N/A');
+export const SPILL: CellError = /* @__PURE__ */ e('#SPILL!');
+export const CALC: CellError = /* @__PURE__ */ e('#CALC!');
 
 /** True for a CellError ({ error: '#N/A' } ...). */
 export function isError(v: unknown): v is CellError {

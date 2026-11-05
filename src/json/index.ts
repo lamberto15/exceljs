@@ -36,7 +36,7 @@ export function toJsonValue(v: CellValue): unknown {
   return null;
 }
 
-const ERRORS = '#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA'.split(' ');
+const ERRORS = '#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA #SPILL! #CALC!'.split(' ');
 
 function isCellError(v: object): v is CellError {
   const k = Object.keys(v);

@@ -12,6 +12,7 @@ import type {
 } from '../core/types.js';
 import type { Workbook } from '../core/workbook.js';
 import type { RowData, Worksheet } from '../core/worksheet.js';
+import { isDynamic } from '../xlsx/common/spill.js';
 import type { Table } from '../xlsx/features/tables.js';
 import {
   broadcast,
@@ -41,6 +42,7 @@ import {
   NUM,
   REF,
   round15,
+  SPILL,
   setDate1904,
   toNum,
   toStr,
@@ -155,6 +157,9 @@ function collect(n: FormulaNode, p: Parsed): void {
     case 'structured':
       p.refs!.push([n]);
       return;
+    case 'spill':
+      p.refs!.push([n.sheet, n.row, n.col, n.row, n.col]);
+      return;
     case 'unary':
     case 'percent':
       collect(n.operand, p);
@@ -179,6 +184,8 @@ class SheetIndex {
   readonly first: number[] = [];
   /** Array formula areas [top, left, bottom, right, masterId]. */
   arrays: number[][] | undefined = undefined;
+  /** Previous spill areas of dynamic formulas: their stored values are stale. */
+  stale: number[][] | undefined = undefined;
   constructor(ws: Worksheet, i: number) {
     this.ws = ws;
     this.i = i;
@@ -225,20 +232,38 @@ export class Evaluator {
     return p;
   }
 
+  /**
+   * Run passes until the spill areas of dynamic-array formulas are stable: a pass assumes the
+   * areas found by the previous one (first: the areas stored in the file), so formulas reading
+   * spilled cells see the right values. Usually one or two passes.
+   */
+  #passes(wb: Workbook, options: EvaluateOptions, roots: (run: Run) => number[]): Run {
+    let hints: Map<string, number[]> | undefined;
+    for (let pass = 0; ; pass++) {
+      const run = new Run(this, wb, options, hints);
+      const next = new Map(hints);
+      const changed = run.go(() => {
+        run.solve(roots(run));
+        return run.settle(next);
+      });
+      if (!changed || pass >= 4) return run;
+      hints = next;
+    }
+  }
+
   /** Evaluate every formula of the workbook (or of `options.sheets`). */
   evaluate(wb: Workbook, options: EvaluateOptions = {}): EvaluationReport {
-    const run = new Run(this, wb, options);
-    return run.go(() => {
-      const want = options.sheets?.map((s) => (typeof s === 'string' ? wb.getWorksheet(s) : s));
+    const want = options.sheets?.map((s) => (typeof s === 'string' ? wb.getWorksheet(s) : s));
+    const run = this.#passes(wb, options, (run) => {
       const roots: number[] = [];
       for (const si of run.sheets) {
         if (want && !want.includes(si.ws)) continue;
         const end = si.first[si.rows.length] ?? 0;
         for (let id = si.first[0] ?? 0; id < end; id++) roots.push(id);
       }
-      run.solve(roots);
-      return run.report(options.writeResults !== false);
+      return roots;
     });
+    return run.go(() => run.report(options.writeResults !== false));
   }
 
   /** Evaluate one cell (and what it depends on); returns its value. */
@@ -248,16 +273,17 @@ export class Evaluator {
     address: string,
     options: EvaluateOptions = {},
   ): FormulaResult | null {
-    const run = new Run(this, wb, options);
+    const [row, col] = cellAt(address);
+    if (!new Run(this, wb, options).sheetOf(sheet)) {
+      throw new RangeError(`Unknown worksheet: ${String(sheet)}`);
+    }
+    const run = this.#passes(wb, options, (run) => {
+      const id = run.find(run.sheetOf(sheet)!, row, col);
+      return id >= 0 ? [id] : [];
+    });
     return run.go(() => {
-      const si = run.sheetOf(sheet);
-      if (!si) throw new RangeError(`Unknown worksheet: ${String(sheet)}`);
-      const [row, col] = cellAt(address);
-      const id = run.find(si, row, col);
-      if (id >= 0) run.solve([id]);
       run.report(options.writeResults === true);
-      const v = run.cell(si.ws, row, col);
-      return v;
+      return run.cell(run.sheetOf(sheet)!.ws, row, col);
     });
   }
 
@@ -332,8 +358,17 @@ class Run implements CellReader {
   readonly #circ: number[] = [];
   readonly #unsupported: Map<string, string> = new Map();
   readonly #errors: { address: string; message: string }[] = [];
+  /** Dynamic-array formula nodes: their spill area in this pass ([t, l, b, r, id]). */
+  readonly #dyn = new Map<number, number[]>();
+  /** The area a dynamic formula had in the file / model (cells there are its stale values). */
+  readonly #old = new Map<number, [number, number, number, number]>();
 
-  constructor(ev: Evaluator, wb: Workbook, opts: EvaluateOptions | EvaluateFormulaOptions) {
+  constructor(
+    ev: Evaluator,
+    wb: Workbook,
+    opts: EvaluateOptions | EvaluateFormulaOptions,
+    hints?: Map<string, number[]>,
+  ) {
     this.ev = ev;
     this.wb = wb;
     this.#opts = opts as EvaluateOptions;
@@ -360,7 +395,21 @@ class Run implements CellReader {
           }
           const f = row.obj![i] as Formula;
           const c = row.col[i]!;
-          if (f.array) {
+          if (isDynamic(f)) {
+            const id = this.#nF.length;
+            const old = f.array ? decodeRangeSafe(f.array) : undefined;
+            if (old && old[0] === r && old[1] === c) {
+              this.#old.set(id, old);
+              si.stale = si.stale ?? [];
+              si.stale.push(old);
+            }
+            const h = hints?.get(`${s}:${r}:${c}`) ?? old ?? [r, c, r, c];
+            const e = h[0] === r && h[1] === c ? [r, c, h[2]!, h[3]!, id] : [r, c, r, c, id];
+            si.arrays = si.arrays ?? [];
+            si.arrays.push(e);
+            this.#dyn.set(id, e);
+            this.#hasArrays = true;
+          } else if (f.array) {
             const a = decodeRangeSafe(f.array);
             if (a && (a[2] > a[0] || a[3] > a[1])) {
               si.arrays = si.arrays ?? [];
@@ -701,12 +750,13 @@ class Run implements CellReader {
       this.#errors.push({ address: this.#addr(id), message: p.error!.message });
       return NAME;
     }
+    const dyn = this.#dyn.has(id);
     const ctx = new EvalContext(
       this,
       this.#nS[id]!,
       this.#nR[id]!,
       this.#nC[id]!,
-      f.array !== undefined,
+      f.array !== undefined || dyn,
     );
     let v: FormulaValue;
     try {
@@ -721,9 +771,82 @@ class Run implements CellReader {
     if (isRef(v)) v = ctx.array ? toArr(v) : intersect(v, ctx);
     if (isArr(v)) {
       if (!ctx.array) return final(v.data[0]!);
+      if (dyn && (v.rows > 1 || v.cols > 1) && this.#blocked(id, v.rows, v.cols)) return SPILL;
       return new FormulaArray(v.rows, v.cols, v.data.map(final));
     }
     return final(v);
+  }
+
+  /**
+   * Whether the spill area of dynamic formula `id` (rows x cols from its cell) is blocked: off
+   * the sheet, a non-empty cell (other than the formula's own stale spilled values), or the
+   * area of an earlier dynamic formula.
+   */
+  #blocked(id: number, rows: number, cols: number): boolean {
+    const r0 = this.#nR[id]!;
+    const c0 = this.#nC[id]!;
+    const r1 = r0 + rows - 1;
+    const c1 = c0 + cols - 1;
+    if (r1 > 1048575 || c1 > 16383) return true;
+    const si = this.#nS[id]!;
+    const old = this.#old.get(id);
+    const data = si.ws.rowData;
+    for (let r = r0; r <= r1 && r < data.length; r++) {
+      const row = data[r];
+      if (row === undefined) continue;
+      let i = row.find(c0);
+      if (i < 0) i = -i - 1;
+      for (; i < row.n; i++) {
+        const c = row.col[i]!;
+        if (c > c1) break;
+        const k = row.kind[i];
+        if (k === K_EMPTY || (r === r0 && c === c0)) continue;
+        const stale =
+          old !== undefined &&
+          k !== K_FORMULA &&
+          r >= old[0] &&
+          r <= old[2] &&
+          c >= old[1] &&
+          c <= old[3];
+        if (!stale) return true;
+      }
+    }
+    for (const [other, e] of this.#dyn) {
+      if (other >= id || this.#nS[other] !== si) continue;
+      if (e[0]! <= r1 && e[2]! >= r0 && e[1]! <= c1 && e[3]! >= c0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * After a pass: record each evaluated dynamic formula's spill area in `hints`; true when an
+   * area differs from the one this pass assumed (another pass is needed).
+   */
+  settle(hints: Map<string, number[]>): boolean {
+    let changed = false;
+    for (const [id, e] of this.#dyn) {
+      if (this.#state[id] !== 2) continue;
+      const v = this.#val[id];
+      const r = this.#nR[id]!;
+      const c = this.#nC[id]!;
+      const b = isArr(v) ? r + v.rows - 1 : r;
+      const rr = isArr(v) ? c + v.cols - 1 : c;
+      hints.set(`${this.#nS[id]!.i}:${r}:${c}`, [r, c, b, rr]);
+      if (e[2] !== b || e[3] !== rr) changed = true;
+    }
+    return changed;
+  }
+
+  /** The spilled range of the dynamic formula at (r, c) of `si` (`A1#`), or #REF!. */
+  spillRef(si: SheetIndex, r: number, c: number): FormulaValue {
+    const id = this.find(si, r, c);
+    if (id < 0 || !this.#dyn.has(id)) return REF;
+    this.#nodeValue(id);
+    const v = this.#val[id];
+    if (isError(v) && v.error === '#SPILL!') return REF;
+    const rows = isArr(v) ? v.rows : 1;
+    const cols = isArr(v) ? v.cols : 1;
+    return new FormulaRange(this, si.ws, r, c, r + rows - 1, c + cols - 1);
   }
 
   /** Current value of formula node `id` (evaluating it on demand). */
@@ -796,14 +919,26 @@ class Run implements CellReader {
     const row = ws.rowData[r];
     if (row === undefined) return null;
     const i = row.find(c);
-    return i < 0 ? null : this.#slot(ws, row, i);
+    if (i < 0) return null;
+    if (row.kind[i] !== K_FORMULA && this.#isStale(ws, r, c)) return null;
+    return this.#slot(ws, row, i);
+  }
+
+  /** A stored value left from a dynamic formula's previous, larger spill (no longer spilled). */
+  #isStale(ws: Worksheet, r: number, c: number): boolean {
+    const st = this.#byWs.get(ws)?.stale;
+    if (!st) return false;
+    for (const a of st) if (r >= a[0]! && r <= a[2]! && c >= a[1]! && c <= a[3]!) return true;
+    return false;
   }
 
   column(ref: FormulaRange): readonly FormulaScalar[] | undefined {
     const ws = ref.sheet;
     const si = this.#byWs.get(ws);
     const end = Math.min(ref.bottom, ws.rowData.length - 1);
-    if (ref.left !== ref.right || this.#iter || !si || end - ref.top < 16) return undefined;
+    if (ref.left !== ref.right || this.#iter || !si || si.arrays || end - ref.top < 16) {
+      return undefined;
+    }
     const key = `${si.i}:${ref.left}`;
     let vec = this.#cols.get(key);
     if (!vec) {
@@ -844,7 +979,11 @@ class Run implements CellReader {
     const ws = ref.sheet;
     const si = this.#byWs.get(ws);
     // cells of array formula areas go through cell() to see the recomputed values
-    const slow = si?.arrays !== undefined;
+    if (si?.arrays !== undefined) {
+      this.#withAreas(ref, si.arrays, cb);
+      return;
+    }
+    const slow = false;
     const rows = ws.rowData;
     const end = Math.min(ref.bottom, rows.length - 1);
     const left = ref.left;
@@ -893,6 +1032,48 @@ class Run implements CellReader {
     }
   }
 
+  /**
+   * each() on a sheet with array / spill areas: every stored cell and every cell of an area
+   * (spilled values need not be stored yet), row by row, through cell().
+   */
+  #withAreas(
+    ref: FormulaRange,
+    areas: number[][],
+    cb: (v: FormulaScalar, row: number, col: number) => void,
+  ): void {
+    const ws = ref.sheet;
+    const rows = ws.rowData;
+    const hit = areas.filter(
+      (a) => a[0]! <= ref.bottom && a[2]! >= ref.top && a[1]! <= ref.right && a[3]! >= ref.left,
+    );
+    let end = Math.min(ref.bottom, rows.length - 1);
+    for (const a of hit) end = Math.max(end, Math.min(ref.bottom, a[2]!));
+    for (let r = ref.top; r <= end; r++) {
+      const cols: number[] = [];
+      const row = rows[r];
+      if (row) {
+        let i = row.find(ref.left);
+        if (i < 0) i = -i - 1;
+        for (; i < row.n && row.col[i]! <= ref.right; i++) {
+          if (row.kind[i] !== K_EMPTY) cols.push(row.col[i]!);
+        }
+      }
+      for (const a of hit) {
+        if (r < a[0]! || r > a[2]!) continue;
+        for (let c = Math.max(ref.left, a[1]!); c <= Math.min(ref.right, a[3]!); c++) cols.push(c);
+      }
+      if (cols.length === 0) continue;
+      cols.sort((x, y) => x - y);
+      let prev = -1;
+      for (const c of cols) {
+        if (c === prev) continue;
+        prev = c;
+        const v = this.cell(ws, r, c);
+        if (v !== null) cb(v, r, c);
+      }
+    }
+  }
+
   report(write: boolean): EvaluationReport {
     const results = write ? undefined : new Map<string, FormulaResult>();
     for (const id of this.#order) {
@@ -909,8 +1090,25 @@ class Run implements CellReader {
       const i = row.find(c);
       if (i < 0 || row.kind[i] !== K_FORMULA) continue;
       const f = row.obj![i] as Formula;
+      if (this.#dyn.has(id)) {
+        const b = isArr(v) ? r + v.rows - 1 : r;
+        const rr = isArr(v) ? c + v.cols - 1 : c;
+        const old = this.#old.get(id);
+        if (old) this.#clearStale(ws, old, [r, c, b, rr]);
+        row.obj![i] = {
+          ...f,
+          result: res,
+          array: colName(c) + (r + 1) + (b > r || rr > c ? `:${colName(rr)}${b + 1}` : ''),
+          dynamic: true,
+        };
+        if (isArr(v)) this.#writeSpill(ws, id, v, [r, c, b, rr]);
+        continue;
+      }
       row.obj![i] = { ...f, result: res };
-      if (isArr(v) && f.array) this.#writeSpill(ws, id, v);
+      if (isArr(v) && f.array) {
+        const a = decodeRangeSafe(f.array);
+        if (a) this.#writeSpill(ws, id, v, a);
+      }
     }
     const circ = [...new Set(this.#circ)].map((id) => this.#addr(id));
     return {
@@ -922,14 +1120,28 @@ class Run implements CellReader {
     };
   }
 
-  #writeSpill(ws: Worksheet, id: number, v: FormulaArray): void {
-    const a = decodeRangeSafe(this.#nF[id]!.array!);
-    if (!a || (a[2] - a[0] + 1) * (a[3] - a[1] + 1) > 1e6) return;
-    for (let r: number = a[0]; r <= a[2]; r++) {
-      for (let c: number = a[1]; c <= a[3]; c++) {
+  /** Remove a dynamic formula's stale spilled values outside its new area. */
+  #clearStale(ws: Worksheet, old: number[], now: number[]): void {
+    for (let r = old[0]!; r <= old[2]!; r++) {
+      const row = ws.rowData[r];
+      if (!row) continue;
+      for (let c = old[1]!; c <= old[3]!; c++) {
+        if (r >= now[0]! && r <= now[2]! && c >= now[1]! && c <= now[3]!) continue;
+        const i = row.find(c);
+        if (i >= 0 && row.kind[i] !== K_FORMULA && row.kind[i] !== K_EMPTY) {
+          ws.setCellRaw(r, c, K_EMPTY, 0, undefined, row.style[i]!);
+        }
+      }
+    }
+  }
+
+  #writeSpill(ws: Worksheet, id: number, v: FormulaArray, a: readonly number[]): void {
+    if ((a[2]! - a[0]! + 1) * (a[3]! - a[1]! + 1) > 1e6) return;
+    for (let r = a[0]!; r <= a[2]!; r++) {
+      for (let c = a[1]!; c <= a[3]!; c++) {
         if (r === this.#nR[id] && c === this.#nC[id]) continue;
-        const ii = v.rows === 1 ? 0 : r - a[0];
-        const jj = v.cols === 1 ? 0 : c - a[1];
+        const ii = v.rows === 1 ? 0 : r - a[0]!;
+        const jj = v.cols === 1 ? 0 : c - a[1]!;
         const x = ii < v.rows && jj < v.cols ? v.at(ii, jj) : NA;
         const row = ws.rowData[r];
         const i = row ? row.find(c) : -1;
@@ -1139,6 +1351,10 @@ export class EvalContext implements FunctionContext {
           if (v !== undefined) return v;
         }
         return this.#name(n.name, n.sheet);
+      case 'spill': {
+        const si = this.#run.sheetFor(n.sheet, this.#si);
+        return si ? this.#run.spillRef(si, n.row, n.col) : REF;
+      }
       case 'structured': {
         const a = this.#run.tableRef(n, this.#si, this.row, this.col, false);
         return isError(a) ? a : new FormulaRange(this.#run, a[0].ws, a[1], a[2], a[3], a[4]);

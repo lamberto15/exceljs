@@ -66,6 +66,13 @@ export type FormulaNode =
   | { readonly type: 'array'; readonly rows: readonly (readonly ArrayLiteral[])[] }
   /** An omitted argument: IF(A1,,1). */
   | { readonly type: 'missing' }
+  /** Spill reference `A1#`: the spilled range of the dynamic-array formula in that cell. */
+  | {
+      readonly type: 'spill';
+      readonly sheet?: string | undefined;
+      readonly row: number;
+      readonly col: number;
+    }
   /**
    * Structured reference: `Sales[Amount]`, `[@Qty]`, `Sales[[#Totals],[A]:[B]]`. `table`
    * undefined = the table holding the formula. `areas` empty = the data rows; `from` / `to`
@@ -111,6 +118,8 @@ const ERRORS: readonly ErrorCode[] = [
   '#NUM!',
   '#N/A',
   '#GETTING_DATA',
+  '#SPILL!',
+  '#CALC!',
 ];
 
 /** @internal */
@@ -304,7 +313,7 @@ class Parser {
       this.#fail('3-D references are not supported');
     if (next === '[') return this.#structured(id);
     const cell = this.#cell(undefined, id);
-    if (cell) return cell;
+    if (cell) return this.#spillOf(cell);
     const up = id.toUpperCase();
     if (up === 'TRUE' || up === 'FALSE') return { type: 'boolean', value: up === 'TRUE' };
     return { type: 'name', name: id };
@@ -373,6 +382,13 @@ class Parser {
     return { type: 'structured', table, areas, from: cols[0], to: cols[1] ?? cols[0] };
   }
 
+  /** A cell followed by '#' is a spill reference (`A1#`). */
+  #spillOf(cell: FormulaNode): FormulaNode {
+    if (this.#s[this.#p] !== '#' || cell.type !== 'cell') return cell;
+    this.#p++;
+    return { type: 'spill', sheet: cell.sheet, row: cell.row, col: cell.col };
+  }
+
   #cell(sheet: string | undefined, id: string): FormulaNode | undefined {
     const m = CELL_RE.exec(id);
     if (!m) return undefined;
@@ -420,7 +436,8 @@ class Parser {
     if (e === start) this.#fail('Expected a reference after "!"');
     const id = s.slice(start, e);
     this.#p = e;
-    return this.#cell(sheet, id) ?? { type: 'name', name: id, sheet };
+    const cell = this.#cell(sheet, id);
+    return cell ? this.#spillOf(cell) : { type: 'name', name: id, sheet };
   }
 
   #quotedSheet(): string {
