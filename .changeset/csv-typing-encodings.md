@@ -1,5 +1,0 @@
----
-"turbosheet": minor
----
-
-CSV read typing and encodings. `parseCsv` / `csvRows` / `CsvParser` take new opt-in options: `parseBooleans` (unquoted `true` / `false`, any case), `parseErrors` (unquoted `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!` become `{ error }`, which `arraysToSheet` now writes as error cells), `dateFormats` (e.g. `['DD/MM/YYYY HH:mm']`, tried in order after ISO 8601, with an explicit day/month order and calendar validation) and `localDates` (dates without an offset by local wall clock instead of UTC). `CsvValue` now includes `boolean` and `CellError`. ISO dates are calendar-checked too: `2024-02-31` stays text instead of rolling over to March 2. `csvRows` takes `encoding` (any `TextDecoder` label, e.g. `'windows-1252'`, `'utf-16le'`), sniffs a UTF-8 / UTF-16LE / UTF-16BE BOM by default (UTF-16 files from Excel read correctly with no option), and `encoding: 'auto'` falls back to windows-1252 when the first chunk with non-ASCII bytes is not valid UTF-8. The `./csv` entry grows from 2.38 to 3.14 KB. Closes #81.

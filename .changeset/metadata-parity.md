@@ -1,5 +1,0 @@
----
-"turbosheet": minor
----
-
-ExcelJS metadata parity. Several sheet views per sheet: `ws.views = [{...}, { zoomScale: 50 }]` writes one `<sheetView>` per view, one per Excel window (`workbookViewId`, which defaults to the view's position in `ws.views`). Writers add `<workbookView>`s when needed, every `wb.views` entry is written, and all views and windows are read back. Sheet `properties` (`addWorksheet(name, { properties, views })`, `ws.properties`): `tabColor` (same value as `ws.tabColor`), `defaultRowHeight`, `defaultColWidth`, `outlineLevelRow`, `outlineLevelCol` and `dyDescent` are written to `<sheetPr>` / `<sheetFormatPr>` (the `x14ac` namespace is declared Ignorable when needed). Outline levels are written as the higher of the property and the levels in the rows / columns, and are not read back. Document properties `language` and `revision` are added. Notes take `margins` (`insetmode`, `inset` in cm), `protection` (`locked`, `lockText`) and `editAs`, written to the VML like ExcelJS and read back. The ExcelJS parity docs are refreshed. Closes #82.
