@@ -172,7 +172,7 @@
       "name": "lite read+write",
       "path": "dist/lite.js",
       "import": "{ Workbook, readXlsx, writeXlsx }",
-      "limit": "41 KB"
+      "limit": "42 KB"
     },
     {
       "name": "lite write + tables + images",

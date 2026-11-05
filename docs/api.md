@@ -27,6 +27,8 @@ new Workbook(options?: { date1904?: boolean; defaultFont?: Font; localDates?: bo
 
 
 Document properties (plain fields, written to docProps and read back): `title`, `subject`, `keywords`, `description`, `category`, `contentStatus`, `company`, `manager`, plus `creator`, `lastModifiedBy`, `created`, `modified`. `fontMetrics(font)` → `{ mdw, rowPt }` (Excel's digit width in px and default row height for a default font).
+
+`wb.views = [{ activeTab, firstSheet, x, y, width, height, visibility }]` (ExcelJS shape) sets Excel's window: the active tab (default: the first visible sheet with `tabSelected`), the first tab shown, window position / size in twips. Read back except `activeTab` (the sheets' `tabSelected` carries the selection).
 ## Worksheet
 
 | Member | Description |
@@ -139,6 +141,8 @@ Gradient fills are not modelled in 0.1.0 (only `type: 'pattern'`).
 
 `StyleRegistry` (via `wb.styles`): `intern(style) -> xf`, `get(xf) -> Style`, `internDxf(style) -> dxfId`, `numFmtId(code)`, `addFont/addFill/addBorder`, `isDateXf(xf)`, plus read-only tables `fonts`, `fills`, `borders`, `numFmts`, `xfs`, `dxfs`. Exported helpers: `BUILTIN_NUM_FMTS`, `builtinFormat(id)`, `builtinFormatId(code)`, `isDateFormat(code)`, `isDateFormatId(id)`.
 
+
+`Fill` = pattern fill or `GradientFill` (`{ type: 'gradient', gradient: 'angle' | 'path', degree?, center?, stops: [{ position, color }] }`). `Font` also has `charset`, `outline`, `shadow`, `condense`, `extend`.
 ## Writing
 
 ```ts

@@ -23,6 +23,8 @@ import type {
   Color,
   Fill,
   Font,
+  GradientFill,
+  PatternFill,
   Protection,
   Style,
 } from './types.js';
@@ -111,6 +113,11 @@ function normFont(f: Font, base: Font): Font {
   if (f.italic) o.italic = true;
   if (f.underline) o.underline = f.underline === true ? 'single' : f.underline;
   if (f.strike) o.strike = true;
+  if (f.outline) o.outline = true;
+  if (f.shadow) o.shadow = true;
+  if (f.condense) o.condense = true;
+  if (f.extend) o.extend = true;
+  if (f.charset !== undefined) o.charset = f.charset;
   const color = normColor(f.color);
   if (color) o.color = color;
   if (f.vertAlign) o.vertAlign = f.vertAlign;
@@ -124,11 +131,21 @@ function normFont(f: Font, base: Font): Font {
 function fontKey(f: Font): string {
   return `${f.name ?? ''}|${f.size ?? ''}|${f.bold ? 1 : 0}${f.italic ? 1 : 0}${f.strike ? 1 : 0}|${
     f.underline ?? ''
-  }|${f.vertAlign ?? ''}|${colorKey(f.color)}|${f.family ?? ''}|${f.scheme ?? ''}`;
+  }|${f.vertAlign ?? ''}|${colorKey(f.color)}|${f.family ?? ''}|${f.scheme ?? ''}|${f.outline ? 1 : 0}${f.shadow ? 1 : 0}${f.condense ? 1 : 0}${f.extend ? 1 : 0}|${f.charset ?? ''}`;
 }
 
 function normFill(f: Fill): Fill {
-  const o: Mutable<Fill> = { type: 'pattern', pattern: f.pattern || 'none' };
+  if (f.type === 'gradient') {
+    const g: Mutable<GradientFill> = {
+      type: 'gradient',
+      gradient: f.gradient === 'path' ? 'path' : 'angle',
+      stops: f.stops.map((s) => ({ position: s.position, color: normColor(s.color) ?? {} })),
+    };
+    if (g.gradient === 'angle') g.degree = f.degree ?? 0;
+    else g.center = { left: f.center?.left ?? 0, top: f.center?.top ?? 0 };
+    return g;
+  }
+  const o: Mutable<PatternFill> = { type: 'pattern', pattern: f.pattern || 'none' };
   const fg = normColor(f.fgColor);
   const bg = normColor(f.bgColor);
   if (fg) o.fgColor = fg;
@@ -137,6 +154,9 @@ function normFill(f: Fill): Fill {
 }
 
 function fillKey(f: Fill): string {
+  if (f.type === 'gradient') {
+    return `g|${f.gradient}|${f.degree ?? ''}|${f.center ? `${f.center.left},${f.center.top}` : ''}|${f.stops.map((s) => `${s.position}:${colorKey(s.color)}`).join(';')}`;
+  }
   return `${f.pattern}|${colorKey(f.fgColor)}|${colorKey(f.bgColor)}`;
 }
 

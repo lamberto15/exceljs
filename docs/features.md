@@ -77,6 +77,8 @@ ws.getColumn('B').width = 14;
 
 Styles are values: assign a new object to change one, do not mutate `getStyle()` results. Equal styles share one entry in `styles.xml`, so styling a million cells with the same object is cheap. For hot loops intern once and pass the index: `const xf = wb.styles.intern(style); ws.setCell(r, c, v, xf)`.
 
+Gradient fills use ExcelJS's shape: `{ type: 'gradient', gradient: 'angle', degree: 90, stops: [{ position: 0, color: { argb: 'FFFF0000' } }, { position: 1, color: { argb: 'FF0000FF' } }] }`, or `gradient: 'path'` with `center: { left: 0.5, top: 0.5 }`. Fonts also take `charset`, `outline`, `shadow`, `condense` and `extend`.
+
 Excel-like defaults:
 
 - **Default font**: `new Workbook({ defaultFont: { name: 'Arial', size: 10 } })` sets Excel's "Normal" font (default Calibri 11): unstyled cells use it and partial fonts (`{ bold: true }`) are completed with its name and size. Column widths are in units of that font's digit width, so pixel conversions (pictures, `fitImage`) and the default row height follow it (`fontMetrics(font)`; approximations for fonts other than Calibri). `wb.styles.setDefaultFont(font)` does the same later, but set it before styling cells.
