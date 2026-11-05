@@ -1,5 +1,58 @@
 # turbosheet
 
+## 0.7.0
+
+### Minor Changes
+
+- 72ecc2c: ExcelJS compatibility, group 13 (#99-#102):
+  
+  - `cell.hyperlink` / `cell.tooltip` on `CellRef`. Setting `hyperlink` on a string or rich-text cell turns it into a link. On a link cell it changes the target, and `undefined` turns the cell back into text. Other cells are left unchanged, as in ExcelJS.
+  - ExcelJS row style codes: `ws.addRow(values, 'i' | 'i+' | 'n')`, `ws.addRows(rows, code)` and `insertRow(s)(ws, pos, values, 'i' | 'o' | 'i+' | 'o+' | 'n')` copy the format of the row above or below. The `+` variants include empty cells.
+  - `fillFormula` ranges, `{ sharedFormula }` values and shared formulas read from a file are now written as Excel shared formulas (`<f t="shared">`). For a 100k-row filled column the file is about a third smaller. Cells edited after the fill are written as their own formulas. Reading still expands shared formulas to one formula per cell.
+  - New sheet view fields: `style` (`'pageLayout'` / `'pageBreakPreview'`), `showRuler`, `zoomScaleNormal` and `activePane` (read and written).
+- a50804b: Table editing (#103): `addTableColumn`, `removeTableColumns`, `renameTableColumn`, `removeTableRows`, `setTableHeaderRow`, `setTableTotalsRow`. These are free functions covering ExcelJS's `table.addColumn` / `removeColumns` / `removeRows` / column rename / `headerRow` / `totalsRow` + `commit()`. As in ExcelJS, the table keeps its top-left cell and only its own cells move. Renaming a column updates its structured references in every formula of the workbook. Removing a column turns references to it into `#REF!`, as Excel does.
+  
+  Fix: the `[@Col]` structured-reference shorthand (also `T[@Col]`, `T[@[Col]]`, `T[@]`) is now written as `[[#This Row],[Col]]`. Excel drops a table whose calculated column uses `@` in the file, and shows `#REF!` in cells that do.
+- 684d528: Formula engine, group 15 (#104, #105, #106):
+  
+  - **Dynamic arrays.** Dynamic-array formulas are evaluated in array mode and spill. `evaluate` writes the spilled values and the spill range (`Formula.array`). A blocked area gives `#SPILL!`. `A1#` spill references work (stored in files as `ANCHORARRAY(A1)`), and formulas reading spilled cells see the spilled values. New functions: `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `TRANSPOSE`, `RANDARRAY`. New error codes: `#SPILL!` and `#CALC!`; they are written to files as `#VALUE!`, which is Excel's plain value for them. `TRANSPOSE` formulas are now dynamic by default, like the other spilling functions.
+  - **Structured references and LET.** `Sales[Amount]`, `[@Qty]`, `Sales[[#Totals],[A]:[B]]`, `#All` / `#Headers` / `#Data` / `#This Row` are resolved against `ws.tables`, dependencies included. `LET` is supported, and writers add the `_xlpm.` prefix to LET names (Excel removes the formula without it). `SUBTOTAL` is supported (1-11 / 101-111: it skips nested subtotals and, for 101-111, hidden rows).
+  - **Incremental recalculation.** `track(wb)` evaluates once and keeps the dependency graph. `calc.set(sheet, address, value)` / `calc.update(cells)` then re-evaluate only the formulas downstream of the change, about 5 ms for a small change on a 100k-formula sheet versus 56 ms for a full evaluation. Volatile functions are always recalculated. Formula edits, cycles and dynamic arrays fall back to a full recalculation.
+- de98b4b: Formula functions, group 16 (#107, #108): 64 new functions, all checked against Excel for Mac on edge cases.
+  
+  - **Math and rounding:** LN, LOG, LOG10, EXP, CEILING, CEILING.MATH, FLOOR, FLOOR.MATH, MROUND, TRUNC, EVEN, ODD, QUOTIENT, GCD, LCM, FACT, COMBIN, PERMUT, RAND, RANDBETWEEN, SUMSQ, RADIANS, DEGREES, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2.
+  - **Statistical:** MEDIAN, MODE(.SNGL), LARGE, SMALL, RANK(.EQ/.AVG), PERCENTILE(.INC/.EXC), QUARTILE(.INC/.EXC), STDEV(.S/.P), STDEVP, STDEVA, STDEVPA, VAR(.S/.P), VARP, VARA, VARPA, AVERAGEA, MAXA, MINA, MAXIFS, MINIFS, CORREL, PEARSON, AGGREGATE (functions 1-19, options 0-7).
+  
+  163 functions are supported now.
+- d98a481: Formula functions, group 17 (#109, #110): 50 new functions, 213 in total. The results were checked against Excel for Mac.
+  
+  - **Financial:** PMT, IPMT, PPMT, PV, FV, NPER, NPV, IRR, XNPV, XIRR, RATE, SLN, DB, DDB, EFFECT, NOMINAL. IRR / XIRR / RATE use Excel's Newton iterations and defaults.
+  - **Date / time:** TIME, HOUR, MINUTE, SECOND, DATEVALUE, TIMEVALUE, WEEKNUM, ISOWEEKNUM, NETWORKDAYS(.INTL), WORKDAY(.INTL), YEARFRAC.
+  - **Text:** CHAR, CODE, UNICHAR, UNICODE, CLEAN, FIXED, DOLLAR, NUMBERVALUE, T, TEXTBEFORE, TEXTAFTER, TEXTSPLIT (spills).
+  - **Information:** N, TYPE, ISEVEN, ISODD, ISREF, ISFORMULA, ERROR.TYPE, ADDRESS, HYPERLINK (returns the value only).
+- f1246f2: Threaded comments and custom views (group 18, #111, #112):
+  
+  - **Threaded comments.** Excel 365 conversations are now modelled instead of kept raw: `ws.threadedComments` (ref, text, author, date, done, replies) and `wb.persons` (authors, with their account ids kept). `addThreadedComment(ws, ref, { text, author, replies })` adds one. The writer emits the threaded part, the persons part and the legacy note Excel expects for each thread. The reader turns those generated notes back into the thread, so `ws.comments` holds only real notes. Files round-trip byte for byte.
+  - **Custom views.** `wb.customViews` and `ws.customSheetViews` (View > Custom Views) are read and written. `addCustomView(wb, name)` captures every sheet as it is now. New feature halves: `customViewsWriter` / `customViewsReader`.
+  - Framework: `BookEmitter.owns(wb)` lets a feature own a workbook element, so the copy kept from the read file is not written back.
+  
+  Checked in Excel for Mac: new threads and views open without a repair prompt, and a file Excel saved with them round-trips.
+- 0c5883f: Charts, group 19 (#113, #114):
+  
+  - **Reading charts.** Charts of the supported types become `ws.charts` when a file is read: 2-D bar / column / line / pie / doughnut / scatter / area, combos, secondary axes, trendlines and data labels. A read chart you don't change is written back byte for byte, Excel's formatting included; an edited chart is regenerated from the model. 3-D, bubble, stock, radar and surface charts, chart sheets and charts with literal data stay raw. New feature half: `chartsReader`. Framework: `SheetReadCtx.claim(path, model)` lets a reader own a part, so the raw reference to it is dropped and the original part is kept while the model is unchanged.
+  - **Combo charts and more** in `addChart`, per series:
+    - `type: 'line' | 'column' | 'area'` mixes series types;
+    - `axis: 'secondary'` adds a right-hand value axis (`axes.y2`);
+    - `trendline` supports linear / exponential / logarithmic / polynomial / power / moving average, with the equation and R²;
+    - `dataLabels` overrides the chart's labels (`false`, `position`, `numFmt`).
+    - `stacked` now applies only to series of the chart's own type.
+- 002b54b: Pivot table authoring (#115): `addPivotTable(ws, { name, source, ref, rows, columns, values, filters })`.
+  
+  - Writes the pivot cache (definition + records, refreshed when Excel opens the file) and the pivot table part.
+  - Fills the report cells in Excel's compact layout, so readers that don't refresh pivots show the totals too. Checked cell by cell against what Excel for Mac displays.
+  - Supports nested row fields, one column field, several value fields (sum, count, average, max, min, product, countNums, stdDev(p), var(p)) and report filters.
+  - New feature half: `pivotTablesWriter`. Pivot tables in read files are still kept raw.
+
 ## 0.6.2
 
 ### Patch Changes
