@@ -10,13 +10,13 @@ import type { PBook, PSheet } from '../xlsx/common/preserved.js';
 import type { Chart } from '../xlsx/features/charts.js';
 import type { Note } from '../xlsx/features/comments.js';
 import type { ConditionalFormatting } from '../xlsx/features/conditional-formatting.js';
-
 import type { DataValidation } from '../xlsx/features/data-validation.js';
 import type { IgnoredError } from '../xlsx/features/ignored-errors.js';
 import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
 import type { Table } from '../xlsx/features/tables.js';
+import type { WorkbookView } from './types.js';
 
 export interface WorksheetFeatureFields {
   /** Page layout / print settings (features/print-setup). */
@@ -72,6 +72,8 @@ export interface WorkbookFeatureFields {
    * `evaluate`) to spare Excel the recalculation and its "save changes?" prompt.
    */
   calcProperties?: { fullCalcOnLoad?: boolean | undefined } | undefined;
+  /** Excel window settings (first entry is written; ExcelJS `wb.views`). */
+  views?: WorkbookView[] | undefined;
   /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
   images?: WorkbookImage[] | undefined;
   /**

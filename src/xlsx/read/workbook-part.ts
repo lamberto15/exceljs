@@ -1,6 +1,6 @@
 // workbook.xml reader: sheet list (name, order, state, rel id), date system, defined names.
 
-import type { DefinedName } from '../../core/types.js';
+import type { DefinedName, WorkbookView } from '../../core/types.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { localName, type XmlAttrs, type XmlHandler } from '../../xml/index.js';
 import { stripXlfn } from '../common/xlfn.js';
@@ -20,6 +20,8 @@ export class WorkbookHandler implements XmlHandler {
   date1904 = false;
   /** `<calcPr fullCalcOnLoad>`. */
   fullCalcOnLoad = false;
+  /** First `<workbookView>`. */
+  view: WorkbookView | undefined;
   private dn:
     | { name: string; localSheetId?: number; hidden?: boolean; comment?: string }
     | undefined;
@@ -29,6 +31,21 @@ export class WorkbookHandler implements XmlHandler {
     switch (localName(name)) {
       case 'calcPr':
         this.fullCalcOnLoad = attrBool(a.fullCalcOnLoad);
+        break;
+      case 'workbookView':
+        if (!this.view) {
+          const n = (k: string): number | undefined => (a[k] !== undefined ? +a[k]! : undefined);
+          const v: WorkbookView = {};
+          // activeTab is not kept: the sheets' tabSelected carries the selection
+          if (a.firstSheet !== undefined) v.firstSheet = n('firstSheet');
+          if (a.xWindow !== undefined) v.x = n('xWindow');
+          if (a.yWindow !== undefined) v.y = n('yWindow');
+          if (a.windowWidth !== undefined) v.width = n('windowWidth');
+          if (a.windowHeight !== undefined) v.height = n('windowHeight');
+          if (a.visibility === 'hidden' || a.visibility === 'veryHidden')
+            v.visibility = a.visibility;
+          this.view = v;
+        }
         break;
       case 'workbookPr':
         this.date1904 = attrBool(a.date1904);

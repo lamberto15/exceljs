@@ -2,7 +2,15 @@
 
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import type { StyleRegistry, Xf } from '../../core/styles.js';
-import type { Alignment, Border, BorderEdge, DefinedName, Fill, Style } from '../../core/types.js';
+import type {
+  Alignment,
+  Border,
+  BorderEdge,
+  DefinedName,
+  Fill,
+  Style,
+  WorkbookView,
+} from '../../core/types.js';
 import type { Workbook } from '../../core/workbook.js';
 import type { SheetState } from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
@@ -33,6 +41,8 @@ export interface BookInfo {
   /** Write `fullCalcOnLoad` (formulas present, or wb.calcProperties). */
   readonly formulas: boolean;
   readonly activeTab: number;
+  /** wb.views[0]: window settings (its activeTab wins over the derived one). */
+  readonly view?: WorkbookView | undefined;
   readonly creator: string | undefined;
   readonly lastModifiedBy: string | undefined;
   readonly created: Date | undefined;
@@ -174,15 +184,18 @@ function definedNameXml(
  */
 export function workbookXml(b: BookInfo, extra: readonly [number, string][] = []): string {
   const at = b.at;
-  const tab = at ? at[b.activeTab]! : b.activeTab;
+  const v = b.view;
+  const pos = (i: number): number => (at ? (at[i] ?? i) : i);
+  const tab = pos(v?.activeTab ?? b.activeTab);
+  const first = v?.firstSheet !== undefined ? pos(v.firstSheet) : tab > 0 ? 0 : undefined;
   const x = b.extraSheets;
   const parts: [number, string][] = [
     [2, `<workbookPr${b.date1904 ? ' date1904="1"' : ''}${b.prAttrs ?? ''}/>`],
     [
       4,
-      `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="12300"${
-        tab > 0 ? ` firstSheet="0" activeTab="${tab}"` : ''
-      }/></bookViews>`,
+      `<bookViews><workbookView${v?.visibility && v.visibility !== 'visible' ? ` visibility="${v.visibility}"` : ''} xWindow="${v?.x ?? 0}" yWindow="${v?.y ?? 0}" windowWidth="${v?.width ?? 28800}" windowHeight="${v?.height ?? 12300}"${
+        first !== undefined ? ` firstSheet="${first}"` : ''
+      }${tab > 0 ? ` activeTab="${tab}"` : ''}/></bookViews>`,
     ],
   ];
   let sheets = '<sheets>';
@@ -277,6 +290,16 @@ export function sharedStringsXml(sst: SharedStrings): string {
 // ---- styles.xml ------------------------------------------------------------------------
 
 function fillXml(f: Fill): string {
+  if (f.type === 'gradient') {
+    const a =
+      f.gradient === 'path'
+        ? ` type="path" left="${f.center?.left ?? 0}" right="${f.center?.left ?? 0}" top="${f.center?.top ?? 0}" bottom="${f.center?.top ?? 0}"`
+        : ` degree="${f.degree ?? 0}"`;
+    let s = `<fill><gradientFill${a}>`;
+    for (const st of f.stops)
+      s += `<stop position="${st.position}"><color${colorAttrs(st.color)}/></stop>`;
+    return `${s}</gradientFill></fill>`;
+  }
   const p = f.pattern || 'none';
   if (!f.fgColor && !f.bgColor) return `<fill><patternFill patternType="${escapeAttr(p)}"/></fill>`;
   let s = `<fill><patternFill patternType="${escapeAttr(p)}">`;

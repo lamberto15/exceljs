@@ -359,6 +359,7 @@ export class XlsxWriter {
       sharedStrings: shared,
       formulas: wb.calcProperties?.fullCalcOnLoad ?? this._formulas,
       activeTab: this._activeIndex(),
+      view: wb.views?.[0],
       creator: wb.creator,
       lastModifiedBy: wb.lastModifiedBy,
       created: wb.created,

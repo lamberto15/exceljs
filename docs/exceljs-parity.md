@@ -68,7 +68,6 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 ## Notable unsupported features
 
 - Shared-formula authoring (`fillFormula`, `{ sharedFormula }` values); shared formulas in files are expanded on read.
-- Gradient fills; font `charset`, `outline`, `shadow`, `condense`, `extend` (dropped on read, so a read → write round trip loses them).
 - Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
 - Document properties beyond creator / lastModifiedBy / created / modified (company, manager, title, subject, keywords, category, description, language, revision, contentStatus).
 - Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`); `maxRows` / `maxCols` read limits; `getRows`, `getSheetValues`, `column.eachCell`, `eachRow({ includeEmpty })`, `actualRowCount`.

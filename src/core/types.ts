@@ -110,6 +110,13 @@ export interface Font {
   readonly family?: number | undefined;
   /** Theme font scheme: 'minor' / 'major' make Excel use the theme's body / heading font. */
   readonly scheme?: 'major' | 'minor' | 'none' | undefined;
+  /** Character set (OOXML `<charset>`, e.g. 0 ANSI, 128 Shift-JIS, 134 GB2312, 222 Thai). */
+  readonly charset?: number | undefined;
+  /** Outline / shadow (Mac Excel renders them) and condense / extend (legacy spacing flags). */
+  readonly outline?: boolean | undefined;
+  readonly shadow?: boolean | undefined;
+  readonly condense?: boolean | undefined;
+  readonly extend?: boolean | undefined;
 }
 
 export type BorderStyle =
@@ -140,12 +147,31 @@ export interface Border {
   readonly diagonal?: (BorderEdge & { up?: boolean; down?: boolean }) | undefined;
 }
 
-export interface Fill {
+export interface PatternFill {
   readonly type: 'pattern';
   readonly pattern: 'none' | 'solid' | 'gray125' | 'darkGray' | 'mediumGray' | 'lightGray' | string;
   readonly fgColor?: Color | undefined;
   readonly bgColor?: Color | undefined;
 }
+
+export interface GradientStop {
+  /** 0..1 along the gradient. */
+  readonly position: number;
+  readonly color: Color;
+}
+
+/** Gradient fill (ExcelJS shape): linear at `degree`, or radiating from `center` ('path'). */
+export interface GradientFill {
+  readonly type: 'gradient';
+  readonly gradient: 'angle' | 'path';
+  /** Angle of a linear gradient in degrees (0 = left to right, 90 = top to bottom). */
+  readonly degree?: number | undefined;
+  /** Path gradients: the starting point as fractions of the cell (0.5, 0.5 = centre). */
+  readonly center?: { readonly left: number; readonly top: number } | undefined;
+  readonly stops: readonly GradientStop[];
+}
+
+export type Fill = PatternFill | GradientFill;
 
 export interface Alignment {
   readonly horizontal?:
@@ -220,6 +246,20 @@ export interface WriteOptions {
    * custom features). `./lite`: the ONLY features enabled, e.g. `[tablesWriter, imagesWriter]`.
    */
   features?: readonly FeatureWriter[];
+}
+
+/** Excel window settings of a workbook (ExcelJS `wb.views` entry; `<workbookView>`). */
+export interface WorkbookView {
+  /** 0-based index of the selected tab (default: the first visible sheet with tabSelected). */
+  activeTab?: number | undefined;
+  /** 0-based index of the first tab shown in the tab bar (scrolled). */
+  firstSheet?: number | undefined;
+  /** Window position and size in twips (1/20 pt). */
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  visibility?: 'visible' | 'hidden' | 'veryHidden' | undefined;
 }
 
 export interface ReadOptions {

@@ -958,6 +958,47 @@ for (const [file, what] of [
   );
 }
 
+// 27: gradient fills, extra font attributes, workbook view (active tab 2)
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Styles');
+  ws.getColumn(1).width = 30;
+  ws.setRowProps(1, { height: 40 });
+  ws.setRowProps(2, { height: 40 });
+  ws.setCell('A1', 'linear red → blue', {
+    fill: {
+      type: 'gradient',
+      gradient: 'angle',
+      degree: 0,
+      stops: [
+        { position: 0, color: { argb: 'FFFF0000' } },
+        { position: 1, color: { argb: 'FF0000FF' } },
+      ],
+    },
+  });
+  ws.setCell('A2', 'path white → theme', {
+    fill: {
+      type: 'gradient',
+      gradient: 'path',
+      center: { left: 0.5, top: 0.5 },
+      stops: [
+        { position: 0, color: { argb: 'FFFFFFFF' } },
+        { position: 1, color: { theme: 4 } },
+      ],
+    },
+  });
+  ws.setCell('A3', 'outline + shadow', {
+    font: { size: 16, outline: true, shadow: true, bold: true },
+  });
+  wb.addWorksheet('Second').setCell('A1', 'selected tab');
+  wb.views = [{ activeTab: 1, width: 24000, height: 14000 }];
+  save(
+    '27-gradients-fonts-views.xlsx',
+    writeXlsx(wb),
+    `Opens on the "Second" tab. "Styles": A1 has a left-to-right red→blue gradient, A2 a centre-out white→blue gradient; A3 bold 16 pt with outline + shadow (visible in Excel for Mac). No repair prompt.`,
+  );
+}
+
 writeFileSync(
   join(out, 'CHECKLIST.md'),
   `# Excel compatibility check

@@ -37,6 +37,10 @@ export function fontBody(f: Font, nameTag: 'name' | 'rFont'): string {
   if (f.bold) s += '<b/>';
   if (f.italic) s += '<i/>';
   if (f.strike) s += '<strike/>';
+  if (f.condense) s += '<condense/>';
+  if (f.extend) s += '<extend/>';
+  if (f.outline) s += '<outline/>';
+  if (f.shadow) s += '<shadow/>';
   if (f.underline) {
     const u = f.underline === true ? 'single' : f.underline;
     s += u === 'single' ? '<u/>' : `<u val="${u}"/>`;
@@ -46,6 +50,7 @@ export function fontBody(f: Font, nameTag: 'name' | 'rFont'): string {
   if (f.color) s += `<color${colorAttrs(f.color)}/>`;
   if (f.name !== undefined) s += `<${nameTag} val="${escapeAttr(f.name)}"/>`;
   if (f.family !== undefined) s += `<family val="${f.family}"/>`;
+  if (f.charset !== undefined) s += `<charset val="${f.charset}"/>`;
   if (f.scheme !== undefined) s += `<scheme val="${f.scheme}"/>`;
   return s;
 }
@@ -100,7 +105,14 @@ export function fontChild(f: Mutable<Font>, ln: string, a: XmlAttrs): void {
       f.italic = attrBool(a.val, true);
       break;
     case 'strike':
-      f.strike = attrBool(a.val, true);
+    case 'condense':
+    case 'extend':
+    case 'outline':
+    case 'shadow':
+      f[ln] = attrBool(a.val, true);
+      break;
+    case 'charset':
+      if (a.val !== undefined && +a.val >= 0) f.charset = +a.val;
       break;
     case 'u': {
       const v = a.val ?? 'single';
@@ -135,7 +147,9 @@ export function fontChild(f: Mutable<Font>, ln: string, a: XmlAttrs): void {
 export function cleanFont(f: Mutable<Font>): Font {
   if (f.bold === false) delete f.bold;
   if (f.italic === false) delete f.italic;
-  if (f.strike === false) delete f.strike;
+  for (const k of ['strike', 'condense', 'extend', 'outline', 'shadow'] as const) {
+    if (f[k] === false) delete f[k];
+  }
   return f;
 }
 

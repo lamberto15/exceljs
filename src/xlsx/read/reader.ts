@@ -259,6 +259,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
   }
   const wb = new Workbook({ date1904: wbh.date1904, localDates: opts.localDates });
   if (wbh.fullCalcOnLoad) wb.calcProperties = { fullCalcOnLoad: true };
+  if (wbh.view) wb.views = [wbh.view];
 
   const app = text('docProps/app.xml');
   if (app !== undefined) parseApp(app, wb);

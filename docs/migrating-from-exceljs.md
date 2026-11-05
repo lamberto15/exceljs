@@ -35,7 +35,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `wb.definedNames.add(ref, name)` | `addDefinedName(wb, name, ref)` |
 | `ws.pageSetup.printArea` | `setPrintArea(ws, 'A1:D20')` |
 | `ws.pageSetup.printTitlesRow` | `setPrintTitles(ws, { rows: '1:1' })` |
-| `wb.calcProperties`, `wb.views` | not supported |
+| `wb.calcProperties`, `wb.views` | supported (`calcProperties.fullCalcOnLoad`, `views[0]`: window, first sheet, active tab) |
 
 ### Rows, columns, cells
 
@@ -83,7 +83,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.addConditionalFormatting({ ref, rules })` | `addConditionalFormatting(ws, ref, rules)` |
 | `const id = wb.addImage({ buffer \| base64, extension })`; `ws.addImage(id, 'B2:D6' \| { tl, ext })` | `const id = addImage(wb, { data \| base64, extension })`; `placeImage(ws, id, 'B2:D6' \| { tl, ext })` |
 | `ws.addBackgroundImage(id)` | `ws.backgroundImage = id` |
-| Gradient fills | not supported yet (`Fill` is `type: 'pattern'`) |
+| Gradient fills | supported, same shape (`{ type: 'gradient', gradient: 'angle' \| 'path', ... }`) |
 | Charts | not written; existing charts are preserved on round trip |
 
 ### I/O
@@ -184,4 +184,4 @@ To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `
 
 ## Not supported yet
 
-Gradient fills; `calcProperties` and workbook views; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.
+`calcProperties` beyond `fullCalcOnLoad` and workbook views; `.xls`/`.xlsb`; pivot table authoring; RC4 and extensible encryption. If you depend on one of these, stay on ExcelJS for that path or open an issue.

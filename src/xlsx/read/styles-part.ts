@@ -14,6 +14,8 @@ import type {
   BorderStyle,
   Fill,
   Font,
+  GradientStop,
+  PatternFill,
   Protection,
   Style,
 } from '../../core/types.js';
@@ -59,6 +61,9 @@ export class StylesHandler implements XmlHandler {
   private section = '';
   private font: Mutable<Font> | undefined;
   private fill: Mutable<Fill> | undefined;
+  /** The gradient being read (its stops) and the position of the open `<stop>`. */
+  private stops: GradientStop[] | undefined;
+  private stopPos = 0;
   private inFill = false;
   private border: Mutable<Border> | undefined;
   private edge: string | undefined;
@@ -94,11 +99,29 @@ export class StylesHandler implements XmlHandler {
         if (this.depth === 3 && ln === 'fill') {
           this.inFill = true;
           this.fill = undefined;
+          this.stops = undefined;
         } else if (this.inFill && ln === 'patternFill') {
           this.fill = { type: 'pattern', pattern: a.patternType ?? 'none' };
-        } else if (this.fill && (ln === 'fgColor' || ln === 'bgColor')) {
+        } else if (this.inFill && ln === 'gradientFill') {
+          const stops: GradientStop[] = [];
+          this.stops = stops;
+          this.fill =
+            a.type === 'path'
+              ? {
+                  type: 'gradient',
+                  gradient: 'path',
+                  center: { left: +(a.left ?? 0), top: +(a.top ?? 0) },
+                  stops,
+                }
+              : { type: 'gradient', gradient: 'angle', degree: +(a.degree ?? 0), stops };
+        } else if (this.stops && ln === 'stop') {
+          this.stopPos = +(a.position ?? 0);
+        } else if (this.stops && ln === 'color') {
           const c = parseColor(a);
-          if (c) this.fill[ln] = c;
+          if (c) this.stops.push({ position: this.stopPos, color: c });
+        } else if (this.fill?.type === 'pattern' && (ln === 'fgColor' || ln === 'bgColor')) {
+          const c = parseColor(a);
+          if (c) (this.fill as Mutable<PatternFill>)[ln] = c;
         }
         break;
       case 'borders':
@@ -202,7 +225,7 @@ export class StylesHandler implements XmlHandler {
           x.fill = { type: 'pattern', pattern: a.patternType ?? 'solid' };
         } else if (x.fill && (ln === 'fgColor' || ln === 'bgColor')) {
           const c = parseColor(a);
-          if (c) (x.fill as Mutable<Fill>)[ln] = c;
+          if (c) (x.fill as Mutable<PatternFill>)[ln] = c;
         }
         break;
       case 'border': {
