@@ -68,6 +68,30 @@ export type CellValue =
   | null
   | undefined;
 
+/**
+ * ExcelJS shared-formula value, accepted when SETTING a cell (setCell, addRow, ...): the cell
+ * gets the master cell's formula with its relative references moved by the offset from the
+ * master (like `fillFormula`), stored and written as a plain `Formula`. The master must already
+ * hold a formula. Never returned by getters.
+ */
+export interface SharedFormulaValue {
+  /** Address of the master cell, e.g. "B1". */
+  readonly sharedFormula: string;
+  readonly result?: Formula['result'];
+}
+
+/** What a cell setter accepts: any {@link CellValue}, plus ExcelJS `{ sharedFormula }`. */
+export type CellValueInput = CellValue | SharedFormulaValue;
+
+/** Options of `eachRow` / `row.eachCell` / `column.eachCell` / `eachColumnCell` (ExcelJS). */
+export interface IterateOptions {
+  /**
+   * Also visit empty rows / cells, from 1 to the last one: the sheet's `rowCount` for rows, the
+   * row's last cell (styled empty cells included) for `row.eachCell`. Default false.
+   */
+  readonly includeEmpty?: boolean | undefined;
+}
+
 /** A workbook-level defined name (named range / constant / formula). */
 export interface DefinedName {
   /** e.g. "Rate", or a built-in like "_xlnm.Print_Area". */
@@ -287,12 +311,21 @@ export interface ReadOptions {
    * `preserveUnknown` and written back unchanged. `xlsxRows` ignores features.
    */
   features?: readonly FeatureReader[];
+  /** Dates by local wall clock (see WorkbookOptions.localDates); also for xlsxRows. */
+  localDates?: boolean | undefined;
+  /**
+   * Reject sheets with a cell in a row after `maxRows` (ExcelJS `maxRows`): `readXlsx` and
+   * `xlsxRows` throw a `SheetLimitError` at the first such cell, before parsing the rest of the
+   * sheet. Every `<c>` element counts (empty styled cells too); rows that only carry formatting
+   * do not. Unset or 0: no limit.
+   */
+  maxRows?: number | undefined;
+  /** Like `maxRows`, for cells in a column after `maxCols` (ExcelJS `maxCols`). */
+  maxCols?: number | undefined;
   /**
    * `xlsxRows` only: called after the last row of each sheet was yielded, with what the sheet
    * XML stores after its cell data (merged ranges as A1 strings, e.g. "A1:C2").
    */
-  /** Dates by local wall clock (see WorkbookOptions.localDates); also for xlsxRows. */
-  localDates?: boolean | undefined;
   onSheetEnd?:
     | ((info: { sheet: string; sheetIndex: number; merges: string[] }) => void)
     | undefined;

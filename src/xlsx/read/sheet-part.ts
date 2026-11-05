@@ -22,7 +22,7 @@ import type { SheetReadCtx, SheetReader, SubtreeHandler } from '../features/type
 import { translateFormula } from './formula.js';
 import { type StringItem, StringItemBuilder } from './strings-part.js';
 import { parseColor } from './styles-part.js';
-import { attrBool, attrLocal, decodeXString } from './xml-util.js';
+import { attrBool, attrLocal, decodeXString, SheetLimitError } from './xml-util.js';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -41,6 +41,11 @@ export interface SheetContext {
   readonly featureCtx?: SheetReadCtx | undefined;
   /** Round-trip capture of elements nobody models (DOM mode, preserveUnknown). */
   readonly capture?: SheetCapture | undefined;
+  /** Sheet name (error messages). */
+  readonly name?: string | undefined;
+  /** ReadOptions.maxRows / maxCols. */
+  readonly maxRows?: number | undefined;
+  readonly maxCols?: number | undefined;
 }
 
 /** Raw subtree receiver: full (prefixed) names; `end()` when the element closes. */
@@ -139,6 +144,9 @@ export class SheetHandler implements XmlHandler {
   private readonly strings: readonly StringItem[];
   private readonly xfMap: Uint32Array | undefined;
   private readonly styles: StyleRegistry;
+  /** maxRows / maxCols (Infinity when unset). */
+  private readonly maxR: number;
+  private readonly maxC: number;
 
   private depth = 0;
   private inData = false;
@@ -194,6 +202,8 @@ export class SheetHandler implements XmlHandler {
     this.strings = ctx.strings;
     this.xfMap = ctx.xfMap;
     this.styles = ctx.styles;
+    this.maxR = ctx.maxRows! > 0 ? ctx.maxRows! : Infinity;
+    this.maxC = ctx.maxCols! > 0 ? ctx.maxCols! : Infinity;
     this.fmap = ws !== undefined && ctx.features?.size ? ctx.features : undefined;
     this.capt = ws !== undefined ? ctx.capture : undefined;
   }
@@ -475,6 +485,7 @@ export class SheetHandler implements XmlHandler {
     if (this.row < 0) this.row = 0;
     this.cRow = this.row;
     this.col = this.cCol;
+    if (this.row >= this.maxR || this.cCol >= this.maxC) this.overLimit();
     this.cType = a.t;
     this.cMeta = a.cm !== undefined;
     const s = a.s;
@@ -606,6 +617,12 @@ export class SheetHandler implements XmlHandler {
       if (ws.rowData[r0] === undefined && r0 >= 0 && r0 < MAX_ROWS) ws._ensureRow(r0, this.hint);
     }
     ws.setCellRaw(this.cRow, c0, kind, num, obj, xf);
+  }
+
+  private overLimit(): never {
+    const name = this.ctx.name ?? '';
+    if (this.row >= this.maxR) throw new SheetLimitError(name, 'maxRows', this.maxR, this.row + 1);
+    throw new SheetLimitError(name, 'maxCols', this.maxC, this.cCol + 1);
   }
 
   private formulaText(): string | undefined {

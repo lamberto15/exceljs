@@ -20,6 +20,29 @@ export class EncryptedFileError extends XlsxParseError {
 }
 
 /**
+ * A sheet has a cell beyond the `maxRows` / `maxCols` read option (`readXlsx`, `xlsxRows`).
+ * Thrown at the first such cell, before the rest of the sheet is parsed.
+ */
+export class SheetLimitError extends Error {
+  /** Sheet name. */
+  readonly sheet: string;
+  /** The option that was exceeded. */
+  readonly limit: 'maxRows' | 'maxCols';
+  /** Its value. */
+  readonly max: number;
+
+  constructor(sheet: string, limit: 'maxRows' | 'maxCols', max: number, at: number) {
+    super(
+      `Max ${limit === 'maxRows' ? 'row' : 'column'} count (${max}) exceeded in sheet "${sheet}" (${limit === 'maxRows' ? 'row' : 'column'} ${at})`,
+    );
+    this.name = 'SheetLimitError';
+    this.sheet = sheet;
+    this.limit = limit;
+    this.max = max;
+  }
+}
+
+/**
  * Map errors from the layers below (tokenizer, fflate inflate) onto the documented reader error
  * classes: XlsxParseError, ZipLimitError (incl. ZipPathError) and RangeError. Anything else
  * (a real bug) passes through untouched.

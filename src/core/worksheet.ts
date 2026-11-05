@@ -51,7 +51,8 @@
  * ## Value & style semantics (public API is 1-based like Excel; "B3" strings accepted)
  * - number → Number (NaN/±Infinity → Error '#NUM!'); string → String; boolean → Boolean;
  *   Date → Date (invalid Date → '#VALUE!'); { error } → Error; { formula } → Formula (a leading
- *   '=' is stripped); { richText } → RichText; { hyperlink } → Hyperlink.
+ *   '=' is stripped); { richText } → RichText; { hyperlink } → Hyperlink; ExcelJS
+ *   { sharedFormula } (setters only) → Formula, the master's formula translated to the cell.
  * - null/undefined clears the value but keeps the cell's formatting (Excel "Clear Contents");
  *   the slot disappears when it has no style. `clearCell()` removes value and style.
  * - When a NEW cell is created without an explicit style it inherits the row style, else the
@@ -65,6 +66,7 @@
  *   hyperlink look (underlined, theme hyperlink color).
  */
 
+import { translateFormula } from '../xlsx/read/formula.js';
 import {
   type CellRange,
   decodeAddr,
@@ -83,12 +85,15 @@ import type {
   Alignment,
   Border,
   CellValue,
+  CellValueInput,
   Color,
   ErrorCode,
   Fill,
   Font,
   Formula,
+  IterateOptions,
   Protection,
+  SharedFormulaValue,
   Style,
 } from './types.js';
 import type { Workbook } from './workbook.js';
@@ -308,7 +313,10 @@ let K = 0;
 let N = 0;
 let O: unknown;
 
-function classify(v: NonNullable<CellValue>, date1904: boolean, local: boolean): void {
+/** K for an ExcelJS `{ sharedFormula }` value (O): resolved by `Worksheet._shared`. */
+const SHARED = 255;
+
+function classify(v: NonNullable<CellValueInput>, date1904: boolean, local: boolean): void {
   O = undefined;
   N = 0;
   switch (typeof v) {
@@ -362,6 +370,11 @@ function classify(v: NonNullable<CellValue>, date1904: boolean, local: boolean):
         O = v.error;
         return;
       }
+      if ('sharedFormula' in v) {
+        K = SHARED;
+        O = v;
+        return;
+      }
   }
   throw new TypeError(`Unsupported cell value: ${String(v)}`);
 }
@@ -400,19 +413,36 @@ type Addr = string | number;
 
 /** A row as an object keyed by `ws.columns[].key`; values may nest for dotted keys ('a.b'). */
 export interface RowObject {
-  readonly [key: string]: CellValue | RowObject;
+  readonly [key: string]: CellValueInput | RowObject;
 }
 
 /** obj[key], or for a dotted key without an own property the nested path ("address.city"). */
-function keyed(obj: Readonly<Record<string, unknown>>, key: string): CellValue {
+function keyed(obj: Readonly<Record<string, unknown>>, key: string): CellValueInput {
   const v = obj[key];
-  if (v !== undefined || key.indexOf('.') < 0) return v as CellValue;
+  if (v !== undefined || key.indexOf('.') < 0) return v as CellValueInput;
   let o: unknown = obj;
   for (const p of key.split('.')) {
     if (o === null || typeof o !== 'object') return undefined;
     o = (o as Record<string, unknown>)[p];
   }
-  return o as CellValue;
+  return o as CellValueInput;
+}
+
+/**
+ * @internal The callback of an ExcelJS-style `fn([options], cb)` call; a clear TypeError instead
+ * of "cb is not a function" for anything else.
+ */
+export function iteratee<F>(a: IterateOptions | F, b: F | undefined, name: string): F {
+  const cb = b === undefined ? a : b;
+  if (typeof cb !== 'function') {
+    throw new TypeError(`${name}([options], callback): callback must be a function`);
+  }
+  return cb as F;
+}
+
+/** @internal `includeEmpty` of an ExcelJS-style `fn([options], cb)` call. */
+export function includeEmpty(a: unknown, b: unknown): boolean {
+  return b !== undefined && !!(a as IterateOptions | null)?.includeEmpty;
 }
 
 // ---- Column ------------------------------------------------------------------------
@@ -462,6 +492,19 @@ export class Column {
   set styleIndex(xf: number) {
     this._xf = xf;
     this._ws._setColXf(this.number - 1, xf);
+  }
+
+  /**
+   * Visit the column's non-empty cells, top to bottom: (value, 1-based row number). ExcelJS
+   * `{ includeEmpty: true }` visits every row from 1 to `ws.rowCount` (null for empty cells).
+   */
+  eachCell(cb: (value: CellValue, rowNumber: number) => void): void;
+  eachCell(options: IterateOptions, cb: (value: CellValue, rowNumber: number) => void): void;
+  eachCell(
+    a: IterateOptions | ((value: CellValue, rowNumber: number) => void),
+    b?: (value: CellValue, rowNumber: number) => void,
+  ): void {
+    this._ws._eachColumnCell(this.number - 1, includeEmpty(a, b), iteratee(a, b, 'eachCell'));
   }
 }
 
@@ -571,14 +614,15 @@ export class Worksheet {
   // ---- cells ----
 
   /** Set a cell value: `setCell('B3', v, style?)` or `setCell(row, col, v, style?)` (1-based). */
-  setCell(addr: string, value: CellValue, style?: Style | number): void;
-  setCell(row: number, col: number | string, value: CellValue, style?: Style | number): void;
+  setCell(addr: string, value: CellValueInput, style?: Style | number): void;
+  setCell(row: number, col: number | string, value: CellValueInput, style?: Style | number): void;
   setCell(a: Addr, b: unknown, c?: unknown, d?: unknown): void {
     if (typeof a === 'string') {
       const p = decodeAddr(a);
-      this._set(p.row, p.col, b as CellValue, c as Style | number | undefined);
+      this._set(p.row, p.col, b as CellValueInput, c as Style | number | undefined);
     } else {
-      this._set(a - 1, this._colIndex(b as Addr), c as CellValue, d as Style | number | undefined);
+      const v = c as CellValueInput;
+      this._set(a - 1, this._colIndex(b as Addr), v, d as Style | number | undefined);
     }
   }
 
@@ -682,7 +726,7 @@ export class Worksheet {
    * keys through `ws.columns[].key` (unknown keys ignored; a dotted key such as 'address.city'
    * also reads nested objects). Returns the 1-based row number.
    */
-  addRow(values: readonly CellValue[] | RowObject, style?: Style | number): number {
+  addRow(values: readonly CellValueInput[] | RowObject, style?: Style | number): number {
     const r0 = this._rows.length;
     if (r0 >= MAX_ROWS) throw new RangeError('Worksheet row limit reached');
     try {
@@ -696,7 +740,7 @@ export class Worksheet {
   }
 
   /** Append several rows (see addRow). */
-  addRows(rows: Iterable<readonly CellValue[] | RowObject>, style?: Style | number): void {
+  addRows(rows: Iterable<readonly CellValueInput[] | RowObject>, style?: Style | number): void {
     const xf = style === undefined ? undefined : this._xf(style);
     for (const r of rows) this.addRow(r, xf);
   }
@@ -732,8 +776,22 @@ export class Worksheet {
     else if (props.style !== undefined) row.xf = this._styles.intern(props.style);
   }
 
-  /** Visit rows that contain cells, ascending. */
-  eachRow(cb: (row: RowView, rowNumber: number) => void): void {
+  /**
+   * Visit rows that contain cells, ascending. `{ includeEmpty: true }` (ExcelJS) visits every row
+   * from 1 to `rowCount`, existing or not.
+   */
+  eachRow(cb: (row: RowView, rowNumber: number) => void): void;
+  eachRow(options: IterateOptions, cb: (row: RowView, rowNumber: number) => void): void;
+  eachRow(
+    a: IterateOptions | ((row: RowView, rowNumber: number) => void),
+    b?: (row: RowView, rowNumber: number) => void,
+  ): void {
+    const cb = iteratee(a, b, 'eachRow');
+    if (includeEmpty(a, b)) {
+      const n = this.rowCount;
+      for (let r = 0; r < n; r++) cb(new RowView(this, r), r + 1);
+      return;
+    }
     const rows = this._rows;
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
@@ -947,6 +1005,50 @@ export class Worksheet {
     this._colXf[c0] = xf;
   }
 
+  /** @internal Column iteration (Column.eachCell / eachColumnCell); c0 is 0-based. */
+  _eachColumnCell(
+    c0: number,
+    empty: boolean,
+    cb: (value: CellValue, rowNumber: number) => void,
+  ): void {
+    const rows = this._rows;
+    const n = empty ? this.rowCount : rows.length;
+    for (let r = 0; r < n; r++) {
+      const row = rows[r];
+      const i = row ? row.find(c0) : -1;
+      if (i >= 0 && row!.kind[i] !== CellKind.Empty) cb(this._valueAt(row!, i), r + 1);
+      else if (empty) cb(null, r + 1);
+    }
+  }
+
+  /**
+   * @internal 0-based row of this sheet's row 0 in the full sheet (the streaming writer's
+   * scratch sheets hold a window of rows); only `{ sharedFormula }` resolution uses it.
+   */
+  _rowBase = 0;
+
+  /**
+   * Resolve the ExcelJS `{ sharedFormula }` value in O for cell (r0, c0): the master's formula
+   * translated by the offset, as a plain Formula in K/N/O.
+   */
+  private _shared(r0: number, c0: number): void {
+    const v = O as SharedFormulaValue;
+    const m = decodeAddr(v.sharedFormula);
+    const mr = m.row - this._rowBase;
+    const row = mr >= 0 ? this._rows[mr] : undefined;
+    const i = row ? row.find(m.col) : -1;
+    if (i < 0 || row!.kind[i] !== CellKind.Formula) {
+      throw new TypeError(`Shared formula master ${v.sharedFormula} holds no formula`);
+    }
+    const f: { formula: string; result?: Formula['result'] } = {
+      formula: translateFormula((row!.obj![i] as Formula).formula, r0 - mr, c0 - m.col),
+    };
+    if (v.result !== undefined) f.result = v.result;
+    K = CellKind.Formula;
+    N = 0;
+    O = f;
+  }
+
   /** @internal Value at slot i. */
   _valueAt(row: RowData, i: number): CellValue {
     switch (row.kind[i]) {
@@ -1023,13 +1125,19 @@ export class Worksheet {
     } else if (row.obj !== undefined && i < row.obj.length) row.obj[i] = undefined;
   }
 
-  private _set(r0: number, c0: number, value: CellValue, style: Style | number | undefined): void {
+  private _set(
+    r0: number,
+    c0: number,
+    value: CellValueInput,
+    style: Style | number | undefined,
+  ): void {
     checkCell(r0, c0);
     if (value === null || value === undefined) {
       this._clear(r0, c0, style);
       return;
     }
     classify(value, this.workbook.date1904, this.workbook.localDates);
+    if (K === SHARED) this._shared(r0, c0);
     const row = this._rows[r0] ?? this._newRow(r0, 1);
     let i = row.find(c0);
     let xf: number;
@@ -1062,14 +1170,14 @@ export class Worksheet {
 
   private _fillRow(
     r0: number,
-    values: readonly CellValue[] | RowObject,
+    values: readonly CellValueInput[] | RowObject,
     style: Style | number | undefined,
   ): void {
     const existing = this._rows[r0];
     if (existing !== undefined && existing.n > 0) {
       // slow path: merge into an existing row
       if (Array.isArray(values)) {
-        const arr = values as readonly CellValue[];
+        const arr = values as readonly CellValueInput[];
         for (let i = 0; i < arr.length; i++) if (arr[i] != null) this._set(r0, i, arr[i], style);
       } else {
         const obj = values as RowObject;
@@ -1085,7 +1193,7 @@ export class Worksheet {
     const local = this.workbook.localDates;
     const colXf = this._colXf;
     if (Array.isArray(values)) {
-      const arr = values as readonly CellValue[];
+      const arr = values as readonly CellValueInput[];
       const len = arr.length;
       if (len > MAX_COLS) throw new RangeError(`Row has more than ${MAX_COLS} columns`);
       const row = existing ?? this._newRow(r0, 0);
@@ -1095,6 +1203,7 @@ export class Worksheet {
         const v = arr[c];
         if (v === null || v === undefined) continue;
         classify(v, d1904, local);
+        if (K === SHARED) this._shared(r0, c);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));
@@ -1111,6 +1220,7 @@ export class Worksheet {
         const v = keyed(obj, key);
         if (v === null || v === undefined) continue;
         classify(v, d1904, local);
+        if (K === SHARED) this._shared(r0, c);
         const i = row.n;
         row.col[i] = c;
         this._store(row, i, xfArg >= 0 ? xfArg : rowXf || (colXf ? colXf[c]! : 0));
@@ -1159,7 +1269,7 @@ export class RowView {
     return this.worksheet.getValue(this.index + 1, col);
   }
 
-  setValue(col: number | string, value: CellValue, style?: Style | number): void {
+  setValue(col: number | string, value: CellValueInput, style?: Style | number): void {
     this.worksheet.setCell(this.index + 1, col, value, style);
   }
 
@@ -1167,13 +1277,38 @@ export class RowView {
     return this.worksheet.getCell(this.index + 1, col);
   }
 
-  /** Visit non-empty cells: (value, 1-based column number, xf). */
-  eachCell(cb: (value: CellValue, colNumber: number, xf: number) => void): void {
+  /**
+   * Visit non-empty cells: (value, 1-based column number, xf). `{ includeEmpty: true }`
+   * (ExcelJS) visits every column from 1 to the row's last cell (styled empty cells count),
+   * passing null and the cell's effective style index for empty ones.
+   */
+  eachCell(cb: (value: CellValue, colNumber: number, xf: number) => void): void;
+  eachCell(
+    options: IterateOptions,
+    cb: (value: CellValue, colNumber: number, xf: number) => void,
+  ): void;
+  eachCell(
+    a: IterateOptions | ((value: CellValue, colNumber: number, xf: number) => void),
+    b?: (value: CellValue, colNumber: number, xf: number) => void,
+  ): void {
+    const cb = iteratee(a, b, 'eachCell');
     const row = this.data;
     if (!row) return;
+    const ws = this.worksheet;
+    if (includeEmpty(a, b)) {
+      const n = row.n;
+      const last = n > 0 ? row.col[n - 1]! : -1;
+      for (let c = 0, i = 0; c <= last; c++) {
+        if (row.col[i] === c) {
+          cb(ws._valueAt(row, i), c + 1, row.style[i]!);
+          i++;
+        } else cb(null, c + 1, ws.getStyleIndex(this.index + 1, c + 1));
+      }
+      return;
+    }
     for (let i = 0; i < row.n; i++) {
       if (row.kind[i] !== CellKind.Empty) {
-        cb(this.worksheet._valueAt(row, i), row.col[i]! + 1, row.style[i]!);
+        cb(ws._valueAt(row, i), row.col[i]! + 1, row.style[i]!);
       }
     }
   }
@@ -1230,7 +1365,7 @@ export class CellRef {
   get value(): CellValue {
     return this.worksheet.getValue(this.row, this.col);
   }
-  set value(v: CellValue) {
+  set value(v: CellValueInput) {
     this.worksheet.setCell(this.row, this.col, v);
   }
   get style(): Style {

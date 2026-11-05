@@ -32,7 +32,7 @@ import {
 
 export { translateFormula } from './formula.js';
 export type { SheetEntry } from './workbook-part.js';
-export { EncryptedFileError, XlsxParseError } from './xml-util.js';
+export { EncryptedFileError, SheetLimitError, XlsxParseError } from './xml-util.js';
 
 /** One streamed row. */
 export interface XlsxRow {
@@ -218,6 +218,7 @@ function fanOut(list: SheetReader[]): SheetReader {
  * features are kept raw (`preserveUnknown`) and written back unchanged.
  * - `opts.sheets`: only load these sheet names (case-insensitive); others are not created.
  * - `opts.limits`: zip-bomb limits (entry count, sizes, compression ratio).
+ * - `opts.maxRows` / `opts.maxCols`: throw SheetLimitError at the first cell beyond them.
  * - `opts.preserveUnknown` (default true): keep what the model does not represent (charts,
  *   shapes, pivot tables, threaded comments, VBA, custom XML, unknown worksheet elements, ...)
  *   so `writeXlsx` / `xlsxStream` write it back (see `listPreservedParts`). Kept parts stay
@@ -225,7 +226,8 @@ function fanOut(list: SheetReader[]): SheetReader {
  *   `false` drops all of it (and does not retain the input buffer).
  * `profile` is ignored.
  * Throws ZipLimitError / ZipPathError for hostile archives, XlsxParseError for broken XML and
- * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`).
+ * EncryptedFileError for password-protected files (decrypt with `decryptXlsx` from `./crypto`),
+ * SheetLimitError when a sheet exceeds `maxRows` / `maxCols`.
  */
 export function readXlsx(data: Uint8Array | ArrayBuffer, opts: ReadOptions = {}): Workbook {
   try {
@@ -357,6 +359,9 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
       features,
       featureCtx: fctx,
       capture: cap,
+      name: s.name,
+      maxRows: opts.maxRows,
+      maxCols: opts.maxCols,
     };
     const h = new SheetHandler(ctx, ws);
     const p = new StrictXml(h, s.path);
@@ -461,9 +466,13 @@ class StreamReader {
   private readonly compress: boolean;
   private readonly onSheetEnd: ReadOptions['onSheetEnd'];
   private readonly localDates: boolean;
+  private readonly maxRows: number | undefined;
+  private readonly maxCols: number | undefined;
 
   constructor(opts: ReadOptions) {
     this.localDates = opts.localDates === true;
+    this.maxRows = opts.maxRows;
+    this.maxCols = opts.maxCols;
     this.onSheetEnd = opts.onSheetEnd;
     this.filter = opts.sheets ? new Set(opts.sheets.map((s) => s.toLowerCase())) : undefined;
     this.compress = opts.profile === 'low-memory';
@@ -587,6 +596,9 @@ class StreamReader {
       styles: this.wb.styles,
       date1904: this.date1904,
       localDates: this.localDates,
+      name: s.name,
+      maxRows: this.maxRows,
+      maxCols: this.maxCols,
     };
     const name = s.name;
     const index = s.index;
@@ -620,6 +632,9 @@ class StreamReader {
  * Sheets are emitted in zip order when streamed directly; buffered sheets are emitted in tab
  * order as soon as they can be decoded. Rows are emitted in file order (row numbers ascending in
  * well-formed files). Rows without any value are skipped.
+ *
+ * `maxRows` / `maxCols`: a sheet with a cell beyond them throws SheetLimitError while it is
+ * parsed (rows yielded before stay yielded; the rest of the file is not read).
  */
 export async function* xlsxRows(
   source: Source,

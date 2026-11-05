@@ -46,12 +46,13 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | `ws.getColumn(1).width = 20` | same |
 | `ws.addRow([..] \| {..})` | same; returns the 1-based row number (ExcelJS returns a `Row`) |
 | `ws.addRows(rows)` | same |
-| `ws.getRow(3)` / `row.getCell(2)` / `row.eachCell(cb)` | same (`RowView`); `cb(value, colNumber, xf)` receives the value, not a cell object |
+| `ws.getRow(3)` / `row.getCell(2)` / `row.eachCell([options], cb)` | same (`RowView`); `cb(value, colNumber, xf)` receives the value, not a cell object. `{ includeEmpty: true }` visits columns 1 to the row's last cell (empty ones get `null`), as in ExcelJS |
 | `row.values`, `row.height`, `row.hidden`, `row.outlineLevel` | same getters; **no setter for `row.values`**: use `addRow` or `setCell` |
 | `ws.getCell('A1').value = v` | same, or `ws.setCell('A1', v)` (faster) |
 | `cell.font = {...}`, `cell.numFmt`, `cell.fill`, `cell.border`, `cell.alignment`, `cell.protection`, `cell.style` | same on the handle; or `ws.setStyle('A1', style)` |
 | `cell.type` | `ws.getKind('A1')` (`CellKind`) |
-| `ws.eachRow(cb)` | same (`cb(row, rowNumber)`) |
+| `ws.eachRow([options], cb)` | same (`cb(row, rowNumber)`); `{ includeEmpty: true }` visits every row from 1 to `ws.rowCount` |
+| `ws.getColumn('A').eachCell([options], cb)` | same; `cb(value, rowNumber)` receives the value. Without options only non-empty cells are visited (ExcelJS also visits empty cells of rows that have values elsewhere); `{ includeEmpty: true }` visits rows 1 to `ws.rowCount`. `eachColumnCell(ws, 'A', [options], cb)` does the same without creating a column record |
 | `ws.rowCount`, `ws.columnCount`, `ws.dimensions` | same (`dimensions` is `{ top, left, bottom, right, ref }`) |
 | `ws.mergeCells('A1:C2')` | same; throws on overlapping merges |
 | `ws.views = [{ state: 'frozen', ySplit: 1 }]` | same (one view per window), or `ws.freeze(1)` |
@@ -70,7 +71,7 @@ Indexing: rows and columns are **1-based** everywhere in the public API, like Ex
 | --- | --- |
 | number, string, boolean, `Date`, `null` | same |
 | `{ formula: 'SUM(A1:A2)', result: 3 }` | same |
-| `{ sharedFormula, result }` | not written; shared formulas in files you read are expanded to plain formulas |
+| `{ sharedFormula: 'B1', result }` | accepted when setting a cell (`setCell`, `addRow`, `cell.value = ...`, the streaming writer): stored and written as the master's formula with relative references moved, e.g. `{ formula: 'B1+1' }` in B1 shared to C1 becomes `{ formula: 'C1+1', result }`. The master must already hold a formula (in the streaming writer: a row not yet flushed). Shared formulas in files you read are expanded to plain formulas |
 | `{ richText: [{ text, font }] }` | same |
 | `{ text, hyperlink, tooltip }` | same |
 | `{ error: '#N/A' }` | same |
@@ -163,17 +164,33 @@ const csv = writeCsv(rows, { escapeFormulas: true });
 
 To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `turbosheet/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))` (empty fields leave cells empty, like ExcelJS).
 
+ExcelJS' `csv.read` types every field; turbosheet types only what you ask for. To match it:
+
+```ts
+const rows = parseCsv(text, {
+  parseNumbers: true,
+  parseBooleans: true, // ExcelJS: exact 'true' / 'false'; turbosheet: any case
+  parseErrors: true, // '#N/A' → { error: '#N/A' }
+  dateFormats: ['MM-DD-YYYY'], // ExcelJS default list: ISO forms + MM-DD-YYYY
+  localDates: true, // ExcelJS (dayjs) parses local time; turbosheet defaults to UTC
+});
+arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
+```
+
+`dateFormats` uses the same `YYYY MM DD HH mm ss` tokens as dayjs (strict), ISO 8601 is always tried first, and impossible dates such as `31/02/2024` stay text. ExcelJS turns anything `Number()` accepts into a number (`007` → 7, `0x10` → 16); `parseNumbers` accepts only plain decimal numbers. ExcelJS decodes bytes as UTF-8 by default; `csvRows(source, { encoding })` takes any `TextDecoder` label, honors BOMs (UTF-16 included), and `'auto'` falls back to windows-1252.
+
 ## Behavior differences to watch for
 
 - **Synchronous reads/writes block the event loop** for large files. For big data use the streaming writer/reader, or run `readXlsx`/`writeXlsx` in a worker.
 - **Dates are UTC.** `new Date(Date.UTC(2025, 0, 15))` is the cell value `2025-01-15`: the serial is computed from the UTC instant, and reading gives UTC-based `Date`s. Build dates with `Date.UTC` to avoid time-zone surprises.
 - **Style objects are shared.** `ws.getStyle('A1')` returns an interned object; `{ ...style, font: { ...style.font, bold: true } }` then `setStyle` is the way to derive a new one.
 - **Errors are typed.** `readXlsx` throws `EncryptedFileError` for password-protected input, `XlsxParseError` for broken XML, `ZipLimitError` for hostile archives (default limits: 10,000 entries, 1 GiB per entry, 2 GiB total, compression ratio 1000).
+- **`maxRows` / `maxCols`** work as in ExcelJS (`readXlsx(bytes, { maxRows: 1000, maxCols: 50 })`, also for `xlsxRows`) but throw `SheetLimitError` (message `Max row count (1000) exceeded in sheet "Data" (row 1001)`; fields `sheet`, `limit`, `max`). They are checked against cell positions: a cell in row 1001 fails `maxRows: 1000` even when the sheet holds fewer rows; ExcelJS counts `<row>` / `<c>` elements instead. Parsing stops at the first such cell.
 - **Sheet names** are validated with Excel's rules when you add or rename a sheet.
 - **Merged cells:** `mergeCells` does not clear or copy cell values; a value left in a non-top-left cell stays in the model (Excel displays only the top-left one). Put the value in the top-left cell.
 - **`ws.columns = [...]` with headers writes row 1**, like ExcelJS; `addRow` then continues below it.
 - **Alignment is stored with OOXML names and encoding:** ExcelJS's `vertical: 'middle'`, `textRotation: 'vertical'` and negative rotations are accepted, and read back as `'center'`, `255` and Excel's encoding (`-45` → `135`).
-- **Shared formulas are expanded on read** (`{ formula: 'A4+1', result }` per cell); there is no `{ sharedFormula }` value.
+- **Shared formulas are expanded on read** (`{ formula: 'A4+1', result }` per cell); `{ sharedFormula }` is accepted when setting a cell but never returned.
 
 ## What turbosheet adds
 

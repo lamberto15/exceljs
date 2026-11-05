@@ -42,7 +42,7 @@ Document properties (plain fields, written to docProps and read back): `title`, 
 | `unmergeCells(range)`, `merges` (A1 strings), `mergeRanges` (0-based) | |
 | `rowCount`, `columnCount`, `dimensions` | Last row / column with content; `dimensions` is `{ top, left, bottom, right, ref }` (1-based) or `undefined`. |
 | `columns` (get/set) | Setting `ColumnDef[]` (`header`, `key`, `width`, `style`, `hidden`, `outlineLevel`) writes a header row when any def has a `header`. |
-| `getColumn(numberOrLetterOrKey)` | `Column`: `number`, `letter`, `key`, `header`, `width`, `hidden`, `outlineLevel`, `style`. |
+| `getColumn(numberOrLetterOrKey)` | `Column`: `number`, `letter`, `key`, `header`, `width`, `hidden`, `outlineLevel`, `style`, `eachCell([options], (value, rowNumber) => {})` (non-empty cells; `{ includeEmpty: true }`: rows 1 to `rowCount`, `null` for empty cells). |
 
 Feature fields (plain properties, `undefined` until set): `pageSetup`, `headerFooter`, `comments`, `images`, `backgroundImage`, `conditionalFormatting`, `dataValidations`, `protection`, `tables`, `preserved`. See [Features](#features).
 
@@ -56,6 +56,7 @@ ws.addRows(iterable, style?)
 ws.getRow(n)                 // RowView handle
 ws.getRowProps(n) / ws.setRowProps(n, { height, hidden, outlineLevel, style, styleIndex })
 ws.eachRow((row, rowNumber) => {})   // rows that contain cells, ascending
+ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {})   // every row 1..rowCount (ExcelJS)
 ```
 
 Cells (fast path, no allocation):
@@ -92,7 +93,7 @@ groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max
 groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
 
-Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { date1904 })` from `turbosheet/formula` give the text Excel shows (number formats applied); `richTextFromHtml(html)` → RichText; `columnValues(ws, col)` / `eachColumnCell(ws, col, cb)` (ExcelJS `column.values` / `eachCell`).
+Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { date1904 })` from `turbosheet/formula` give the text Excel shows (number formats applied); `richTextFromHtml(html)` → RichText; `columnValues(ws, col)` / `eachColumnCell(ws, col, [options], cb)` (ExcelJS `column.values` / `eachCell`; `{ includeEmpty: true }` visits rows 1 to `rowCount` with `null` for empty cells).
 
 Sort and templates: `sortRange(ws, range, keys: SortKey | SortKey[], { header? })` (`SortKey = { col, desc? }`); `fillTemplate(wb, data, { sheets?, missing? })` (`{{path}}`, repeated rows with `{{items[].field}}`). ExcelJS helpers: `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`.
 
@@ -102,7 +103,7 @@ Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the 
 
 Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.
 
-`RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
+`RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell([options], (value, colNumber, xf) => {})` (`{ includeEmpty: true }`: columns 1 to the row's last cell, styled empty cells included; empty cells get `null` and their effective style index), `height`, `hidden`, `outlineLevel`.
 
 ## CellValue
 
@@ -119,6 +120,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | `Hyperlink` | `{ text, hyperlink, tooltip? }` |
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
 | `null` / `undefined` | empty |
+| `{ sharedFormula: 'B1', result? }` | setters only (`CellValueInput`): ExcelJS shared-formula value, stored as the master cell's formula with relative references moved by the offset (`translateFormula`); the master must already hold a formula, otherwise a `TypeError`. In the streaming writer the master must be in a row not yet flushed. Never returned by getters. |
 
 
 `Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
@@ -185,6 +187,8 @@ interface ReadOptions {
   limits?: Partial<Limits>;        // maxEntries 10_000, maxEntryBytes 1 GiB, maxTotalBytes 2 GiB, maxCompressionRatio 1000
   preserveUnknown?: boolean;       // default true: keep charts, pivots, shapes, VBA, ... and write them back
   sheets?: readonly string[];      // only load these sheets (case-insensitive)
+  maxRows?: number;                // throw SheetLimitError at the first cell in a row after maxRows (also xlsxRows)
+  maxCols?: number;                // same for columns after maxCols; unset / 0 = no limit
   localDates?: boolean;            // Dates by local wall clock instead of UTC (also xlsxRows)
   onSheetEnd?: (info: { sheet: string; sheetIndex: number; merges: string[] }) => void; // xlsxRows: after each sheet's last row
   profile?: 'low-memory' | 'balanced' | 'max-speed';  // used by xlsxRows (low-memory re-deflates buffered sheets)
@@ -298,15 +302,31 @@ In-cell checkboxes: `setCheckbox(ws, range, checked = false)` (Excel 365 2024+; 
 `import { ... } from 'turbosheet/csv'`
 
 ```ts
-parseCsv(text, opts?): string[][]                       // CsvValue[][] when parseNumbers / parseDates is set
+parseCsv(text, opts?): string[][]                       // CsvValue[][] when a typing option is set
 csvRows(source, opts?): AsyncIterable<string[]>         // source: AsyncIterable|Iterable<string|Uint8Array> | ReadableStream<Uint8Array>
 class CsvParser { constructor(onRow, opts?); write(chunk: string); end() }
 writeCsv(rows, opts?): string                           // each row followed by eol
 formatCsvRow(row, opts?): string                        // one row, no eol
 csvStream(rows, opts?): ReadableStream<Uint8Array>      // pull-based
+type CsvValue = string | number | boolean | Date | CellError
 ```
 
-Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bom` (strip, default true), `parseNumbers`, `parseDates` (unquoted ISO 8601), `maxFieldBytes` (default 16 MiB), `skipEmptyLines` (default true). Write options: `delimiter`, `quote`, `eol` (default `\r\n`), `bom` (default false), `escapeFormulas` (default false), `dateFormat` (default `toISOString()`). Errors: `CsvError` with `code` `FIELD_TOO_LARGE | BAD_OPTION`. Multi-byte UTF-8 split across chunks is handled.
+Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bom` (strip a leading U+FEFF, default true), `maxFieldBytes` (default 16 MiB), `skipEmptyLines` (default true). Write options: `delimiter`, `quote`, `eol` (default `\r\n`), `bom` (default false), `escapeFormulas` (default false), `dateFormat` (default `toISOString()`). Errors: `CsvError` with `code` `FIELD_TOO_LARGE | BAD_OPTION`.
+
+Typing (all opt-in, unquoted fields only: `"5"`, `"true"`, `"#N/A"` stay strings; rows are `string[]` without them):
+
+| Option | Converts | Notes |
+| --- | --- | --- |
+| `parseNumbers` | `-1.5`, `1e3` → number | no leading zeros (`007` stays text); integers over 15 digits stay text |
+| `parseDates` | ISO 8601 → `Date` | `2024-01-02`, `2024-01-02T03:04[:05[.123]]`, with `Z` / `±hh:mm` / `±hhmm` |
+| `dateFormats` | e.g. `['DD/MM/YYYY', 'MM/DD/YYYY HH:mm']` → `Date` | tried in order after ISO 8601; implies `parseDates` |
+| `localDates` | — | dates without an offset use the local wall clock instead of UTC |
+| `parseBooleans` | `true` / `false`, any case → boolean | |
+| `parseErrors` | `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!` → `{ error }` | exact case; `arraysToSheet` writes error cells |
+
+A field is tried as a number, then a date, then a boolean, then an error. `dateFormats` tokens: `YYYY` (4 digits), `MM` `DD` `HH` `mm` `ss` (2 digits), `M` `D` `H` `m` `s` (1 or 2 digits); `[text]` is literal and any other character must match itself. Each format needs `YYYY`, a month and a day; a bad format throws `CsvError` `BAD_OPTION`. Day/month order is always the format's, never guessed. Impossible values (`31/02/2024`, month 13, `24:00`) stay text and the next format is tried; ISO dates are checked the same way. Dates are UTC wall clock by default (`04/11/2019` with `DD/MM/YYYY` is `2019-11-04T00:00Z`), consistent with `Workbook` dates; use `localDates` together with `new Workbook({ localDates: true })`.
+
+Decoding (`csvRows` byte chunks; string chunks are used as is): option `encoding` is any `TextDecoder` label (`'windows-1252'`, `'iso-8859-1'`, `'utf-16le'`, `'shift_jis'`, ...; default `'utf-8'`; an unknown label throws `RangeError` when `csvRows` is called). Invalid bytes become U+FFFD. A BOM is sniffed first and always wins over `encoding`: `EF BB BF` UTF-8, `FF FE` UTF-16LE, `FE FF` UTF-16BE (so Excel's "Unicode Text" export reads correctly with no option); the BOM itself is then stripped per `bom`. `encoding: 'auto'`: without a BOM, ASCII bytes stream through as they arrive (they read the same in UTF-8 and windows-1252); the first chunk that holds a non-ASCII byte decides: if that chunk (from its first non-ASCII byte to its end) is valid UTF-8 the input is read as UTF-8, otherwise as windows-1252. A UTF-8 sequence cut at the chunk end waits for the next chunk; one cut at the end of the input counts as invalid. Once decided the choice is final: invalid UTF-8 in a later chunk becomes U+FFFD. A whole-file input (`csvRows([bytes])`) is therefore checked as a whole. Decoding is chunk-safe for every encoding: a BOM or a multi-byte character split across chunks (even 1-byte chunks) decodes correctly.
 
 ## JSON
 
@@ -316,7 +336,7 @@ Read options: `delimiter` (single char, default `,`), `quote` (default `"`), `bo
 sheetToObjects(ws, { header?: number | string[], range?, defval?, raw? }): Record<string, unknown>[]
 sheetToArrays(ws, { range?, raw? }): unknown[][]
 objectsToSheet(ws, rows, { header?: string[], writeHeader?: boolean, emptyAs?: 'empty' | 'string' }): Worksheet
-arraysToSheet(ws, rows, { emptyAs?: 'empty' | 'string' }): Worksheet   // '' → no cell by default
+arraysToSheet(ws, rows, { emptyAs?: 'empty' | 'string' }): Worksheet   // '' → no cell by default; { error } → error cell
 sheetToNdjson(ws, opts?): AsyncGenerator<string>        // one JSON object + "\n" per row
 toJsonValue(cellValue): unknown
 ```
@@ -357,6 +377,7 @@ toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v)   // helpers for c
 | --- | --- | --- |
 | `XlsxParseError` | `readXlsx`, `xlsxRows` | Broken XML or package structure. |
 | `EncryptedFileError` (extends `XlsxParseError`) | `readXlsx` | Input is an OLE container (password-protected, or a legacy `.xls`); use `decryptXlsx`. |
+| `SheetLimitError` | `readXlsx`, `xlsxRows` | A sheet has a cell beyond `maxRows` / `maxCols`; thrown at the first such cell. Fields `sheet`, `limit` (`'maxRows' \| 'maxCols'`), `max`. |
 | `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `turbosheet` and `turbosheet/lite`. |
 | `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |

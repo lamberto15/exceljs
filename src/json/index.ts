@@ -1,7 +1,13 @@
 // JSON helpers: convert worksheets to/from plain objects, arrays and NDJSON.
 // Pure functions only (no top-level side effects), so bundlers can drop unused exports.
 
-import { type CellRange, type CellValue, decodeRange, type Worksheet } from '../core/index.js';
+import {
+  type CellError,
+  type CellRange,
+  type CellValue,
+  decodeRange,
+  type Worksheet,
+} from '../core/index.js';
 
 export interface ToObjectsOptions {
   /** Header row number (1-based, default 1) or explicit keys (column i maps to the i-th key). */
@@ -30,6 +36,13 @@ export function toJsonValue(v: CellValue): unknown {
   return null;
 }
 
+const ERRORS = '#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA'.split(' ');
+
+function isCellError(v: object): v is CellError {
+  const k = Object.keys(v);
+  return k.length === 1 && k[0] === 'error' && ERRORS.includes((v as CellError).error);
+}
+
 /** Convert an arbitrary JS value into something the worksheet can store. */
 /** How `objectsToSheet` / `arraysToSheet` store `''`: no cell (default) or an empty-string cell. */
 export type EmptyAs = 'empty' | 'string';
@@ -46,6 +59,8 @@ function toCell(v: unknown, emptyAs?: EmptyAs): CellValue {
       return v.toString();
     case 'object':
       if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+      // a CellError (e.g. from parseCsv's parseErrors) becomes an error cell
+      if (isCellError(v)) return v;
       return JSON.stringify(v);
     default:
       return null;
