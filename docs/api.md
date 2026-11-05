@@ -125,7 +125,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | `{ sharedFormula: 'B1', result? }` | setters only (`CellValueInput`): ExcelJS shared-formula value, stored as the master cell's formula with relative references moved by the offset (`translateFormula`); the master must already hold a formula, otherwise a `TypeError`. In the streaming writer the master must be in a row not yet flushed. Never returned by getters. |
 
 
-`Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
+`Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / TRANSPOSE / ... and spill references (`A1#`) unless `array` is set (legacy array formula) or `dynamic: false`.
 
 `Hyperlink.runs`: optional formatted runs of the link text (`text` stays the plain concatenation), read from files and written back as a rich string.
 ## Style
@@ -381,6 +381,7 @@ Defaults match Excel 2010+: AES-256-CBC, SHA-512, 100000 spins, HMAC integrity. 
 ```ts
 evaluate(wb, opts?): EvaluationReport             // computes every formula cell, stores Formula.result
 evaluateCell(wb, sheet, 'D10', opts?): FormulaResult | null
+track(wb, opts?): Recalc // evaluate once, then calc.set(sheet, addr, value) / calc.update(cells) recalculate only the dependents; calc.recalc()
 evaluateFormula(wb, 'SUM(A1:A9)', { sheet?, address?, array?, now? }?): FormulaResult | FormulaResult[][]
 parseFormula(text): FormulaNode                   // throws FormulaParseError { position, formula }
 createEvaluator({ functions?, now? }): Evaluator  // per-instance functions: .registerFunction(name, impl)

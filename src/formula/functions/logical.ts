@@ -123,8 +123,21 @@ const SWITCH = (args: readonly FormulaNode[], c: EvalContext): FormulaValue => {
   return i < args.length ? c.ev(args[i]!) : NA;
 };
 
+/** LET(name1, value1, [name2, value2, ...], calculation): names bound left to right. */
+const LET = (args: readonly FormulaNode[], ctx: EvalContext): FormulaValue => {
+  if (args.length < 3 || args.length % 2 === 0) return VALUE;
+  let c = ctx;
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    const n = args[i]!;
+    if (n.type !== 'name' || n.sheet !== undefined) return VALUE;
+    c = c.withLocal(n.name, c.safe(args[i + 1]!));
+  }
+  return c.ev(args[args.length - 1]!);
+};
+
 export const logical: Record<string, Builtin> = {
   IF: { lazy: IF },
+  LET: { lazy: LET },
   IFS: { lazy: IFS },
   IFERROR: { lazy: iferror(false) },
   IFNA: { lazy: iferror(true) },

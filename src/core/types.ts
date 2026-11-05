@@ -12,7 +12,11 @@ export type ErrorCode =
   | '#NAME?'
   | '#NUM!'
   | '#N/A'
-  | '#GETTING_DATA';
+  | '#GETTING_DATA'
+  /** A dynamic-array formula cannot spill (its area is blocked). */
+  | '#SPILL!'
+  /** A dynamic-array calculation error (e.g. FILTER with no match and no fallback). */
+  | '#CALC!';
 
 export interface CellError {
   readonly error: ErrorCode;

@@ -65,7 +65,37 @@ export type FormulaNode =
   | { readonly type: 'call'; readonly name: string; readonly args: readonly FormulaNode[] }
   | { readonly type: 'array'; readonly rows: readonly (readonly ArrayLiteral[])[] }
   /** An omitted argument: IF(A1,,1). */
-  | { readonly type: 'missing' };
+  | { readonly type: 'missing' }
+  /** Spill reference `A1#`: the spilled range of the dynamic-array formula in that cell. */
+  | {
+      readonly type: 'spill';
+      readonly sheet?: string | undefined;
+      readonly row: number;
+      readonly col: number;
+    }
+  /**
+   * Structured reference: `Sales[Amount]`, `[@Qty]`, `Sales[[#Totals],[A]:[B]]`. `table`
+   * undefined = the table holding the formula. `areas` empty = the data rows; `from` / `to`
+   * undefined = every column.
+   */
+  | {
+      readonly type: 'structured';
+      readonly table: string | undefined;
+      readonly areas: readonly StructuredArea[];
+      readonly from: string | undefined;
+      readonly to: string | undefined;
+    };
+
+/** Row areas of a structured reference (`#All`, `#Data`, `#Headers`, `#Totals`, `#This Row` / `@`). */
+export type StructuredArea = 'all' | 'data' | 'headers' | 'totals' | 'thisRow';
+
+const AREAS: Record<string, StructuredArea> = {
+  '#all': 'all',
+  '#data': 'data',
+  '#headers': 'headers',
+  '#totals': 'totals',
+  '#this row': 'thisRow',
+};
 
 /** Thrown by parseFormula; `position` is the 0-based offset in the formula text. */
 export class FormulaParseError extends SyntaxError {
@@ -88,6 +118,8 @@ const ERRORS: readonly ErrorCode[] = [
   '#NUM!',
   '#N/A',
   '#GETTING_DATA',
+  '#SPILL!',
+  '#CALC!',
 ];
 
 /** @internal */
@@ -254,7 +286,7 @@ class Parser {
       const sheet = this.#quotedSheet();
       return this.#qualified(sheet);
     }
-    if (c === 91) this.#fail('External or structured references are not supported');
+    if (c === 91) return this.#structured(undefined);
     if (identChar(c)) {
       const r = this.#lines(undefined);
       if (r) return r;
@@ -274,17 +306,94 @@ class Parser {
     const next = s[e];
     if (next === '(') {
       this.#p++;
-      return { type: 'call', name: id.replace(PREFIX, '').toUpperCase(), args: this.#args() };
+      const name = id.replace(PREFIX, '').toUpperCase();
+      const args = this.#args();
+      // files store the spill reference A1# as ANCHORARRAY(A1)
+      const a = args[0];
+      if (name === 'ANCHORARRAY' && args.length === 1 && a?.type === 'cell') {
+        return { type: 'spill', sheet: a.sheet, row: a.row, col: a.col };
+      }
+      return { type: 'call', name, args };
     }
     if (next === '!') return this.#qualified(id);
     if (next === ':' && /^:(?:[\w.]+|'[^']*')!/.test(s.slice(e)))
       this.#fail('3-D references are not supported');
-    if (next === '[') this.#fail('Structured references are not supported');
+    if (next === '[') return this.#structured(id);
     const cell = this.#cell(undefined, id);
-    if (cell) return cell;
+    if (cell) return this.#spillOf(cell);
     const up = id.toUpperCase();
     if (up === 'TRUE' || up === 'FALSE') return { type: 'boolean', value: up === 'TRUE' };
     return { type: 'name', name: id };
+  }
+
+  /** A structured reference's brackets, at '[' (after the table name, if any). */
+  #structured(table: string | undefined): FormulaNode {
+    const s = this.#s;
+    const at = this.#p;
+    this.#p++;
+    const areas: StructuredArea[] = [];
+    const cols: string[] = [];
+    let range = false;
+    /** Text up to the closing ']' of an item (' escapes the next character). */
+    const item = (): string => {
+      let out = '';
+      for (;;) {
+        const ch = s[this.#p];
+        if (ch === undefined) this.#fail('Unterminated structured reference', at);
+        if (ch === ']') return out;
+        if (ch === "'") this.#p++;
+        out += s[this.#p];
+        this.#p++;
+      }
+    };
+    const add = (raw: string): void => {
+      const t = raw.trim();
+      if (t.startsWith('#')) {
+        const a = AREAS[t.toLowerCase()];
+        if (!a) this.#fail(`Unknown structured reference item "${t}"`, at);
+        areas.push(a);
+      } else cols.push(raw);
+    };
+    if (s[this.#p] === '@') {
+      this.#p++;
+      areas.push('thisRow');
+    }
+    this.#ws();
+    if (s[this.#p] === '[') {
+      for (;;) {
+        this.#ws();
+        this.#expect('[');
+        add(item());
+        this.#p++;
+        this.#ws();
+        const d = s[this.#p];
+        if (d === ',' || d === ':') {
+          if (d === ':') range = true;
+          this.#p++;
+          continue;
+        }
+        this.#expect(']');
+        break;
+      }
+    } else {
+      const raw = item();
+      this.#p++;
+      if (raw !== '') add(raw);
+    }
+    if (table === undefined && /^[\w'.\\]/.test(s.slice(this.#p, this.#p + 1))) {
+      this.#fail('External references are not supported', at);
+    }
+    if (cols.length > 2 || (range && cols.length !== 2) || (!range && cols.length > 1)) {
+      this.#fail('Invalid structured reference', at);
+    }
+    return { type: 'structured', table, areas, from: cols[0], to: cols[1] ?? cols[0] };
+  }
+
+  /** A cell followed by '#' is a spill reference (`A1#`). */
+  #spillOf(cell: FormulaNode): FormulaNode {
+    if (this.#s[this.#p] !== '#' || cell.type !== 'cell') return cell;
+    this.#p++;
+    return { type: 'spill', sheet: cell.sheet, row: cell.row, col: cell.col };
   }
 
   #cell(sheet: string | undefined, id: string): FormulaNode | undefined {
@@ -334,7 +443,8 @@ class Parser {
     if (e === start) this.#fail('Expected a reference after "!"');
     const id = s.slice(start, e);
     this.#p = e;
-    return this.#cell(sheet, id) ?? { type: 'name', name: id, sheet };
+    const cell = this.#cell(sheet, id);
+    return cell ? this.#spillOf(cell) : { type: 'name', name: id, sheet };
   }
 
   #quotedSheet(): string {

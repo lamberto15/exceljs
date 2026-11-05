@@ -165,8 +165,8 @@ describe('parseFormula', () => {
       ['"abc', 'Unterminated string'],
       ['1 2', 'Unexpected "2"'],
       ['{1,2;3}', 'Array rows must have the same length'],
-      ['Table1[Col]', 'Structured references are not supported'],
-      ['[1]Sheet1!A1', 'External or structured references are not supported'],
+      ['[1]Sheet1!A1', 'External references are not supported'],
+      ['Table1[#Nope]', 'Unknown structured reference item'],
       ['Sheet1:Sheet3!A1', '3-D references are not supported'],
       ['(A1,B1)', 'Union references are not supported'],
       ['#FOO!', 'Unknown error literal'],
@@ -337,7 +337,7 @@ describe('evaluate', () => {
     const wb = book();
     const ws = wb.getWorksheet()!;
     ws.setCell('A1', { formula: 'SUM(1,' });
-    ws.setCell('A2', { formula: 'Table1[Col]' });
+    ws.setCell('A2', { formula: '[1]Sheet1!A1' });
     ws.setCell('A3', { formula: 'A1' });
     const rep = evaluate(wb);
     expect(rep.errors.map((e) => e.address)).toEqual(['Sheet1!A1', 'Sheet1!A2']);
@@ -497,7 +497,8 @@ describe('evaluate', () => {
     // file-format prefixes are accepted
     expect(evaluateFormula(wb, '_xlfn.XLOOKUP(2,{1;2},{"a";"b"})')).toBe('b');
     expect(evaluateFormula(wb, '_xlfn.IFNA(NA(),1)+_XLFN.XOR(TRUE,FALSE)')).toBe(2);
-    expect(evaluateFormula(wb, '_xlfn._xlws.SORT({2,1})')).toEqual({ error: '#NAME?' });
+    expect(evaluateFormula(wb, '_xlfn._xlws.SORT({2,1})')).toEqual([[2, 1]]); // sorts rows
+    expect(evaluateFormula(wb, '_xlfn._xlws.SORT({2;1})')).toEqual([[1], [2]]);
   });
 
   it('TODAY/NOW use the injectable clock', () => {

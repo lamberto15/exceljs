@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encryptXlsx } from '../../dist/crypto.js';
-import { cellText, evaluate } from '../../dist/formula.js';
+import { cellText, evaluate, track } from '../../dist/formula.js';
 import {
   addChart,
   addConditionalFormatting,
@@ -1175,6 +1175,58 @@ for (const [file, what] of [
     '31-table-editing.xlsx',
     writeXlsx(wb),
     `"Tables": table "Edited" A1:D5 with columns Region / Qty / Amount / Tax (Qty renamed from Units, Price removed so Amount and Tax show #REF! as in Excel, Tax added), rows N, E, W (S removed) and a totals row (Qty sum 8); H1 = SUM(Edited[Qty]) = 8. Table "NoHeader" A10:D13: no header row, no totals row, 4 data rows. Table "Toggled" A20:D25: header, 4 rows, totals row (Units sum 10). No repair prompt.`,
+  );
+}
+
+// 32 — group 15: spilling, A1#, #SPILL!, structured references, LET, SUBTOTAL, track() -----------
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Spill');
+  [
+    ['b', 3],
+    ['a', 1],
+    ['c', 2],
+    ['a', 5],
+    ['B', 4],
+  ].forEach(([k, n], i) => {
+    ws.setCell(i + 1, 1, k);
+    ws.setCell(i + 1, 2, n);
+  });
+  ws.setCell('D1', { formula: 'SORT(A1:B5,2,-1)' });
+  ws.setCell('G1', { formula: 'UNIQUE(A1:A5)' });
+  ws.setCell('H1', { formula: 'FILTER(A1:B5,B1:B5>2)' });
+  ws.setCell('K1', { formula: 'SEQUENCE(2,3,10,5)' });
+  ws.setCell('P1', { formula: 'SUM(D1#)' });
+  ws.setCell('P2', { formula: 'ROWS(G1#)' });
+  ws.setCell('Q1', { formula: 'SEQUENCE(3)' });
+  ws.setCell('Q2', 'block');
+  const t = wb.addWorksheet('Tables');
+  addTable(t, {
+    name: 'Sales',
+    topLeft: 'B2',
+    totalsRow: true,
+    columns: [
+      { name: 'Region', totalsRowLabel: 'Total' },
+      { name: 'Qty', totalsRowFunction: 'sum' },
+      { name: 'Unit Price' },
+      { name: 'Amount', calculatedColumnFormula: 'Sales[@Qty]*[@[Unit Price]]' },
+    ],
+    rows: [
+      ['N', 1, 10],
+      ['S', 2, 20],
+      ['E', 3, 30],
+      ['W', 4, 40],
+    ],
+  });
+  t.setCell('H2', { formula: 'SUM(Sales[Amount])' });
+  t.setCell('H3', { formula: 'LET(q,Sales[Qty],SUM(q)/ROWS(q))' });
+  t.setCell('H4', { formula: 'Sales[[#Totals],[Qty]]' });
+  const calc = track(wb);
+  calc.set('Tables', 'C3', 5); // incremental: Amount N = 50, H2 = 340, H4 = 14
+  save(
+    '32-formula-engine.xlsx',
+    writeXlsx(wb),
+    `"Spill": D1:E5 sorted by number descending (a 5 / B 4 / b 3 / c 2 / a 1); G1:G3 b, a, c (UNIQUE ignores case, so B is a duplicate of b); H1:I3 rows with numbers > 2; K1:M2 10..35; P1 = 15 (SUM(D1#), the formula bar shows =SUM(D1#)); P2 = 3; Q1 #SPILL! (Q2 blocks it). "Tables": Amount = Qty × Unit Price (N row 50), H2 = 340, H3 = 3.5, H4 = 14, the totals row Qty = 14. No repair prompt.`,
   );
 }
 

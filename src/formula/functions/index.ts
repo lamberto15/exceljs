@@ -4,6 +4,7 @@ import type { Builtin } from '../evaluator.js';
 import { S } from '../helpers.js';
 import { isError, NA } from '../values.js';
 import { date } from './date.js';
+import { dynamic } from './dynamic.js';
 import { logical } from './logical.js';
 import { lookup } from './lookup.js';
 import { math } from './math.js';
@@ -29,5 +30,6 @@ export const BUILTINS: Record<string, Builtin> = {
   ...lookup,
   ...text,
   ...date,
+  ...dynamic,
   ...info,
 };

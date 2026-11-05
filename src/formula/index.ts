@@ -14,6 +14,7 @@ import {
   Evaluator,
   type EvaluatorOptions,
   type FormulaResult,
+  type Recalc,
 } from './evaluator.js';
 import { BUILTINS } from './functions/index.js';
 
@@ -25,6 +26,7 @@ export {
   Evaluator,
   type EvaluatorOptions,
   type FormulaResult,
+  Recalc,
 } from './evaluator.js';
 export type { FormulaFunction, FunctionContext } from './helpers.js';
 export {
@@ -61,6 +63,17 @@ const def = (): Evaluator => {
   shared ??= createEvaluator();
   return shared;
 };
+
+/**
+ * Evaluate the workbook and keep it calculated: `const calc = track(wb); calc.set('Sheet1',
+ * 'B2', 5)` recalculates only the formulas that depend on B2 (see Recalc).
+ */
+export function track(
+  wb: Workbook,
+  options?: Omit<EvaluateOptions, 'sheets' | 'writeResults'>,
+): Recalc {
+  return def().track(wb, options);
+}
 
 /** Evaluate every formula of the workbook and store the results (see EvaluateOptions). */
 export function evaluate(wb: Workbook, options?: EvaluateOptions): EvaluationReport {

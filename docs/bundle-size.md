@@ -61,18 +61,20 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 37.7 KB | 37.49 KB |
-| read+write                     | root `*`                                                       | 82 KB | 81.60 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.2 KB | 26.02 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 44.8 KB | 44.60 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30 KB | 29.78 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 38.2 KB | 37.96 KB |
+| read+write                     | root `*`                                                       | 82.4 KB | 82.08 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.8 KB | 26.54 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 45.3 KB | 45.06 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30.5 KB | 30.27 KB |
 | lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.8 KB | 12.47 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 29.7 KB | 29.44 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 30.1 KB | 29.88 KB |
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
-| formula                        | `./formula` `*`                                                | 17.5 KB | 17.15 KB |
+| formula                        | `./formula` `*`                                                | 21.8 KB | 21.48 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 15 (#104-#106) costs: `turbosheet/formula` +4.3 KB (dynamic-array evaluation and spilling, FILTER / SORT / SORTBY / UNIQUE / SEQUENCE / TRANSPOSE / RANDARRAY, structured references, LET, SUBTOTAL, incremental recalculation); every writer ~0.45 KB (LET names get `_xlpm.`, `A1#` is written as `ANCHORARRAY(A1)`, #SPILL! / #CALC! as #VALUE!, the shared spill-function list). The core bundles do not include the formula engine.
 
 What group 14 (#103) costs: the table editing functions ~1.4 KB, only in bundles that import them (read+write imports `*`); writing the `[@Col]` shorthand as `[[#This Row],[Col]]` ~0.15 KB on every writer.
 

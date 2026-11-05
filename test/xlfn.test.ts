@@ -226,3 +226,34 @@ describe('structured reference @ shorthand on write', () => {
     expect(addXlfn(f)).toBe(want);
   });
 });
+
+describe('LET names get _xlpm. on write', () => {
+  it.each([
+    ['LET(x,2,y,x*3,x+y)', '_xlfn.LET(_xlpm.x,2,_xlpm.y,_xlpm.x*3,_xlpm.x+_xlpm.y)'],
+    ['_xlfn.LET(_xlpm.x,1,_xlpm.x+1)', '_xlfn.LET(_xlpm.x,1,_xlpm.x+1)'],
+    [
+      'LET(q, Sales[Qty], SUM(q)/ROWS(q))',
+      '_xlfn.LET(_xlpm.q, Sales[Qty], SUM(_xlpm.q)/ROWS(_xlpm.q))',
+    ],
+    ['LET(x,"x",x&Sheet1!x&x(1))', '_xlfn.LET(_xlpm.x,"x",_xlpm.x&Sheet1!x&x(1))'],
+    ['LET(a,1,LET(b,a,a+b))', '_xlfn.LET(_xlpm.a,1,_xlfn.LET(_xlpm.b,_xlpm.a,_xlpm.a+_xlpm.b))'],
+    ['x+LET(x,1,x)', 'x+_xlfn.LET(_xlpm.x,1,_xlpm.x)'],
+  ])('%s → %s', (f, want) => {
+    expect(addXlfn(f)).toBe(want);
+  });
+});
+
+describe('spill references are written as ANCHORARRAY', () => {
+  it.each([
+    ['SUM(A1#)', 'SUM(_xlfn.ANCHORARRAY(A1))'],
+    [
+      "ROWS('My S'!$B$2#)+Sheet1!C3#",
+      "ROWS(_xlfn.ANCHORARRAY('My S'!$B$2))+_xlfn.ANCHORARRAY(Sheet1!C3)",
+    ],
+    ['"A1#"&A1', '"A1#"&A1'],
+    ['IFERROR(A1,#N/A)', 'IFERROR(A1,#N/A)'],
+    ['T[#Data]', 'T[#Data]'],
+  ])('%s → %s', (f, want) => {
+    expect(addXlfn(f)).toBe(want);
+  });
+});

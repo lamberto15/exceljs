@@ -185,7 +185,75 @@ function finite(n: number): number {
   return n;
 }
 
+/** Formula text that is itself a SUBTOTAL / AGGREGATE (SUBTOTAL skips such cells). */
+const NESTED = /^\s*(?:_xlfn\.)?(?:SUBTOTAL|AGGREGATE)\s*\(/i;
+
+/**
+ * SUBTOTAL(function_num, ref1, ...): 1-11 (AVERAGE, COUNT, COUNTA, MAX, MIN, PRODUCT, STDEV,
+ * STDEVP, SUM, VAR, VARP) over references, skipping cells that hold SUBTOTAL / AGGREGATE
+ * formulas; 101-111 also skip hidden rows (as Excel's table totals row does).
+ */
+const SUBTOTAL: FormulaFunction = (args) => {
+  if (args.length < 2) return VALUE;
+  const fn = toNumber(sc0(args[0]!));
+  const k = Math.trunc(fn) % 100;
+  if (k < 1 || k > 11 || (fn >= 12 && fn <= 100) || fn > 111 || fn < 1) return VALUE;
+  const hidden = fn > 100;
+  const xs: number[] = [];
+  let counta = 0;
+  for (const a of args.slice(1)) {
+    if (!isRef(a)) return VALUE;
+    const rows = a.sheet.rowData;
+    a.r.each(a, (v, r, c) => {
+      const row = rows[r];
+      if (hidden && row?.hidden) return;
+      const i = row ? row.find(c) : -1;
+      if (i >= 0 && row!.kind[i] === 6) {
+        const f = (row!.obj![i] as { formula: string }).formula;
+        if (NESTED.test(f)) return;
+      }
+      if (isError(v) && k !== 2 && k !== 3) throw v;
+      if (v !== null) counta++;
+      if (typeof v === 'number') xs.push(v);
+    });
+  }
+  const n = xs.length;
+  const sum = xs.reduce((p, x) => p + x, 0);
+  const variance = (sample: boolean): FormulaScalar => {
+    if (n < (sample ? 2 : 1)) return DIV0;
+    const m = sum / n;
+    return xs.reduce((p, x) => p + (x - m) ** 2, 0) / (sample ? n - 1 : n);
+  };
+  switch (k) {
+    case 1:
+      return n ? sum / n : DIV0;
+    case 2:
+      return n;
+    case 3:
+      return counta;
+    case 4:
+      return n ? Math.max(...xs) : 0;
+    case 5:
+      return n ? Math.min(...xs) : 0;
+    case 6:
+      return n ? xs.reduce((p, x) => p * x, 1) : 0;
+    case 7:
+    case 8: {
+      const v = variance(k === 7);
+      return typeof v === 'number' ? Math.sqrt(v) : v;
+    }
+    case 9:
+      return sum;
+    default:
+      return variance(k === 10);
+  }
+};
+
+const sc0 = (v: FormulaValue): FormulaScalar =>
+  isRef(v) ? v.r.cell(v.sheet, v.top, v.left) : isArr(v) ? v.data[0]! : (v as FormulaScalar);
+
 export const math: Record<string, Builtin> = {
+  SUBTOTAL,
   SUM: (args) => {
     let s = 0;
     nums(args, (n) => {
