@@ -10,8 +10,8 @@ import {
   unzipBlob,
   unzipLazy,
   unzipStream,
-  ZipLimitError,
   type ZipEntryOut,
+  ZipLimitError,
 } from '../../zip/index.js';
 import { decodeChunks, decodePart, relTypeIs } from '../common/r-opc.js';
 import type {
