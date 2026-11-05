@@ -22,7 +22,7 @@ export class ZipPathError extends ZipLimitError {
 }
 
 /** Ratio checks only start once an entry has produced this many bytes. */
-const RATIO_MIN_BYTES = 1024 * 1024;
+export const RATIO_MIN_BYTES: number = 1024 * 1024;
 
 export function assertSafePath(path: string): void {
   if (
@@ -63,6 +63,11 @@ export class Budget {
       throw new ZipLimitError(`Zip entry too large: ${name}`);
     }
     return true;
+  }
+
+  /** Decompressed bytes still allowed by `maxTotalBytes`. */
+  remaining(): number {
+    return this.limits.maxTotalBytes - this.total;
   }
 
   /**

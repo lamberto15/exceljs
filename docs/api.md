@@ -214,6 +214,7 @@ await w.end();                                 // commits the open sheet, finish
 - `s.worksheet` is a metadata-only `Worksheet` (columns, views, merges, feature fields). Set **head** data (columns, views, freeze) before adding rows; feature fields set after the rows (tables, validations, ...) are applied at `commit()`.
 - `w.workbook` holds the shared styles, so `w.workbook.styles.intern(style)` works.
 - Async writers (`xlsxStream`, `createXlsxWriter`) deflate off the main thread: with `node:zlib` in Node, Bun and Deno (the `compression` level is honored), with `CompressionStream('deflate-raw')` elsewhere (browsers, workers: the platform's default level, ~6; `compression` only switches between store and deflate), and with fflate on the main thread when neither exists. Zip CRC-32 uses `zlib.crc32` when available.
+- `writeXlsx` deflates with `zlib.deflateRawSync` (in ~1 MiB batches) and `readXlsx` inflates with `zlib.inflateRawSync` when `node:zlib` exists, which is 2-4x faster than fflate. Zip limits still apply (through `maxOutputLength`). Parts declared larger than 64 MiB are inflated as a stream with fflate to keep memory bounded. Browsers always use fflate.
 
 ## Features
 
