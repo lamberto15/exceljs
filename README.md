@@ -125,8 +125,11 @@ const text = writeCsv(
 );
 parseCsv(text); // string[][]
 parseCsv('a,1\r\nb,2', { parseNumbers: true }); // [['a', 1], ['b', 2]]
+parseCsv('TRUE,#N/A,04/11/2019', { parseBooleans: true, parseErrors: true, dateFormats: ['DD/MM/YYYY'] });
+// [[true, { error: '#N/A' }, 2019-11-04T00:00:00.000Z]]
 
 // Streaming: csvStream(rows) -> ReadableStream<Uint8Array>; csvRows(source) -> AsyncIterable<string[]>
+// csvRows reads UTF-16 files with a BOM as is; { encoding: 'auto' } also reads Excel's windows-1252 CSV
 ```
 
 ### JSON helpers
@@ -203,7 +206,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 | ------------------ | ----------------------------------------------------------- | ------------------------------ |
 | `turbosheet`          | read + write, every feature on                              | 31 KB write-only, 60 KB read + write |
 | `turbosheet/lite`     | same API, features opt-in via `options.features`           | 20 KB write-only, 36 KB read + write |
-| `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 2.4 KB                         |
+| `turbosheet/csv`      | CSV parser and writer (RFC 4180, streaming)                 | 3.1 KB                         |
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
 | `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
 | `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 16 KB                    |

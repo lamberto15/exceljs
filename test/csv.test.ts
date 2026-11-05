@@ -3,6 +3,7 @@ import type { CellValue } from '../src/core/types.js';
 import {
   CsvError,
   CsvParser,
+  type CsvValue,
   csvRows,
   csvStream,
   formatCsvRow,
@@ -203,7 +204,7 @@ describe('csvRows', () => {
       yield '1,a';
       yield '\n2,b\n';
     }
-    const rows: (string | number | Date)[][] = [];
+    const rows: CsvValue[][] = [];
     for await (const r of csvRows(gen(), { parseNumbers: true })) rows.push(r);
     expect(rows).toEqual([
       [1, 'a'],

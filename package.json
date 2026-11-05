@@ -196,7 +196,7 @@
       "name": "csv",
       "path": "dist/csv.js",
       "import": "*",
-      "limit": "2.9 KB"
+      "limit": "3.3 KB"
     },
     {
       "name": "crypto",

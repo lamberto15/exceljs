@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 84 | 7 | 10 | 46 | 6 | 153 |
-| issues | 24 | 0 | 0 | 3 | 0 | 27 |
+| integration | 85 | 7 | 10 | 45 | 6 | 153 |
+| issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
 | unit | 58 | 2 | 20 | 33 | 64 | 177 |
-| **all** | 176 | 10 | 30 | 85 | 70 | 371 |
+| **all** | 178 | 10 | 30 | 83 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -30,13 +30,13 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | Area (test file) | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | [conditional-formatting](../test/exceljs-parity/conditional-formatting.test.ts) | 1 | 0 | 0 | 1 | 0 | 2 |
-| [csv](../test/exceljs-parity/csv.test.ts) | 0 | 0 | 0 | 2 | 0 | 2 |
+| [csv](../test/exceljs-parity/csv.test.ts) | 1 | 0 | 0 | 1 | 0 | 2 |
 | [data-validation](../test/exceljs-parity/data-validation.test.ts) | 2 | 0 | 0 | 1 | 0 | 3 |
 | [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 0 | 6 | 1 | 9 |
 | [formulas](../test/exceljs-parity/formulas.test.ts) | 8 | 1 | 7 | 0 | 0 | 16 |
 | [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 0 | 1 | 2 | 0 | 0 | 3 |
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
-| [issues](../test/exceljs-parity/issues.test.ts) | 24 | 0 | 0 | 3 | 0 | 27 |
+| [issues](../test/exceljs-parity/issues.test.ts) | 25 | 0 | 0 | 2 | 0 | 27 |
 | [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 0 | 8 | 0 | 15 |
 | [misc](../test/exceljs-parity/misc.test.ts) | 27 | 0 | 5 | 7 | 4 | 43 |
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 3 | 0 | 0 | 4 |
@@ -71,7 +71,6 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 - Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
 - Document properties beyond creator / lastModifiedBy / created / modified (company, manager, title, subject, keywords, category, description, language, revision, contentStatus).
 - Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`).
-- CSV: custom read date formats (ISO 8601 only), boolean / error typing, non-UTF-8 encodings.
 
 ## Additions made for parity
 
@@ -230,13 +229,13 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| issue 991 - differentiates between strings with leading numbers and dates when reading csv files | ➖ | issues | ISO 8601 only, parsed as UTC; US `11-04-2019` stays text |
+| issue 991 - differentiates between strings with leading numbers and dates when reading csv files | ✅ | issues | with `dateFormats: ['MM-DD-YYYY'], localDates: true` (exceljs' default list includes MM-DD-YYYY, local time); by default ISO 8601 only, as UTC |
 
 ### `integration/issues/issue-995-encoding.spec.js`
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| issue 995 - encoding option works fine | ✅ | issues | CSV is always UTF-8 (no `encoding` option) |
+| issue 995 - encoding option works fine | ✅ | issues | CSV is written as UTF-8; `csvRows` reads any `encoding` (BOM sniffing, `'auto'`) |
 
 ### `integration/issues/shared-formula.spec.js`
 
@@ -409,7 +408,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| CSV file and its configuration | ➖ | csv | delimiter + `dateFormat` supported; custom read date formats are not (ISO only) |
+| CSV file and its configuration | ✅ | csv | delimiter, write `dateFormat`, read `dateFormats` (UTC unless `localDates`) |
 | Duplicate rows replacing properly | ✅ | rows-columns |  |
 | Duplicate rows shifting properly | ✅ | rows-columns |  |
 | Duplicate rows with height properly | ✅ | rows-columns |  |
@@ -418,7 +417,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | auto filter | ✅ | misc |  |
 | company, manager, etc | 🚫 | misc (skip) | only creator/lastModifiedBy/created/modified are modelled |
 | creator, lastModifiedBy, etc | ✅ | misc |  |
-| csv file | ➖ | csv | via `sheetToArrays`/`writeCsv`/`parseCsv`/`arraysToSheet`; hyperlinks as text, booleans/errors untyped |
+| csv file | ➖ | csv | via `sheetToArrays`/`writeCsv`/`parseCsv`/`arraysToSheet`; hyperlinks as text; booleans / errors typed with `parseBooleans` / `parseErrors` |
 | dataValidations | ➖ | data-validation | sqref-based model, defined name instead of `cell.name`, formulas read as text |
 | defined names | ➖ | defined-names | no `cell.name(s)`/`addName`/`getRanges`; `addDefinedName` with ranges; sheet names always quoted |
 | empty string | ✅ | values |  |

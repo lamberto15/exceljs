@@ -72,6 +72,27 @@ describe('docs/migrating-from-exceljs.md', () => {
     }
   });
 
+  it('csv typing like ExcelJS csv.read', async () => {
+    const { arraysToSheet } = await import('../src/json/index.js');
+    const { parseCsv } = await import('../src/csv/index.js');
+    const text = 'n,ok,err,when\n5,true,#N/A,11-04-2019\n';
+    const rows = parseCsv(text, {
+      parseNumbers: true,
+      parseBooleans: true,
+      parseErrors: true,
+      dateFormats: ['MM-DD-YYYY'],
+      localDates: true,
+    });
+    const ws = arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
+    expect(ws.getRow(2).values).toEqual([
+      undefined,
+      5,
+      true,
+      { error: '#N/A' },
+      new Date(2019, 10, 4),
+    ]);
+  });
+
   it('merged cells and styles are values', () => {
     const wb = new Workbook();
     const ws = wb.addWorksheet('S');
