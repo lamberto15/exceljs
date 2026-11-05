@@ -940,10 +940,16 @@ for (const [file, what] of [
     'LOOKUP(99,A1:A4,C1:C4)',
     'LOOKUP(2,A1:C4)',
   ];
-  fs.forEach((f, i) => ws.setCell(i + 1, 6, { formula: f }));
+  fs.forEach((f, i) => {
+    ws.setCell(i + 1, 6, { formula: f });
+  });
   evaluate(wb);
-  fs.forEach((_, i) => ws.setCell(i + 1, 7, ws.getValue(i + 1, 6).result));
-  fs.forEach((_, i) => ws.setCell(i + 1, 8, { formula: `F${i + 1}=G${i + 1}` }));
+  fs.forEach((_, i) => {
+    ws.setCell(i + 1, 7, ws.getValue(i + 1, 6).result);
+  });
+  fs.forEach((_, i) => {
+    ws.setCell(i + 1, 8, { formula: `F${i + 1}=G${i + 1}` });
+  });
   evaluate(wb);
   save(
     '26-fill-offset-indirect-lookup.xlsx',
