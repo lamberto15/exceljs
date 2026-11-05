@@ -197,6 +197,20 @@ interface XlsxRow { sheet: string; sheetIndex: number; row: number /* 1-based */
 
 `xlsxRows` accepts `Uint8Array | ArrayBuffer | Blob | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>` (`File` is a `Blob`). Bytes and Blobs are random-access. The central directory is read first, then the metadata parts, then each sheet as it inflates, so sheet data uses constant memory whatever the part order. That covers files saved by Excel 16.x and ExcelJS and `createXlsxWriter` output, which all store worksheets before `styles.xml`. For a large local file pass a lazily read Blob: `xlsxRows(await fs.openAsBlob(path))` in Node, or a `File` in browsers. Streams are read in archive order. With a stream, a sheet streams at constant memory only when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come first, as in `writeXlsx` / `xlsxStream` output; otherwise it is buffered. The byte limits (`maxEntryBytes`, `maxTotalBytes`) apply only to metadata and buffered parts. A streamed sheet keeps nothing, so only `maxCompressionRatio` applies to it. The shared-string table is always held in memory. Sheets are emitted in archive order (buffered ones in tab order once their metadata is known). `maxRows` / `maxCols` throw `SheetLimitError` while the sheet is parsed; rows already yielded stay yielded. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
 
+Uploads: don't pipe a request body straight into `xlsxRows`. A stream can't seek, so an Excel / ExcelJS file has each sheet buffered, and a large one fails the byte limits; the error message says so. Save the upload to a temporary file, then read it as a Blob:
+
+```ts
+import { createWriteStream, openAsBlob } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+
+await pipeline(req, createWriteStream(tmpPath)); // or your framework's upload-to-disk option
+for await (const row of xlsxRows(await openAsBlob(tmpPath))) {
+  // constant memory, whatever order the file stores its parts in
+}
+```
+
+In browsers and workers, pass the `File` (or a `Blob` from `await response.blob()`) instead of `response.body`.
+
 Other exports: `listPreservedParts(wb)` -> `PreservedPart[]` (`{ path, contentType }`) of the parts the next write will emit from the original file; `translateFormula(formula, rowOffset, colOffset)` (moves relative references, as `fillFormula` does); `SheetEntry` (`{ name, sheetId, state, rId }`, a `<sheet>` of `workbook.xml`).
 
 ## Streaming writer
