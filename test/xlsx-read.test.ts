@@ -338,9 +338,7 @@ describe('readXlsx: exceljs round-trip', () => {
     const wb = readXlsx(buf, { sheets: ['other'] });
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Other']);
     const rows = await collectRows(buf, { sheets: ['Other'] });
-    expect(rows).toEqual([
-      { sheet: 'Other', sheetIndex: 1, row: 2, cells: [undefined, 'target'] },
-    ]);
+    expect(rows).toEqual([{ sheet: 'Other', sheetIndex: 1, row: 2, cells: [undefined, 'target'] }]);
   });
 
   it('accepts ArrayBuffer and ReadableStream sources', async () => {
