@@ -30,6 +30,6 @@ See "Not supported yet" in the [README](README.md), [docs/exceljs-parity.md](doc
 
 ## How work is done
 
-- Every change: PR into `next`, with a changeset (`pnpm changeset`) when user-visible; required checks: Node 22/24 × ubuntu/windows, quality. The maintainer merges.
+- Every change: PR into `main`, with a changeset (`pnpm changeset`) when user-visible; required checks: Node 22/24 × ubuntu/windows, quality. The maintainer merges.
 - File-format changes are verified in real Microsoft Excel with the excel pack (`pnpm build && node test/smoke/excel-pack.mjs out/pack`), not just LibreOffice/ExcelJS — e.g. the `_xlfn.` bug was only visible in Excel.
 - Releases: merge the bot's "chore(release): version packages" PR → CI publishes to npm over OIDC with provenance ([RELEASING.md](RELEASING.md)).
