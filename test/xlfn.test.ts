@@ -210,3 +210,19 @@ describe('partial prefixes written by the caller', () => {
     }
   });
 });
+
+describe('structured reference @ shorthand on write', () => {
+  it.each([
+    ['Sales[@Units]*Sales[@Price]', 'Sales[[#This Row],[Units]]*Sales[[#This Row],[Price]]'],
+    ['Sales[@[Unit Price]]', 'Sales[[#This Row],[Unit Price]]'],
+    ['[@Units]+1', '[[#This Row],[Units]]+1'],
+    ['SUM(T[@[A]:[B]])', 'SUM(T[[#This Row],[A]:[B]])'],
+    ['T[@]', 'T[#This Row]'],
+    ["T[@[a']b]]", "T[[#This Row],[a']b]]"],
+    ['"x[@y]"&T[@y]', '"x[@y]"&T[[#This Row],[y]]'],
+    ["'Sheet [@1]'!A1", "'Sheet [@1]'!A1"],
+    ['@A1:A3', '@A1:A3'],
+  ])('%s → %s', (f, want) => {
+    expect(addXlfn(f)).toBe(want);
+  });
+});

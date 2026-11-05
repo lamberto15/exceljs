@@ -16,6 +16,7 @@ import {
   addImage,
   addNote,
   addTable,
+  addTableColumn,
   addTableRows,
   copyRange,
   copyWorksheet,
@@ -32,11 +33,16 @@ import {
   placeImage,
   protectSheet,
   readXlsx,
+  removeTableColumns,
+  removeTableRows,
+  renameTableColumn,
   richTextFromHtml,
   setCheckbox,
   setPrintArea,
   setPrintTitles,
   setSheetStyle,
+  setTableHeaderRow,
+  setTableTotalsRow,
   sortRange,
   spliceRows,
   Workbook,
@@ -1120,6 +1126,55 @@ for (const [file, what] of [
     '30-shared-formulas-links-views.xlsx',
     writeXlsx(wb),
     `"Shared": B2:B1001 = A*2 and C2:C1001 = running SUM($A$2:An) as shared formulas (click B500: formula A500*2; C500: SUM($A$2:A500) = 124750); B10 shows "overwritten", B11 formula A11*3 (30); B1003 = A1003+1 (6), C1003 = B1003+1 (7 after recalculation). "Links and rows": A1 is a link to example.com with tooltip "set via cell.hyperlink"; A2 is the plain number 42; row 3 bold red A, yellow C3, 30 pt tall; row 4 "inserted (o+)" bold red, 30 pt, yellow C4; row 5 "inherits (i+)" bold red, 30 pt, yellow C5; row 6 "inherits (i)" bold red, 30 pt, C6 NOT yellow. "Page layout" opens in Page Layout view with no ruler. "Break preview" opens in Page Break Preview, frozen at B3. No repair prompt.`,
+  );
+}
+
+// 31 — group 14: table editing --------------------------------------------------------------
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Tables');
+  const mk = (name, topLeft) =>
+    addTable(ws, {
+      name,
+      topLeft,
+      totalsRow: true,
+      columns: [
+        { name: 'Region', totalsRowLabel: 'Total' },
+        { name: 'Units', totalsRowFunction: 'sum' },
+        { name: 'Price' },
+        { name: 'Amount', calculatedColumnFormula: `${name}[@Units]*${name}[@Price]` },
+      ],
+      rows: [
+        ['N', 1, 10],
+        ['S', 2, 20],
+        ['E', 3, 30],
+        ['W', 4, 40],
+      ],
+    });
+  mk('Edited', 'A1');
+  renameTableColumn(ws, 'Edited', 'Units', 'Qty');
+  addTableColumn(
+    ws,
+    'Edited',
+    { name: 'Tax', calculatedColumnFormula: 'Edited[@Amount]*0.1', totalsRowFunction: 'sum' },
+    [],
+    4,
+  );
+  removeTableRows(ws, 'Edited', 1);
+  removeTableColumns(ws, 'Edited', 2); // Price goes: Amount becomes Edited[@Qty]*#REF!, like Excel
+  ws.setCell('H1', { formula: 'SUM(Edited[Qty])' });
+  mk('NoHeader', 'A10');
+  setTableHeaderRow(ws, 'NoHeader', false);
+  setTableTotalsRow(ws, 'NoHeader', false);
+  mk('Toggled', 'A20');
+  setTableTotalsRow(ws, 'Toggled', false);
+  setTableHeaderRow(ws, 'Toggled', false);
+  setTableHeaderRow(ws, 'Toggled', true);
+  setTableTotalsRow(ws, 'Toggled', true);
+  save(
+    '31-table-editing.xlsx',
+    writeXlsx(wb),
+    `"Tables": table "Edited" A1:D5 with columns Region / Qty / Amount / Tax (Qty renamed from Units, Price removed so Amount and Tax show #REF! as in Excel, Tax added), rows N, E, W (S removed) and a totals row (Qty sum 8); H1 = SUM(Edited[Qty]) = 8. Table "NoHeader" A10:D13: no header row, no totals row, 4 data rows. Table "Toggled" A20:D25: header, 4 rows, totals row (Units sum 10). No repair prompt.`,
   );
 }
 
