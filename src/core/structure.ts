@@ -36,7 +36,14 @@ import {
   MAX_ROWS,
 } from './address.js';
 import type { CellValueInput, DefinedName, Formula, Style } from './types.js';
-import { CellKind, Column, RowData, type RowObject, type Worksheet } from './worksheet.js';
+import {
+  CellKind,
+  Column,
+  RowData,
+  type RowObject,
+  type RowStyleOption,
+  type Worksheet,
+} from './worksheet.js';
 
 type RowValues = readonly CellValueInput[] | RowObject;
 
@@ -804,16 +811,24 @@ export function insertRows(
   ws: Worksheet,
   pos: number,
   rows: number | readonly RowValues[],
-  options: InsertRowsOptions = {},
+  options: InsertRowsOptions | RowStyleOption = {},
 ): void {
   const count = typeof rows === 'number' ? rows : rows.length;
   check(true, pos - 1, count);
   edit(ws, true, pos - 1, count);
   const r0 = pos - 1;
-  const inherit = options.inheritStyle;
-  if (inherit) {
-    const src = st(ws)._rows[inherit === 'above' ? r0 - 1 : r0 + count];
-    if (src) for (let i = 0; i < count; i++) copyFormat(ws, src, r0 + i);
+  if (typeof options === 'string') {
+    // ExcelJS codes: 'i' copies the row above into every new row; 'o' gives new row k the
+    // format of the row that was at pos + k before the insert
+    const plus = options[1] === '+';
+    if (options[0] === 'i' && r0 > 0) {
+      for (let i = 0; i < count; i++) ws._copyRowFormat(r0 - 1, r0 + i, plus);
+    } else if (options[0] === 'o') {
+      for (let i = 0; i < count; i++) ws._copyRowFormat(r0 + count + i, r0 + i, plus);
+    }
+  } else if (options.inheritStyle) {
+    const src = options.inheritStyle === 'above' ? r0 - 1 : r0 + count;
+    for (let i = 0; i < count; i++) ws._copyRowFormat(src, r0 + i, true);
   }
   if (typeof rows !== 'number') for (let i = 0; i < count; i++) fillRow(ws, r0 + i, rows[i]);
 }
@@ -823,7 +838,7 @@ export function insertRow(
   ws: Worksheet,
   pos: number,
   values?: RowValues,
-  options?: InsertRowsOptions,
+  options?: InsertRowsOptions | RowStyleOption,
 ): void {
   insertRows(ws, pos, [values ?? []], options);
 }
@@ -917,13 +932,6 @@ function fillCols(ws: Worksheet, c0: number, cols: readonly (readonly CellValueI
       if (v !== null && v !== undefined) ws.setCell(r + 1, c0 + k + 1, v);
     }
   });
-}
-
-/** Copy row props and cell styles (not values) of src to row r0. */
-function copyFormat(ws: Worksheet, src: RowData, r0: number): void {
-  ws.setRowProps(r0 + 1, { height: src.height || undefined, styleIndex: src.xf || undefined });
-  for (let i = 0; i < src.n; i++)
-    if (src.style[i]) ws.setStyle(r0 + 1, src.col[i]! + 1, src.style[i]!);
 }
 
 /** Copy of src (values, styles, row properties) as row r0; formulas translated like a paste. */

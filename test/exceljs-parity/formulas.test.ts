@@ -8,7 +8,7 @@ import { exceljsLoad, fixture, roundtrip, streamWrite } from './helpers.js';
 
 describe('exceljs parity: formulas', () => {
   // exceljs: spec/integration/workbook/workbook.spec.js — "shared formula"
-  it('fillFormula over a block (➖ written as plain formulas, no shared master)', async () => {
+  it('fillFormula over a block is written as a shared master + followers', async () => {
     const wb = new Workbook();
     const ws = wb.addWorksheet('Hello');
     fillFormula(ws, 'A1:B2', 'ROW()+COLUMN()', [2, 3, 3, 4]);
@@ -17,11 +17,17 @@ describe('exceljs parity: formulas', () => {
     expect(ws2.getValue('A1')).toEqual({ formula: 'ROW()+COLUMN()', result: 2 });
     expect(ws2.getValue('B2')).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
     const x = (await exceljsLoad(bytes)).getWorksheet('Hello')!;
-    expect(x.getCell('B1').value).toEqual({ formula: 'ROW()+COLUMN()', result: 3 });
+    expect(x.getCell('A1').value).toEqual({
+      formula: 'ROW()+COLUMN()',
+      result: 2,
+      shareType: 'shared',
+      ref: 'A1:B2',
+    });
+    expect(x.getCell('B1').value).toEqual({ sharedFormula: 'A1', result: 3 });
   });
 
   // exceljs: spec/integration/workbook-xlsx-writer/workbook-xlsx-writer.spec.js — "shared formula"
-  it('streaming writer: { sharedFormula } values are written as translated plain formulas', async () => {
+  it('streaming writer: { sharedFormula } values are written as Excel shared formulas', async () => {
     const bytes = await streamWrite((w) => {
       const s = w.addWorksheet('Hello');
       s.addRow([
@@ -34,13 +40,13 @@ describe('exceljs parity: formulas', () => {
       ]);
     });
     const ws = readXlsx(bytes).getWorksheet('Hello')!;
-    // ➖ read back as plain formulas (exceljs: { sharedFormula: 'A1', result } / shareType)
+    // ➖ read back expanded to plain formulas (exceljs: { sharedFormula: 'A1', result } / shareType)
     expect(ws.getValue('A1')).toEqual({ formula: 'ROW()+COLUMN()', result: 2 });
     expect(ws.getValue('B1')).toEqual({ formula: 'ROW()+COLUMN()', result: 3 });
     expect(ws.getValue('A2')).toEqual({ formula: 'ROW()+COLUMN()', result: 3 });
     expect(ws.getValue('B2')).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
     const x = (await exceljsLoad(bytes)).getWorksheet('Hello')!;
-    expect(x.getCell('B2').value).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
+    expect(x.getCell('B2').value).toEqual({ sharedFormula: 'A1', result: 4 });
   });
 
   // exceljs: spec/unit/doc/cell.spec.js — "shares formulas"
@@ -55,7 +61,7 @@ describe('exceljs parity: formulas', () => {
     expect(ws.getCell('C1').value).toEqual({ formula: 'B1+1', result: 3 });
   });
 
-  describe('fillFormula (➖ plain formulas per cell instead of a shared master / { sharedFormula } slaves)', () => {
+  describe('fillFormula (➖ each cell reads back as its own formula, not { sharedFormula } slaves)', () => {
     const f = (ws: ReturnType<Workbook['addWorksheet']>, ref: string) => ws.getValue(ref);
 
     // exceljs: spec/unit/doc/worksheet.shared-formula.spec.js — "Fills formula using 2D array values"
@@ -107,11 +113,11 @@ describe('exceljs parity: formulas', () => {
       expect(['A1', 'B1', 'A2', 'B2'].map((r) => f(ws, r))).toEqual(
         [2, 3, 3, 4].map((result) => ({ formula: 'ROW()+COLUMN()', result })),
       );
-      // exceljs reads the plain formulas with their results
+      // exceljs reads the shared followers with their results
       const x = (
         await exceljsLoad((await import('../../src/index.js')).writeXlsx(wb))
       ).getWorksheet('s')!;
-      expect(x.getCell('B2').value).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
+      expect(x.getCell('B2').value).toEqual({ sharedFormula: 'A1', result: 4 });
     });
   });
 

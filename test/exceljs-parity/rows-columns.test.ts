@@ -737,7 +737,47 @@ describe('exceljs parity: rows and columns', () => {
   });
 
   // exceljs: spec/integration/worksheet.spec.js — "adds rows with style option"
-  it.skip('addRow style inheritance codes ("i", "o", "n") — not supported: addRow takes a Style', () => {});
+  it('adds rows with style option', () => {
+    const ws = new Workbook().addWorksheet('blort');
+    const bold = { font: { bold: true } };
+    const red = {
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } },
+    } as const;
+    ws.addRow([1, 'a']);
+    ws.getCell('A1').style = bold;
+    ws.getCell('C1').style = red; // styled but empty
+    ws.getRow(1).height = 30;
+    expect(ws.addRow([2, 'b'], 'i+')).toBe(2);
+    expect(ws.getCell('A2').font).toMatchObject({ bold: true });
+    expect(ws.getCell('C2').fill).toEqual(red.fill); // 'i+' copies empty cells' styles too
+    expect(ws.getRowProps(2).height).toBe(30);
+    ws.addRow([3], 'i');
+    expect(ws.getCell('A3').font).toMatchObject({ bold: true });
+    expect(ws.getCell('C3').fill).toBeUndefined(); // 'i': only non-empty cells
+    ws.addRows([[4], [5]], 'n');
+    expect(ws.getCell('A4').font?.bold).toBeUndefined();
+    ws.addRow([6], 'o'); // nothing below: no-op, as in exceljs
+    expect(ws.getCell('A6').font?.bold).toBeUndefined();
+  });
+
+  // exceljs: lib/doc/worksheet.js insertRow / insertRows style option
+  it('inserts rows with style option ("i", "o", "o+")', () => {
+    const ws = new Workbook().addWorksheet('s');
+    ws.addRows([['top'], ['r2'], ['r3']]);
+    ws.getCell('A1').style = { font: { italic: true } };
+    ws.getCell('A2').style = { font: { bold: true } };
+    ws.getCell('B2').style = { numFmt: '0.00' }; // empty
+    ws.getCell('A3').style = { font: { strike: true } };
+    insertRow(ws, 2, ['new'], 'i');
+    expect(ws.getCell('A2').font).toMatchObject({ italic: true });
+    insertRows(ws, 3, [['x'], ['y']], 'o+'); // row k <- the row that was at 3 + k
+    expect(ws.getCell('A3').font).toMatchObject({ bold: true });
+    expect(ws.getCell('B3').numFmt).toBe('0.00');
+    expect(ws.getCell('A4').font).toMatchObject({ strike: true });
+    insertRow(ws, 1, ['n'], 'o');
+    expect(ws.getCell('A1').font).toMatchObject({ italic: true });
+    expect(ws.getCell('A1').value).toBe('n');
+  });
 
   // exceljs: spec/integration/worksheet.spec.js — "inserts rows by object"
   it('inserts rows by object', () => {

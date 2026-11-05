@@ -79,6 +79,22 @@ Over the runs made while preparing this page, ExcelJS varied more than turboshee
 and `WorkbookReader` 1.8-3.7 s, while turbosheet's read and write times moved by about 10% or less. The README
 quotes ranges for those cases for this reason.
 
+## Shared formulas
+
+`fillFormula` ranges are written as Excel shared formulas (#101): the top-left cell holds the formula,
+the others hold `<f t="shared" si="0"/>` plus their cached value. For 100,000 rows with two filled
+columns (`C = A1*B1+$A$1`, `D = IF(C1>100,C1-100,0)`) next to two number columns, `writeXlsx` on
+Node 26 (Apple silicon, default compression):
+
+| Output                       | .xlsx    | sheet XML | write  |
+| ---------------------------- | -------- | --------- | ------ |
+| plain formula per cell       | 3,159 KB | 17.7 MB   | 383 ms |
+| shared formulas (default)    | 2,080 KB | 16.0 MB   | 309 ms |
+
+The followers still carry their cached results, so the uncompressed XML shrinks less than the zip.
+Each follower is checked against the master's formula moved by its offset, so cells edited after the
+fill are written as their own formulas.
+
 ## Reproduce
 
 ```sh

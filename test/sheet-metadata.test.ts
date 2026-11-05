@@ -111,6 +111,68 @@ describe('several sheet views', () => {
     ]);
   });
 
+  // #102
+  it('style / showRuler / zoomScaleNormal / activePane round-trip and match exceljs', async () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('S');
+    ws.getCell('A1').value = 1;
+    ws.views = [
+      {
+        style: 'pageLayout',
+        showRuler: false,
+        zoomScale: 80,
+        zoomScaleNormal: 120,
+        state: 'frozen',
+        xSplit: 1,
+        ySplit: 2,
+        activePane: 'topRight',
+      },
+    ];
+    const buf = writeXlsx(wb);
+    const s = part(buf, SHEET1);
+    expect(s).toContain('view="pageLayout"');
+    expect(s).toContain('showRuler="0"');
+    expect(s).toContain('zoomScaleNormal="120"');
+    expect(s).toContain('activePane="topRight"');
+    expect(s).toContain('<selection pane="topRight"');
+    expect(readXlsx(buf).worksheets[0]!.views[0]).toEqual({
+      state: 'frozen',
+      xSplit: 1,
+      ySplit: 2,
+      topLeftCell: 'B3',
+      activePane: 'topRight',
+      style: 'pageLayout',
+      showRuler: false,
+      zoomScale: 80,
+      zoomScaleNormal: 120,
+      tabSelected: true,
+    });
+    const x = (await oracle(buf)).worksheets[0]!.views[0]!;
+    expect(x).toMatchObject({
+      style: 'pageLayout',
+      showRuler: false,
+      zoomScale: 80,
+      zoomScaleNormal: 120,
+    }); // (exceljs does not read activePane back for frozen panes)
+  });
+
+  it('reads exceljs-written view fields; a derived activePane is not kept', async () => {
+    const x = new ExcelJS.Workbook();
+    x
+      .addWorksheet('S', {
+        views: [
+          { style: 'pageBreakPreview', showRuler: false, zoomScaleNormal: 90 },
+          // biome-ignore lint/suspicious/noExplicitAny: exceljs typings lack activePane on frozen views
+          { state: 'frozen', ySplit: 1, activePane: 'bottomLeft' } as any,
+        ],
+      })
+      .getCell('A1').value = 1;
+    const buf = new Uint8Array(await x.xlsx.writeBuffer());
+    const [a, b] = readXlsx(buf).worksheets[0]!.views;
+    expect(a).toMatchObject({ style: 'pageBreakPreview', showRuler: false, zoomScaleNormal: 90 });
+    expect(b!.activePane).toBeUndefined();
+  });
+
   it('padded windows copy the first wb.views entry', () => {
     const wb = new Workbook();
     wb.views = [{ width: 20000, height: 10000 }];

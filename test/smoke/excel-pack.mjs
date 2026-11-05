@@ -1079,6 +1079,50 @@ for (const [file, what] of [
   );
 }
 
+// 30 — group 13: shared formulas, cell.hyperlink, row style codes, sheet view fields ----------
+{
+  const wb = new Workbook();
+  const sf = wb.addWorksheet('Shared');
+  sf.addRow(['n', 'double', 'running sum']);
+  for (let r = 2; r <= 1001; r++) sf.setCell(r, 1, r - 1);
+  fillFormula(sf, 'B2:B1001', 'A2*2', (r) => (r - 1) * 2);
+  fillFormula(sf, 'C2:C1001', 'SUM($A$2:A2)', (r) => ((r - 1) * r) / 2);
+  sf.setCell('B10', 'overwritten'); // inside the shared range, not a follower
+  sf.setCell('B11', { formula: 'A11*3', result: 30 });
+  sf.addRow(['master', { formula: 'A1003+1' }]);
+  sf.setCell('A1003', 5);
+  sf.setCell('B1003', { formula: 'A1003+1', result: 6 });
+  sf.setCell('C1003', { sharedFormula: 'B1003', result: 1 });
+  const ui = wb.addWorksheet('Links and rows');
+  ui.getCell('A1').value = 'example.com';
+  ui.getCell('A1').hyperlink = 'https://example.com/';
+  ui.getCell('A1').tooltip = 'set via cell.hyperlink';
+  ui.getCell('A2').value = 42;
+  ui.getCell('A2').hyperlink = 'https://ignored.example/';
+  ui.addRow(['styled', 'row']);
+  ui.getCell('A3').style = { font: { bold: true, color: { argb: 'FFC00000' } } };
+  ui.getCell('C3').style = {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } },
+  };
+  ui.getRow(3).height = 30;
+  ui.addRow(['inherits (i+)'], 'i+');
+  ui.addRow(['inherits (i)'], 'i');
+  insertRows(ui, 4, [['inserted (o+)']], 'o+');
+  const pl = wb.addWorksheet('Page layout');
+  pl.getCell('A1').value = 'page layout view, no ruler';
+  pl.views = [{ style: 'pageLayout', showRuler: false, zoomScaleNormal: 150 }];
+  const pb = wb.addWorksheet('Break preview');
+  pb.getCell('A1').value = 'page break preview, frozen at B3, focus top-right';
+  pb.views = [
+    { style: 'pageBreakPreview', state: 'frozen', xSplit: 1, ySplit: 2, activePane: 'topRight' },
+  ];
+  save(
+    '30-shared-formulas-links-views.xlsx',
+    writeXlsx(wb),
+    `"Shared": B2:B1001 = A*2 and C2:C1001 = running SUM($A$2:An) as shared formulas (click B500: formula A500*2; C500: SUM($A$2:A500) = 124750); B10 shows "overwritten", B11 formula A11*3 (30); B1003 = A1003+1 (6), C1003 = B1003+1 (7 after recalculation). "Links and rows": A1 is a link to example.com with tooltip "set via cell.hyperlink"; A2 is the plain number 42; row 3 bold red A, yellow C3, 30 pt tall; row 4 "inserted (o+)" bold red, 30 pt, yellow C4; row 5 "inherits (i+)" bold red, 30 pt, yellow C5; row 6 "inherits (i)" bold red, 30 pt, C6 NOT yellow. "Page layout" opens in Page Layout view with no ruler. "Break preview" opens in Page Break Preview, frozen at B3. No repair prompt.`,
+  );
+}
+
 writeFileSync(
   join(out, 'CHECKLIST.md'),
   `# Excel compatibility check

@@ -114,7 +114,45 @@ describe('exceljs parity: hyperlinks', () => {
     });
   });
 
-  // exceljs: spec/unit/doc/cell.spec.js — "upgrades from string to hyperlink"
-  // exceljs: spec/unit/doc/cell.spec.js — "doesn't upgrade from non-string to hyperlink"
-  it.skip('cell.hyperlink setter upgrading a string cell — not supported (assign a Hyperlink value)', () => {});
+  // exceljs: spec/unit/doc/cell.spec.js — "upgrades from string to hyperlink" / "doesn't upgrade from non-string to hyperlink"
+  // (exceljs uses the internal cell._upgradeToHyperlink; here it is the cell.hyperlink setter)
+  it('upgrades from string to hyperlink', () => {
+    const cell = new Workbook().addWorksheet('s').getCell('A1');
+    cell.value = 'www.link.com';
+    cell.hyperlink = 'http://www.link.com';
+    expect(cell.value).toEqual({ text: 'www.link.com', hyperlink: 'http://www.link.com' });
+    expect(cell.kind).toBe(CellKind.Hyperlink);
+    expect(cell.hyperlink).toBe('http://www.link.com');
+  });
+  it("doesn't upgrade from non-string to hyperlink", () => {
+    const cell = new Workbook().addWorksheet('s').getCell('A1');
+    cell.value = 1;
+    cell.hyperlink = 'http://www.link.com';
+    expect(cell.value).toBe(1);
+    expect(cell.hyperlink).toBeUndefined();
+  });
+  // ➕ beyond exceljs: retarget / remove a link, rich text, tooltip
+  it('retargets, removes and tooltips a hyperlink cell; rich text keeps its runs', () => {
+    const ws = new Workbook().addWorksheet('s');
+    const a = ws.getCell('A1');
+    a.value = { text: 'x', hyperlink: 'http://a', tooltip: 't' };
+    a.hyperlink = 'http://b';
+    expect(a.value).toEqual({ text: 'x', hyperlink: 'http://b', tooltip: 't' });
+    a.tooltip = 'new';
+    expect(a.tooltip).toBe('new');
+    a.tooltip = undefined;
+    expect(a.value).toEqual({ text: 'x', hyperlink: 'http://b' });
+    a.hyperlink = undefined;
+    expect(a.value).toBe('x');
+    a.tooltip = 'ignored';
+    expect(a.value).toBe('x');
+    const b = ws.getCell('B1');
+    const runs = [{ text: 'a', font: { bold: true } }, { text: 'b' }];
+    b.value = { richText: runs };
+    b.hyperlink = 'http://c';
+    expect(b.value).toEqual({ text: 'ab', hyperlink: 'http://c', runs });
+    b.hyperlink = undefined;
+    expect(b.value).toEqual({ richText: runs });
+    expect(readXlsx(writeXlsx(ws.workbook)).worksheets[0]!.getValue('A1')).toBe('x');
+  });
 });

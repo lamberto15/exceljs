@@ -630,6 +630,17 @@ export class SheetHandler implements XmlHandler {
     if (this.fType === 'shared' && this.fSi !== undefined) {
       if (text !== '') {
         this.shared.set(this.fSi, { formula: text, r: this.cRow, c: this.cCol });
+        // keep the group so writing the sheet back emits it shared again
+        if (this.ws && this.fRef) {
+          try {
+            const g = decodeRange(this.fRef);
+            if (g.top === this.cRow && g.left === this.cCol) {
+              this.ws._addSharedGroup(g.top, g.left, g.bottom, g.right);
+            }
+          } catch {
+            // malformed ref: the cells are still read, just written back as plain formulas
+          }
+        }
         return text;
       }
       const m = this.shared.get(this.fSi);
@@ -704,6 +715,11 @@ export class SheetHandler implements XmlHandler {
         v.showRowColHeaders = false;
       }
       if (a.zoomScale !== undefined && +a.zoomScale !== 100) v.zoomScale = +a.zoomScale;
+      if (a.zoomScaleNormal !== undefined && +a.zoomScaleNormal) {
+        v.zoomScaleNormal = +a.zoomScaleNormal;
+      }
+      if (a.showRuler !== undefined && !attrBool(a.showRuler)) v.showRuler = false;
+      if (a.view === 'pageLayout' || a.view === 'pageBreakPreview') v.style = a.view;
       if (attrBool(a.rightToLeft)) v.rightToLeft = true;
       this.views.push(v);
       return;
@@ -716,6 +732,15 @@ export class SheetHandler implements XmlHandler {
       if (a.xSplit !== undefined && +a.xSplit) v.xSplit = +a.xSplit;
       if (a.ySplit !== undefined && +a.ySplit) v.ySplit = +a.ySplit;
       if (a.topLeftCell) v.topLeftCell = a.topLeftCell;
+      const ap = a.activePane;
+      if (ap === 'topLeft' || ap === 'topRight' || ap === 'bottomLeft' || ap === 'bottomRight') {
+        const x = v.xSplit ?? 0;
+        const y = v.ySplit ?? 0;
+        // kept only when it differs from what the writer derives from the split
+        if (ap !== (x > 0 && y > 0 ? 'bottomRight' : y > 0 ? 'bottomLeft' : 'topRight')) {
+          v.activePane = ap;
+        }
+      }
     } else if (ln === 'selection') {
       if (a.activeCell && v.activeCell === undefined) v.activeCell = a.activeCell;
     }

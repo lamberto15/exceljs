@@ -30,6 +30,7 @@ import {
   afterSheetParts,
   encodeRow,
   newSheetCtx,
+  sharedFormulas,
   sheetHead,
   sheetPlan,
   sheetTail,
@@ -229,6 +230,7 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     ctx.dimension = ws.dimensions?.ref;
     ctx.tabSelected = si === active;
     ctx.outlineLevelRow = outline;
+    ctx.shared = sharedFormulas(ws, ctx);
     let buf = sheetHead(ctx);
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];

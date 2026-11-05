@@ -38,6 +38,7 @@ import {
   newSheetCtx,
   type SheetCtx,
   type SheetPlan,
+  sharedFormulas,
   sheetHead,
   sheetPlan,
   sheetTail,
@@ -220,6 +221,7 @@ export class StreamSheet {
     const rows = sc.rowData;
     const base = this._base;
     const ctx = this._ctx;
+    ctx.shared = sharedFormulas(sc, ctx, base);
     let buf = this._buf;
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
@@ -234,6 +236,7 @@ export class StreamSheet {
     this._buf = buf;
     this._base = base + rows.length;
     this._scratch = undefined;
+    ctx.shared = undefined;
   }
 
   private _emit(last: boolean): void {

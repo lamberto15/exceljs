@@ -13,7 +13,13 @@ import { encodeAddr, encodeCol, encodeRange } from '../../core/address.js';
 import type { SharedStrings } from '../../core/sharedstrings.js';
 import { fontMetrics } from '../../core/styles.js';
 import type { CellError, Formula, Hyperlink, RichText } from '../../core/types.js';
-import type { Column, RowData, Worksheet, WorksheetView } from '../../core/worksheet.js';
+import type {
+  Column,
+  RowData,
+  SharedGroup,
+  Worksheet,
+  WorksheetView,
+} from '../../core/worksheet.js';
 import { escapeAttr, escapeText } from '../../xml/index.js';
 import { runsXml } from '../common/rich-text.js';
 import { addXlfn } from '../common/xlfn.js';
@@ -24,6 +30,7 @@ import {
   SheetSlot,
   type SheetWriteCtx,
 } from '../features/types.js';
+import { translateFormula } from '../read/formula.js';
 import { type PackageParts, type PartRec, RelList, relsXml } from './package.js';
 import {
   colorAttrs,
@@ -44,6 +51,10 @@ export interface SheetCtx extends SheetWriteCtx {
   readonly links: LinkRec[];
   /** Set when any formula cell was written. */
   formulas: boolean;
+  /** Shared-formula groups of the rows being encoded (see {@link sharedFormulas}). */
+  shared: SharedWrite | undefined;
+  /** Next shared-formula index (`si`) of this sheet. */
+  si: number;
   /** Sheet relationships (written to the rels part after the sheet). */
   readonly rels: RelList;
   /** Used range ("A1:C10"); omitted when undefined (streaming). */
@@ -74,6 +85,8 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
     sst: o.sst,
     links: [],
     formulas: false,
+    shared: undefined,
+    si: 0,
     rels,
     dimension: undefined,
     outlineLevelRow: 0,
@@ -97,6 +110,92 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
 /** Functions whose results spill (dynamic arrays): such formulas get the metadata by default. */
 const SPILL =
   /(?:^|[^\w.])(?:_xlfn\.)?(?:_xlws\.)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
+
+// ---- shared formulas ------------------------------------------------------------------
+
+interface SharedRun {
+  readonly top: number;
+  readonly left: number;
+  readonly bottom: number;
+  readonly right: number;
+  /** The master's formula text. */
+  readonly formula: string;
+  readonly si: number;
+}
+
+/** Shared-formula groups of a run of rows, consumed in ascending row order by encodeRow. */
+export interface SharedWrite {
+  /** Sorted by top row. */
+  readonly runs: SharedRun[];
+  next: number;
+  /** Runs covering the current row. */
+  active: SharedRun[];
+  row: number;
+}
+
+const isDynamic = (f: Formula): boolean =>
+  f.dynamic ?? (f.array === undefined && SPILL.test(f.formula));
+
+/**
+ * Shared-formula state for encoding `ws`'s rows (`rowBase`: absolute index of `ws.rowData[0]`).
+ * A group is kept when its master cell (top-left) still holds a plain formula and it overlaps
+ * no later group; undefined when there is nothing to share.
+ */
+export function sharedFormulas(ws: Worksheet, ctx: SheetCtx, rowBase = 0): SharedWrite | undefined {
+  const gs = ws._sharedGroups;
+  if (gs === undefined || gs.length === 0) return undefined;
+  const kept: SharedGroup[] = [];
+  const runs: SharedRun[] = [];
+  for (let k = gs.length - 1; k >= 0; k--) {
+    const g: SharedGroup = gs[k]!;
+    if (
+      kept.some(
+        (o) => o.top <= g.bottom && o.bottom >= g.top && o.left <= g.right && o.right >= g.left,
+      )
+    ) {
+      continue;
+    }
+    const row: RowData | undefined = ws.rowData[g.top - rowBase];
+    const i = row ? row.find(g.left) : -1;
+    if (i < 0 || row!.kind[i] !== 6) continue;
+    const f = row!.obj![i] as Formula;
+    if (f.array !== undefined || isDynamic(f)) continue;
+    kept.push(g);
+    runs.push({
+      top: g.top,
+      left: g.left,
+      bottom: g.bottom,
+      right: g.right,
+      formula: f.formula,
+      si: 0,
+    });
+  }
+  if (runs.length === 0) return undefined;
+  runs.sort((a, b) => a.top - b.top || a.left - b.left);
+  for (let k = 0; k < runs.length; k++) (runs[k] as { si: number }).si = ctx.si++;
+  return { runs, next: 0, active: [], row: -1 };
+}
+
+/** The run cell (r0, c0) is a member of: master (its top-left) or a follower; else undefined. */
+function sharedRole(sh: SharedWrite, r0: number, c0: number, f: Formula): SharedRun | undefined {
+  if (sh.row !== r0) {
+    sh.row = r0;
+    sh.active = sh.active.filter((g) => g.bottom >= r0);
+    while (sh.next < sh.runs.length && sh.runs[sh.next]!.top <= r0) {
+      const g = sh.runs[sh.next++]!;
+      if (g.bottom >= r0) sh.active.push(g);
+    }
+  }
+  const act = sh.active;
+  for (let k = 0; k < act.length; k++) {
+    const g = act[k]!;
+    if (c0 < g.left || c0 > g.right) continue;
+    if (r0 === g.top && c0 === g.left) return g;
+    if (f.array !== undefined || f.dynamic === true) return undefined;
+    return translateFormula(g.formula, r0 - g.top, c0 - g.left) === f.formula ? g : undefined;
+  }
+  return undefined;
+}
 
 // ---- caches (module level; contents are deterministic, so sharing is safe) -------------
 
@@ -129,7 +228,14 @@ function richCell(ref: string, s: string, rt: RichText): string {
   return `<c r="${ref}"${s} t="inlineStr"><is>${runsXml(rt.richText)}</is></c>`;
 }
 
-function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string {
+function formulaCell(
+  ref: string,
+  s: string,
+  f: Formula,
+  ctx: SheetCtx,
+  r0: number,
+  c0: number,
+): string {
   ctx.formulas = true;
   let t = '';
   let v = '';
@@ -159,7 +265,15 @@ function formulaCell(ref: string, s: string, f: Formula, ctx: SheetCtx): string 
         break;
     }
   }
-  const dyn = f.dynamic ?? (f.array === undefined && SPILL.test(f.formula));
+  const sh = ctx.shared;
+  const g = sh === undefined ? undefined : sharedRole(sh, r0, c0, f);
+  if (g !== undefined) {
+    if (r0 !== g.top || c0 !== g.left)
+      return `<c r="${ref}"${s}${t}><f t="shared" si="${g.si}"/>${v}</c>`;
+    const sref = encodeRange({ top: g.top, left: g.left, bottom: g.bottom, right: g.right });
+    return `<c r="${ref}"${s}${t}><f t="shared" ref="${sref}" si="${g.si}">${escapeText(addXlfn(f.formula))}</f>${v}</c>`;
+  }
+  const dyn = isDynamic(f);
   if (dyn) ctx.pkg.dynamicArrays = true;
   const fa = dyn
     ? ` t="array" ref="${escapeAttr(f.array ?? ref)}"`
@@ -225,7 +339,7 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
         out += `<c r="${ref}"${s} t="e"><v>${escapeText(obj![i] as string)}</v></c>`;
         break;
       case 6: // Formula
-        out += formulaCell(ref, s, obj![i] as Formula, ctx);
+        out += formulaCell(ref, s, obj![i] as Formula, ctx, r0, col[i]!);
         break;
       case 7: // RichText
         out += richCell(ref, s, obj![i] as RichText);
@@ -254,13 +368,17 @@ function viewXml(v: WorksheetView | undefined, i: number, selected: boolean): st
   if (selected) s += ' tabSelected="1"';
   if (v?.showRowColHeaders === false) s += ' showRowColHeaders="0"';
   if (v?.showGridLines === false) s += ' showGridLines="0"';
+  if (v?.showRuler === false) s += ' showRuler="0"';
+  if (v?.style === 'pageLayout' || v?.style === 'pageBreakPreview') s += ` view="${v.style}"`;
   if (v?.zoomScale && v.zoomScale !== 100) s += ` zoomScale="${v.zoomScale}"`;
+  if (v?.zoomScaleNormal) s += ` zoomScaleNormal="${v.zoomScaleNormal}"`;
   const x = v?.xSplit ?? 0;
   const y = v?.ySplit ?? 0;
   const active = v?.activeCell;
   const sel = active ? ` activeCell="${escapeAttr(active)}" sqref="${escapeAttr(active)}"` : '';
   if (v && (v.state === 'frozen' || v.state === 'split') && (x > 0 || y > 0)) {
-    const pane = x > 0 && y > 0 ? 'bottomRight' : y > 0 ? 'bottomLeft' : 'topRight';
+    const pane =
+      v.activePane ?? (x > 0 && y > 0 ? 'bottomRight' : y > 0 ? 'bottomLeft' : 'topRight');
     const frozen = v.state === 'frozen';
     const tl = v.topLeftCell ?? (frozen ? encodeAddr(y, x) : undefined);
     s += `><pane${x > 0 ? ` xSplit="${x}"` : ''}${y > 0 ? ` ySplit="${y}"` : ''}${

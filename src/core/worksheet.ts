@@ -91,8 +91,10 @@ import type {
   Fill,
   Font,
   Formula,
+  Hyperlink,
   IterateOptions,
   Protection,
+  RichText,
   SharedFormulaValue,
   Style,
 } from './types.js';
@@ -124,6 +126,17 @@ export interface WorksheetView {
   showGridLines?: boolean | undefined;
   showRowColHeaders?: boolean | undefined;
   zoomScale?: number | undefined;
+  /** Zoom (%) Excel goes back to in the normal view (`zoomScaleNormal`). */
+  zoomScaleNormal?: number | undefined;
+  /** Show the ruler in page layout view. Default true. */
+  showRuler?: boolean | undefined;
+  /** Excel's view mode (`view` attribute); undefined = normal. */
+  style?: 'pageLayout' | 'pageBreakPreview' | undefined;
+  /**
+   * Pane that has the focus in a frozen / split view. Default: derived from the split
+   * (bottomRight when both splits are set, else bottomLeft / topRight).
+   */
+  activePane?: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' | undefined;
   rightToLeft?: boolean | undefined;
   tabSelected?: boolean | undefined;
   /**
@@ -412,6 +425,26 @@ function indexMerge(idx: Map<number, CellRange[]>, m: CellRange): void {
 type Addr = string | number;
 
 /** A row as an object keyed by `ws.columns[].key`; values may nest for dotted keys ('a.b'). */
+/**
+ * @internal Cells filled from one master formula (fillFormula, `{ sharedFormula }` values, a
+ * shared formula read from a file): 0-based absolute bounds, master at (top, left). Writers
+ * emit the cells that still hold the master's formula moved by their offset as an Excel shared
+ * formula; anything else in the range is written as a plain cell.
+ */
+export interface SharedGroup {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
+
+/**
+ * ExcelJS row style codes of `addRow` / `addRows` / `insertRow(s)`: copy the format (height,
+ * row style, cell styles) of the row above ('i', inherit) or below ('o', original); 'n' = none.
+ * With '+' the styles of empty cells are copied too.
+ */
+export type RowStyleOption = 'n' | 'i' | 'o' | 'i+' | 'o+';
+
 export interface RowObject {
   readonly [key: string]: CellValueInput | RowObject;
 }
@@ -726,23 +759,54 @@ export class Worksheet {
    * keys through `ws.columns[].key` (unknown keys ignored; a dotted key such as 'address.city'
    * also reads nested objects). Returns the 1-based row number.
    */
-  addRow(values: readonly CellValueInput[] | RowObject, style?: Style | number): number {
+  addRow(
+    values: readonly CellValueInput[] | RowObject,
+    style?: Style | number | RowStyleOption,
+  ): number {
     const r0 = this._rows.length;
     if (r0 >= MAX_ROWS) throw new RangeError('Worksheet row limit reached');
+    const code = typeof style === 'string' ? style : undefined;
     try {
-      this._fillRow(r0, values, style);
+      this._fillRow(
+        r0,
+        values,
+        code === undefined ? (style as Style | number | undefined) : undefined,
+      );
     } catch (e) {
       // an invalid value must not leave a half-written row behind (it would shift later rows)
       this._rows.length = r0;
       throw e;
     }
+    // as in ExcelJS only 'i' applies: there is no row below an appended row
+    if (code?.[0] === 'i' && r0 > 0) this._copyRowFormat(r0 - 1, r0, code[1] === '+');
     return r0 + 1;
   }
 
   /** Append several rows (see addRow). */
-  addRows(rows: Iterable<readonly CellValueInput[] | RowObject>, style?: Style | number): void {
-    const xf = style === undefined ? undefined : this._xf(style);
+  addRows(
+    rows: Iterable<readonly CellValueInput[] | RowObject>,
+    style?: Style | number | RowStyleOption,
+  ): void {
+    const xf = style === undefined || typeof style === 'string' ? style : this._xf(style);
     for (const r of rows) this.addRow(r, xf);
+  }
+
+  /**
+   * @internal Give row `dst0` the height, row style and cell styles of row `src0` (0-based);
+   * empty cells' styles only with `includeEmpty`. No-op when row `src0` does not exist.
+   */
+  _copyRowFormat(src0: number, dst0: number, includeEmpty: boolean): void {
+    const src = this._rows[src0];
+    if (src === undefined) return;
+    this.setRowProps(dst0 + 1, {
+      height: src.height || undefined,
+      styleIndex: src.xf || undefined,
+    });
+    for (let i = 0; i < src.n; i++) {
+      if (src.style[i] && (includeEmpty || src.kind[i] !== CellKind.Empty)) {
+        this.setStyle(dst0 + 1, src.col[i]! + 1, src.style[i]!);
+      }
+    }
   }
 
   /** Row handle (allocated per call). */
@@ -1027,6 +1091,24 @@ export class Worksheet {
    */
   _rowBase = 0;
 
+  /** @internal Shared-formula groups (see {@link SharedGroup}); undefined = none. */
+  _sharedGroups: SharedGroup[] | undefined = undefined;
+
+  /**
+   * @internal Record a shared-formula group (0-based absolute bounds, master at top-left).
+   * Older groups it overlaps are dropped: its cells were just overwritten.
+   */
+  _addSharedGroup(top: number, left: number, bottom: number, right: number): void {
+    if (top === bottom && left === right) return;
+    if (this._sharedGroups === undefined) this._sharedGroups = [];
+    const gs = this._sharedGroups;
+    for (let i = gs.length - 1; i >= 0; i--) {
+      const g = gs[i]!;
+      if (g.top <= bottom && g.bottom >= top && g.left <= right && g.right >= left) gs.splice(i, 1);
+    }
+    gs.push({ top, left, bottom, right });
+  }
+
   /**
    * Resolve the ExcelJS `{ sharedFormula }` value in O for cell (r0, c0): the master's formula
    * translated by the offset, as a plain Formula in K/N/O.
@@ -1044,6 +1126,25 @@ export class Worksheet {
       formula: translateFormula((row!.obj![i] as Formula).formula, r0 - mr, c0 - m.col),
     };
     if (v.result !== undefined) f.result = v.result;
+    // grow the master's group (followers below / right of the master only: Excel's master is
+    // the top-left cell of the shared range)
+    const ar = r0 + this._rowBase;
+    if (ar >= m.row && c0 >= m.col) {
+      if (this._sharedGroups === undefined) this._sharedGroups = [];
+      const gs = this._sharedGroups;
+      let g: SharedGroup | undefined;
+      for (let k = gs.length - 1; k >= 0; k--) {
+        if (gs[k]!.top === m.row && gs[k]!.left === m.col) {
+          g = gs[k];
+          break;
+        }
+      }
+      if (g === undefined) gs.push({ top: m.row, left: m.col, bottom: ar, right: c0 });
+      else {
+        if (ar > g.bottom) g.bottom = ar;
+        if (c0 > g.right) g.right = c0;
+      }
+    }
     K = CellKind.Formula;
     N = 0;
     O = f;
@@ -1373,6 +1474,46 @@ export class CellRef {
   }
   set style(s: Style | undefined) {
     this.worksheet.setStyle(this.row, this.col, s);
+  }
+
+  /**
+   * The link target when the cell holds a {@link Hyperlink}, else undefined. Setting it (ExcelJS
+   * `cell.hyperlink`) on a string or rich-text cell turns it into a hyperlink with that text;
+   * on a hyperlink cell it changes the target (`undefined` turns it back into its text). Other
+   * cells are left unchanged, as in ExcelJS.
+   */
+  get hyperlink(): string | undefined {
+    const v = this.value;
+    return this.kind === CellKind.Hyperlink ? (v as Hyperlink).hyperlink : undefined;
+  }
+  set hyperlink(target: string | undefined) {
+    const v = this.value;
+    switch (this.kind) {
+      case CellKind.Hyperlink: {
+        const h = v as Hyperlink;
+        if (target === undefined) this.value = h.runs ? { richText: h.runs } : h.text;
+        else this.value = { ...h, hyperlink: target };
+        return;
+      }
+      case CellKind.String:
+        if (target !== undefined) this.value = { text: v as string, hyperlink: target };
+        return;
+      case CellKind.RichText:
+        if (target !== undefined) {
+          const runs = (v as RichText).richText;
+          this.value = { text: runs.map((r) => r.text).join(''), hyperlink: target, runs };
+        }
+        return;
+    }
+  }
+  /** Tooltip of a hyperlink cell; setting it on any other cell does nothing. */
+  get tooltip(): string | undefined {
+    return this.kind === CellKind.Hyperlink ? (this.value as Hyperlink).tooltip : undefined;
+  }
+  set tooltip(tip: string | undefined) {
+    if (this.kind !== CellKind.Hyperlink) return;
+    const { tooltip: _, ...h } = this.value as Hyperlink;
+    this.value = tip === undefined ? h : { ...h, tooltip: tip };
   }
 
   private _patch(p: Style): void {
