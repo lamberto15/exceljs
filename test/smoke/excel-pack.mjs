@@ -16,6 +16,7 @@ import {
   addDefinedName,
   addImage,
   addNote,
+  addPivotTable,
   addTable,
   addTableColumn,
   addTableRows,
@@ -1253,6 +1254,42 @@ for (const [file, what] of [
     '33-threaded-comments-views.xlsx',
     writeXlsx(wb),
     `"Review": B2 has a threaded comment by Ann "Is this the new rent?" with Bob's reply "Yes, from May"; A2 a resolved thread by Bob; A1 a classic note "A classic note". View > Custom Views lists "Zoomed"; Show sets the zoom to 150 %. No repair prompt.`,
+  );
+}
+
+// 34 — group 20: pivot tables ---------------------------------------------------------------------
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow(['Region', 'Product', 'Qtr', 'Units', 'Price']);
+  let k = 0;
+  for (const r of ['North', 'South', 'East'])
+    for (const p of ['Apples', 'Pears'])
+      for (const q of ['Q1', 'Q2']) {
+        k++;
+        ws.addRow([r, p, q, 10 + k, Math.round((1.5 + k / 10) * 100) / 100]);
+      }
+  const pv = wb.addWorksheet('Pivot');
+  addPivotTable(pv, {
+    name: 'ByRegion',
+    source: 'Data!A1:E13',
+    ref: 'A3',
+    rows: ['Region', 'Product'],
+    columns: ['Qtr'],
+    values: [{ field: 'Units' }],
+  });
+  addPivotTable(pv, {
+    name: 'ByProduct',
+    source: 'Data!A1:E13',
+    ref: 'G1',
+    rows: ['Product'],
+    values: [{ field: 'Units' }, { field: 'Price', fn: 'average' }],
+    filters: ['Region'],
+  });
+  save(
+    '34-pivot-tables.xlsx',
+    writeXlsx(wb),
+    `"Pivot": two pivot tables (PivotTable Analyze tab available when clicked). ByRegion at A3: Region > Product rows, Q1 / Q2 columns, Sum of Units; East 82, North 50, South 66, Grand Total 198. ByProduct at G1: Region filter "(All)", Apples 93 / 2.05, Pears 105 / 2.25, Grand Total 198 / 2.15. Changing the Region filter to North updates ByProduct. No repair prompt.`,
   );
 }
 

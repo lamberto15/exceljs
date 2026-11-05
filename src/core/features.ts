@@ -14,6 +14,7 @@ import type { CustomSheetView, CustomView } from '../xlsx/features/custom-views.
 import type { DataValidation } from '../xlsx/features/data-validation.js';
 import type { IgnoredError } from '../xlsx/features/ignored-errors.js';
 import type { ImagePlacement, WorkbookImage } from '../xlsx/features/images.js';
+import type { PivotTable } from '../xlsx/features/pivot-tables.js';
 import type { HeaderFooter, PageSetup } from '../xlsx/features/print-setup.js';
 import type { SheetProtection } from '../xlsx/features/sheet-protection.js';
 import type { Table } from '../xlsx/features/tables.js';
@@ -51,6 +52,8 @@ export interface WorksheetFeatureFields {
   dataValidations?: DataValidation[] | undefined;
   /** Sheet protection; undefined = unprotected (features/sheet-protection). */
   protection?: SheetProtection | undefined;
+  /** Pivot tables to write (features/pivot-tables; see addPivotTable). Pivots of read files are kept raw. */
+  pivotTables?: PivotTable[] | undefined;
   /** Tables / ListObjects (features/tables); use `addTable` to create one with its cells. */
   tables?: Table[] | undefined;
   /**

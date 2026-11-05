@@ -247,6 +247,7 @@ Each is a plain model field plus an `add*` helper (where noted). Full examples i
 | Threaded comments | `ws.threadedComments: ThreadedComment[]` (`ref`, `text`, `author`, `date?`, `done?`, `replies?`), `wb.persons: Person[]` | `addThreadedComment(ws, ref, { text, author, date?, done?, replies? }) -> ThreadedComment` | `commentsWriter`, `commentsReader` |
 | Custom views | `wb.customViews: CustomView[]`, `ws.customSheetViews: CustomSheetView[]` | `addCustomView(wb, name, opts?) -> CustomView` | `customViewsWriter`, `customViewsReader` |
 | Pictures | `wb.images`, `ws.images`, `ws.backgroundImage` | `addImage(wb, { data \| base64, extension }) -> id`, `placeImage(ws, id, anchor, opts?) -> ImagePlacement` | `imagesWriter`, `imagesReader` |
+| Pivot tables | `ws.pivotTables: PivotTable[]` (write; read pivots are kept raw) | `addPivotTable(ws, { name, source, ref, rows, columns?, values, filters?, style? }) -> PivotTable` | `pivotTablesWriter` |
 | Charts | `ws.charts: Chart[]` (read too; unchanged read charts are written back as they were) | `addChart(ws, Chart) -> Chart`; series `type` (combo), `axis: 'secondary'`, `trendline`, `dataLabels` | `chartsWriter`, `chartsReader` |
 | Conditional formatting | `ws.conditionalFormatting` | `addConditionalFormatting(ws, ref, rules[]) -> ConditionalFormatting` | `conditionalFormattingWriter`, `conditionalFormattingReader` |
 | Data validation | `ws.dataValidations` | `addDataValidation(ws, dv) -> DataValidation` | `dataValidationWriter`, `dataValidationReader` |

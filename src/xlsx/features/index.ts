@@ -97,6 +97,13 @@ export {
   type WorkbookImage,
 } from './images.js';
 export {
+  addPivotTable,
+  type PivotFunction,
+  type PivotTable,
+  type PivotValue,
+  pivotTablesWriter,
+} from './pivot-tables.js';
+export {
   type HeaderFooter,
   type PageMargins,
   type PageSetup,

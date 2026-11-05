@@ -321,6 +321,22 @@ addChart(ws, {
 
 Reading: charts of the supported types (including combos, secondary axes, trendlines and data labels) become `ws.charts` when a file is read. A read chart you do not change is written back exactly as it was, Excel's formatting included; once you change it (title, series, anything in the model) it is regenerated from the model, which keeps what the model holds and drops formatting it does not (custom fonts, gradient fills, ...). 3-D, bubble, stock, radar and surface charts, charts on chart sheets and charts with literal (non-reference) data stay raw and are written back unchanged. Renaming a sheet does not update chart references.
 
+## Pivot tables
+
+```ts
+addPivotTable(ws, {
+  name: 'Sales by region',
+  source: 'Data!A1:E500', // header row + data; unqualified = this sheet
+  ref: 'A3', // top-left of the report (filters, when any, start here)
+  rows: ['Region', 'Product'], // nested, outermost first
+  columns: ['Quarter'], // at most one column field (this version)
+  values: [{ field: 'Units', fn: 'sum' }], // sum count average max min product countNums stdDev stdDevp var varp; name?
+  filters: ['Year'], // report filters, all items shown
+});
+```
+
+The pivot cache holds the source data and is marked to refresh when Excel opens the file, and `addPivotTable` also writes the report's cells in Excel's compact layout (row labels in one column with nested items below their parent, subtotals on the parent rows, "(blank)" items, grand totals), so the totals show in readers that do not refresh pivots — the cells match what Excel displays. Several value fields cannot be combined with a column field yet. Pivot tables in files you read are kept raw and written back; adding a pivot table to a workbook that was read with pivot tables is not supported yet (throws when writing).
+
 ## Conditional formatting
 
 ```ts

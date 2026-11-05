@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 90 | 7 | 1 | 49 | 6 | 153 |
+| integration | 90 | 7 | 0 | 50 | 6 | 153 |
 | issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
 | unit | 61 | 2 | 0 | 50 | 64 | 177 |
-| **all** | 186 | 10 | 1 | 104 | 70 | 371 |
+| **all** | 186 | 10 | 0 | 105 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -38,7 +38,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
 | [issues](../test/exceljs-parity/issues.test.ts) | 25 | 0 | 0 | 2 | 0 | 27 |
 | [merges](../test/exceljs-parity/merges.test.ts) | 7 | 0 | 0 | 8 | 0 | 15 |
-| [misc](../test/exceljs-parity/misc.test.ts) | 30 | 0 | 1 | 8 | 4 | 43 |
+| [misc](../test/exceljs-parity/misc.test.ts) | 30 | 0 | 0 | 9 | 4 | 43 |
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 0 | 3 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
 | [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
@@ -72,7 +72,7 @@ Compared with ExcelJS 4.4.0:
 
 Different by design: shared formulas (`fillFormula`, `{ sharedFormula }` values, shared formulas read from a file) are written as Excel shared formulas but read back expanded, one plain formula per cell (no `sharedFormula` / `shareType` values). Row / column `collapsed` is a plain settable flag here (`ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true` on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
 
-Not in ExcelJS 4.4.0 either, so not counted as gaps: pivot table authoring (`ws.addPivotTable` is not a function in 4.4.0; pivot tables in read files are preserved here) and non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`). turbosheet reads both kinds of file: read pivot tables are preserved, and `csvRows` decodes other encodings.
+Not in ExcelJS 4.4.0 either, so not counted as gaps: non-UTF-8 CSV reading (4.4.0's `csv.read` has no encoding option; `writeFile` only passes `encoding` to Node's `fs`). turbosheet reads both kinds of file: read pivot tables are preserved, and `csvRows` decodes other encodings.
 
 ## Additions made for parity
 
@@ -403,7 +403,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
 | if pivot table NOT added, then certain xml and rels files are not added | ✅ | misc |  |
-| if pivot table added, then certain xml and rels files are added | 🚫 | misc (skip) | pivot authoring not supported (read pivots are preserved) |
+| if pivot table added, then certain xml and rels files are added | ➖ | misc | `addPivotTable(ws, { source, ref, rows, columns, values })` instead of `ws.addPivotTable({ sourceSheet, ... })` |
 
 ### `integration/workbook/styles.spec.js`
 
