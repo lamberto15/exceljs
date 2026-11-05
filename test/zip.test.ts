@@ -1,6 +1,13 @@
 // @ts-ignore -- @types/node is not installed; tests only
 import { readdirSync, readFileSync } from 'node:fs';
-import { zipSync as rawZipSync, strFromU8, strToU8, Zip, ZipDeflate } from 'fflate';
+import {
+  unzipSync as rawUnzipSync,
+  zipSync as rawZipSync,
+  strFromU8,
+  strToU8,
+  Zip,
+  ZipDeflate,
+} from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
   deflateStream,
@@ -14,6 +21,7 @@ import {
   zipSync,
 } from '../src/zip/index.js';
 import { Inflight, NativeDeflateFile, nativeCompressor } from '../src/zip/native.js';
+import { nodeZlib } from '../src/zip/node.js';
 
 async function collect(
   src: AsyncIterable<Uint8Array>,
@@ -399,5 +407,66 @@ describe('native deflate (#71)', () => {
     for (const c of parts) out.set(c, o), (o += c.length);
     expect(unzipSync(out).get('x.xml')).toEqual(data);
     expect(storedCrcs(out).get('x.xml')).toBe(crc32(data));
+  });
+});
+
+describe('native sync zlib (#75)', () => {
+  const big = (): Uint8Array => {
+    let s = '';
+    for (let i = 0; i < 120_000; i++) s += `<c r="A${i}" t="s"><v>${(i * 7919) % 100003}</v></c>`;
+    return strToU8(s); // > 1 MiB: several sync-flushed batches
+  };
+
+  it('is available in this runtime', () => {
+    expect(nodeZlib()?.deflateRawSync).toBeTypeOf('function');
+  });
+
+  it('sync writer output (multi-batch) decodes with fflate and honors the level', () => {
+    const data = big();
+    expect(data.length).toBeGreaterThan(3 << 20);
+    const sizes: number[] = [];
+    for (const level of [1, 9]) {
+      const parts: Uint8Array[] = [];
+      const w = new ZipStreamWriter((c) => void parts.push(c), level);
+      const f = w.file('s.xml');
+      for (let i = 0; i < data.length; i += 100_000) f.push(data.subarray(i, i + 100_000));
+      f.push(new Uint8Array(0), true);
+      w.file('e.xml').push('', true);
+      w.end();
+      const out = new Uint8Array(parts.reduce((n, c) => n + c.length, 0));
+      let o = 0;
+      for (const c of parts) out.set(c, o), (o += c.length);
+      const raw = rawUnzipSync(out); // fflate's own inflater, independent of zlib
+      expect(raw['s.xml']).toEqual(data);
+      expect(raw['e.xml']!.length).toBe(0);
+      expect(unzipLazy(out).get('s.xml')!.bytes()).toEqual(data);
+      sizes.push(out.length);
+    }
+    expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+  });
+
+  it('lazy native inflate: corrupt data still throws, lying sizes fall back to streaming', () => {
+    const zip = zipSync([{ path: 'a', data: big() }], 6).slice();
+    const start = 30 + 1; // local header + name 'a'
+    for (let i = 100; i < 140; i++) zip[start + i] = 0xff; // garble the deflate stream
+    expect(() => unzipLazy(zip).get('a')!.bytes()).toThrow();
+    expect(() => [...unzipLazy(zip).get('a')!.chunks()]).toThrow();
+
+    // central directory says 10 bytes; actual output is 70 MB (> the 64 MiB native cap)
+    const zeros = new Uint8Array(70 << 20);
+    const z2 = zipSync([{ path: 'z', data: zeros }], 1).slice();
+    const dv2 = new DataView(z2.buffer);
+    let e = z2.length - 22;
+    while (dv2.getUint32(e, true) !== 0x06054b50) e--;
+    const cd = dv2.getUint32(e + 16, true);
+    dv2.setUint32(cd + 24, 10, true);
+    let n = 0;
+    const limits = { maxCompressionRatio: 1e9 };
+    for (const c of unzipLazy(z2, limits)
+      .get('z')!
+      .chunks(1 << 20))
+      n += c.length;
+    expect(n).toBe(zeros.length);
+    expect(() => [...unzipLazy(z2).get('z')!.chunks()]).toThrow(/ratio/);
   });
 });
