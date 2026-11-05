@@ -351,6 +351,22 @@ await w.end();
 
 Backpressure: `addRow` is synchronous; `await s.addRows(iterable)` (sync or async iterable) and `await s.flush()` wait until the sink or the readable's consumer has caught up, so a slow consumer (a network upload, a slow disk) keeps memory flat. In a long synchronous loop call `await s.flush()` every few thousand rows. Pictures (`placeImage(s.worksheet, ...)`), number formats and the other style options work as in the buffered writer.
 
+
+Transform recipe (constant memory both ways): read with `xlsxRows`, write with `createXlsxWriter`.
+
+```ts
+const w = createXlsxWriter({ sink });
+let out = w.addWorksheet('Orders');
+for await (const row of xlsxRows(createReadStream('in.xlsx'))) {
+  const [item, qty, price] = row.values;
+  if (row.row === 1) out.addRow([item, qty, price, 'total']);
+  else if (qty) out.addRow([item, qty, price, qty * price]);
+  if (row.row % 5000 === 0) await out.flush(); // backpressure
+}
+await w.end();
+```
+
+Rows come with `row.sheet`: start a new `w.addWorksheet(row.sheet)` when it changes. Styles are not carried over (`xlsxRows` returns values); use `readXlsx` + `writeXlsx` when formatting must survive.
 ## Encryption
 
 See [`turbosheet/crypto` in api.md](./api.md#crypto):

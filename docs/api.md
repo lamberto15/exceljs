@@ -91,6 +91,8 @@ groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max
 groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
 
+Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { date1904 })` from `turbosheet/formula` give the text Excel shows (number formats applied); `richTextFromHtml(html)` → RichText; `columnValues(ws, col)` / `eachColumnCell(ws, col, cb)` (ExcelJS `column.values` / `eachCell`).
+
 Sort and templates: `sortRange(ws, range, keys: SortKey | SortKey[], { header? })` (`SortKey = { col, desc? }`); `fillTemplate(wb, data, { sheets?, missing? })` (`{{path}}`, repeated rows with `{{items[].field}}`). ExcelJS helpers: `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`.
 
 Formulas: `fillFormula(ws, range, formula, results?)`; `wb.calcProperties = { fullCalcOnLoad }`.

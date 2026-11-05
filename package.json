@@ -160,7 +160,7 @@
       "name": "read+write",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "75 KB"
+      "limit": "78 KB"
     },
     {
       "name": "lite write-only",
@@ -208,7 +208,7 @@
       "name": "formula",
       "path": "dist/formula.js",
       "import": "*",
-      "limit": "16.5 KB"
+      "limit": "17 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encryptXlsx } from '../../dist/crypto.js';
-import { evaluate } from '../../dist/formula.js';
+import { cellText, evaluate } from '../../dist/formula.js';
 import {
   addChart,
   addConditionalFormatting,
@@ -32,6 +32,7 @@ import {
   placeImage,
   protectSheet,
   readXlsx,
+  richTextFromHtml,
   setCheckbox,
   setPrintArea,
   setPrintTitles,
@@ -996,6 +997,38 @@ for (const [file, what] of [
     '27-gradients-fonts-views.xlsx',
     writeXlsx(wb),
     `Opens on the "Second" tab. "Styles": A1 has a left-to-right red→blue gradient, A2 a centre-out white→blue gradient; A3 bold 16 pt with outline + shadow (visible in Excel for Mac). No repair prompt.`,
+  );
+}
+
+// 28: displayed text (cellText) vs Excel, rich text from HTML
+{
+  const wb = new Workbook();
+  const ws = wb.addWorksheet('Display');
+  ws.getColumn(1).width = 24;
+  ws.getColumn(2).width = 24;
+  const cases = [
+    [1234.5, '#,##0.00'],
+    [0.256, '0.0%'],
+    [-3, '0;(0)'],
+    [new Date(Date.UTC(2026, 10, 5, 14, 30)), 'yyyy-mm-dd hh:mm'],
+    [new Date(Date.UTC(2026, 0, 31)), 'd mmm yyyy'],
+    [1 / 3, 'General'],
+    [1234567, '0.00E+00'],
+    [42, '"Qty: "0'],
+    [0.5, 'h:mm AM/PM'],
+  ];
+  cases.forEach(([v, f], i) => {
+    ws.setCell(i + 1, 1, v, { numFmt: f });
+    ws.setCell(i + 1, 2, cellText(ws, i + 1, 1));
+  });
+  ws.setCell(
+    'D1',
+    richTextFromHtml('<b>bold</b>, <i>italic</i> and <span style="color:#c00">red</span>'),
+  );
+  save(
+    '28-display-text-html.xlsx',
+    writeXlsx(wb),
+    `"Display": column A shows formatted values, column B is turbosheet's cellText of A as plain text: each B must read exactly like A (A6 = 0.333333333). D1: "bold" bold, "italic" italic, "red" red. No repair prompt.`,
   );
 }
 
