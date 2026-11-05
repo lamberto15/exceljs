@@ -1076,6 +1076,18 @@ export class EvalContext implements FunctionContext {
     );
   }
 
+  /**
+   * A reference from text (INDIRECT): "B2", "Sheet2!A1:C3", "'My Sheet'!B:B" or a defined
+   * name, evaluated like a formula; anything that is not a reference gives #REF!.
+   */
+  reference(text: string): FormulaValue {
+    const p = this.#run.ev.parsed(text.trim());
+    const t = p.ast?.type;
+    if (t !== 'cell' && t !== 'range' && t !== 'name') return REF;
+    const v = this.ev(p.ast!);
+    return isRef(v) ? v : REF;
+  }
+
   #name(name: string, sheet: string | undefined): FormulaValue {
     const d = this.#run.definedName(name, sheet, this.#si);
     if (!d) return NAME;

@@ -65,6 +65,13 @@ export interface WorkbookFeatureFields {
   contentStatus?: string | undefined;
   company?: string | undefined;
   manager?: string | undefined;
+  /**
+   * Calculation settings (ExcelJS `wb.calcProperties`). `fullCalcOnLoad`: Excel recalculates
+   * every formula when opening the file. Default: on when the workbook has formulas (their
+   * cached results may be missing); set false when they are all current (e.g. after
+   * `evaluate`) to spare Excel the recalculation and its "save changes?" prompt.
+   */
+  calcProperties?: { fullCalcOnLoad?: boolean | undefined } | undefined;
   /** Pictures stored once per workbook, placed via worksheet.images (features/images; see addImage). */
   images?: WorkbookImage[] | undefined;
   /**

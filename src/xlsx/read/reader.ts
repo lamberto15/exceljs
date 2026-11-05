@@ -258,6 +258,7 @@ function readXlsxImpl(data: Uint8Array | ArrayBuffer, opts: ReadOptions): Workbo
     pkg.sheetEntries = wbh.sheets;
   }
   const wb = new Workbook({ date1904: wbh.date1904, localDates: opts.localDates });
+  if (wbh.fullCalcOnLoad) wb.calcProperties = { fullCalcOnLoad: true };
 
   const app = text('docProps/app.xml');
   if (app !== undefined) parseApp(app, wb);

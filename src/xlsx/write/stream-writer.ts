@@ -357,7 +357,7 @@ export class XlsxWriter {
       sheets: sheets.map(sheetEntry),
       date1904: wb.date1904,
       sharedStrings: shared,
-      formulas: this._formulas,
+      formulas: wb.calcProperties?.fullCalcOnLoad ?? this._formulas,
       activeTab: this._activeIndex(),
       creator: wb.creator,
       lastModifiedBy: wb.lastModifiedBy,

@@ -91,6 +91,8 @@ groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 
 Sort and templates: `sortRange(ws, range, keys: SortKey | SortKey[], { header? })` (`SortKey = { col, desc? }`); `fillTemplate(wb, data, { sheets?, missing? })` (`{{path}}`, repeated rows with `{{items[].field}}`). ExcelJS helpers: `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`.
 
+Formulas: `fillFormula(ws, range, formula, results?)`; `wb.calcProperties = { fullCalcOnLoad }`.
+
 Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the copy last; "Name (2)" by default) and `copyRange(src, 'A1:D10', dst, 'F2')` (values, styles, merges; relative refs adjusted). Column keys may be dotted paths (`key: 'address.city'` reads nested objects in `addRow`).
 
 Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.

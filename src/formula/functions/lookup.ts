@@ -315,7 +315,66 @@ function count(row: boolean): FormulaFunction {
   };
 }
 
+const OFFSET: FormulaFunction = (args, ctx) => {
+  argc(args, 3, 5);
+  const a = args[0]!;
+  if (isError(a)) throw a;
+  if (!isRef(a)) throw VALUE;
+  const c = ctx as EvalContext;
+  const top = a.top + num(args[1], c, 0);
+  const left = a.left + num(args[2], c, 0);
+  const h = args[3] == null ? a.rows : num(args[3], c, a.rows);
+  const w = args[4] == null ? a.cols : num(args[4], c, a.cols);
+  if (h === 0 || w === 0) throw REF;
+  // negative height / width extend up / left from the offset cell, as in Excel
+  const t = h > 0 ? top : top + h + 1;
+  const l = w > 0 ? left : left + w + 1;
+  const b = t + Math.abs(h) - 1;
+  const r = l + Math.abs(w) - 1;
+  if (t < 0 || l < 0 || b >= 1_048_576 || r >= 16_384) throw REF;
+  return new FormulaRange(a.r, a.sheet, t, l, b, r);
+};
+
+const INDIRECT: FormulaFunction = (args, ctx) => {
+  argc(args, 1, 2);
+  if (args[1] != null && !toBoolean(check(sc(args[1], ctx)))) throw REF; // R1C1 text: not supported
+  const t = sc(args[0]!, ctx);
+  if (isError(t)) throw t;
+  if (typeof t !== 'string') throw REF;
+  const v = (ctx as EvalContext).reference(t);
+  if (isError(v)) throw v;
+  return v;
+};
+
+/** LOOKUP(value, lookup_vector, [result_vector]) and the array form LOOKUP(value, array). */
+const LOOKUP: FormulaFunction = (args, ctx) => {
+  argc(args, 2, 3);
+  const v = lookupValue(args[0]!, ctx as EvalContext);
+  const src = args[1]!;
+  if (isError(src)) throw src;
+  const [R, C] = dims(src);
+  if (args[2] == null && R > 1 && C > 1) {
+    // array form: search the first row (wider) or column, return from the last one
+    const vertical = R >= C;
+    const k = approx(v, lane(src, 0, vertical));
+    if (k < 0) throw NA;
+    return vertical ? at2(src, k, C - 1) : at2(src, R - 1, k);
+  }
+  const [l] = vector(src);
+  const k = approx(v, l);
+  if (k < 0) throw NA;
+  if (args[2] == null) return l.get(k);
+  const res = args[2];
+  if (isError(res)) throw res;
+  const [RR, RC] = dims(res);
+  if (k >= Math.max(RR, RC)) throw NA;
+  return RR >= RC ? at2(res, k, 0) : at2(res, 0, k);
+};
+
 export const lookup: Record<string, Builtin> = {
+  OFFSET,
+  INDIRECT,
+  LOOKUP,
   VLOOKUP: vhlookup(false),
   HLOOKUP: vhlookup(true),
   MATCH,

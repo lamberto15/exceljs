@@ -18,6 +18,8 @@ export class WorkbookHandler implements XmlHandler {
   readonly sheets: SheetEntry[] = [];
   readonly definedNames: DefinedName[] = [];
   date1904 = false;
+  /** `<calcPr fullCalcOnLoad>`. */
+  fullCalcOnLoad = false;
   private dn:
     | { name: string; localSheetId?: number; hidden?: boolean; comment?: string }
     | undefined;
@@ -25,6 +27,9 @@ export class WorkbookHandler implements XmlHandler {
 
   open(name: string, a: XmlAttrs): void {
     switch (localName(name)) {
+      case 'calcPr':
+        this.fullCalcOnLoad = attrBool(a.fullCalcOnLoad);
+        break;
       case 'workbookPr':
         this.date1904 = attrBool(a.date1904);
         break;

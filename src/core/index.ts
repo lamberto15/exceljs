@@ -20,6 +20,7 @@ export { actualRowCount, getRows, getSheetValues, lastRow } from './compat.js';
 export { copyRange, copyWorksheet } from './copy.js';
 export { dateToSerial, serialToDate } from './dates.js';
 export type { WorkbookFeatureFields, WorksheetFeatureFields } from './features.js';
+export { fillFormula } from './fill.js';
 export {
   BUILTIN_NUM_FMTS,
   builtinFormat,
