@@ -4,6 +4,8 @@
   "description": "Fast, small, streaming-first XLSX and CSV library for TypeScript on every JavaScript runtime (Node, Bun, Deno, browsers, workers).",
   "keywords": [
     "xlsx",
+    "xlsb",
+    "xls",
     "excel",
     "spreadsheet",
     "csv",
@@ -94,6 +96,26 @@
         "default": "./dist/formula.cjs"
       }
     },
+    "./xlsb": {
+      "import": {
+        "types": "./dist/xlsb.d.ts",
+        "default": "./dist/xlsb.js"
+      },
+      "require": {
+        "types": "./dist/xlsb.d.cts",
+        "default": "./dist/xlsb.cjs"
+      }
+    },
+    "./xls": {
+      "import": {
+        "types": "./dist/xls.d.ts",
+        "default": "./dist/xls.js"
+      },
+      "require": {
+        "types": "./dist/xls.d.cts",
+        "default": "./dist/xls.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -112,6 +134,12 @@
       ],
       "formula": [
         "dist/formula.d.ts"
+      ],
+      "xlsb": [
+        "dist/xlsb.d.ts"
+      ],
+      "xls": [
+        "dist/xls.d.ts"
       ]
     }
   },
@@ -209,6 +237,18 @@
       "path": "dist/formula.js",
       "import": "*",
       "limit": "27.7 KB"
+    },
+    {
+      "name": "xlsb",
+      "path": "dist/xlsb.js",
+      "import": "*",
+      "limit": "24 KB"
+    },
+    {
+      "name": "xls",
+      "path": "dist/xls.js",
+      "import": "*",
+      "limit": "20.6 KB"
     }
   ],
   "packageManager": "pnpm@12.16.1"

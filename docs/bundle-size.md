@@ -73,8 +73,12 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 27.7 KB | 27.27 KB |
+| xlsb                           | `./xlsb` `*`                                                   | 24 KB | 23.60 KB |
+| xls                            | `./xls` `*`                                                    | 20.6 KB | 20.21 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 21 (#116, #117) costs: nothing in the existing bundles. `turbosheet/xlsb` (23.6 KB) and `turbosheet/xls` (20.2 KB) each carry the `Workbook` model and style registry (most of their size), the shared formula decompiler with its function table and their record readers; `./xlsb` adds the lazy unzip with fflate inflate and the XML tokenizer for the package relationships, `./xls` the compound-file reader of `./crypto` (shared module, so `./crypto` did not change).
 
 What group 20 (#115) costs: pivot table authoring +2.6 KB in the root bundles (lite: only with `pivotTablesWriter` / `addPivotTable`).
 
