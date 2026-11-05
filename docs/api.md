@@ -283,6 +283,11 @@ setPrintTitles(ws, { rows?: '1:2', cols?: 'A:B' })   getPrintTitles(ws)
 getTable(ws, name) -> Table                       // case-insensitive; throws when missing
 tableRows(ws, name) -> Record<string, CellValue>[] // data rows keyed by column name (values as stored)
 addTableRows(ws, name, rows)                      // append above the totals row; arrays (table column order) or objects by column name
+addTableColumn(ws, name, column, values?, index?) // insert a column (0-based index; default last); the table grows right into empty cells
+removeTableColumns(ws, name, index, count?)       // later columns move left; references to removed columns become #REF!
+renameTableColumn(ws, name, index | oldName, newName) // header cell + structured references in every formula
+removeTableRows(ws, name, index, count?)          // 0-based data row; rows below (totals too) move up inside the table
+setTableHeaderRow(ws, name, on) / setTableTotalsRow(ws, name, on)
 ```
 
 ### Pictures

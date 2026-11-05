@@ -91,6 +91,14 @@ export {
   sheetProtectionWriter,
 } from './sheet-protection.js';
 export {
+  addTableColumn,
+  removeTableColumns,
+  removeTableRows,
+  renameTableColumn,
+  setTableHeaderRow,
+  setTableTotalsRow,
+} from './table-edit.js';
+export {
   type AddTableColumn,
   type AddTableOptions,
   addTable,

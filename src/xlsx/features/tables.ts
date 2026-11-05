@@ -119,7 +119,7 @@ export interface AddTableOptions {
 }
 
 /** SUBTOTAL function numbers (ignoring hidden rows, like Excel's totals row). */
-const SUBTOTAL: Record<string, number> = {
+export const SUBTOTAL: Record<string, number> = {
   average: 101,
   countNums: 102,
   count: 103,
@@ -143,13 +143,13 @@ function overlaps(a: CellRange, b: CellRange): boolean {
   return a.top <= b.bottom && b.top <= a.bottom && a.left <= b.right && b.left <= a.right;
 }
 
-/** Structured reference to a column's data, e.g. `Sales[Total]` (specials escaped with '). */
-function colRef(table: string, col: string): string {
+/** @internal Structured reference to a column's data, e.g. `Sales[Total]` (specials escaped with '). */
+export function colRef(table: string, col: string): string {
   return `${table}[${col.replace(/([[\]#'])/g, "'$1")}]`;
 }
 
-/** Sheet-level validation of one table; throws an Error naming the table. */
-function validateTable(ws: Worksheet, t: Table, checkHeaderCells: boolean): void {
+/** @internal Sheet-level validation of one table; throws an Error naming the table. */
+export function validateTable(ws: Worksheet, t: Table, checkHeaderCells: boolean): void {
   const who = `Table "${t.name}"`;
   if (!isValidName(t.name)) throw new Error(`${who}: invalid table name`);
   if (t.displayName !== undefined && !isValidName(t.displayName)) {
@@ -199,6 +199,14 @@ function validateTable(ws: Worksheet, t: Table, checkHeaderCells: boolean): void
       }
     }
   }
+}
+
+/** @internal Value of a column's totals cell: its SUBTOTAL / custom formula, or its label. */
+export function totalsCell(table: string, c: TableColumn): CellValue {
+  const fn = c.totalsRowFunction;
+  if (fn === 'custom') return { formula: c.totalsRowFormula! };
+  if (fn && fn !== 'none') return { formula: `SUBTOTAL(${SUBTOTAL[fn]},${colRef(table, c.name)})` };
+  return c.totalsRowLabel;
 }
 
 /** Workbook-wide checks: unique table names, no clash with defined names. */
@@ -279,13 +287,7 @@ export function addTable(ws: Worksheet, o: AddTableOptions): Table {
     }
     if (totals) {
       for (let i = 0; i < columns.length; i++) {
-        const c = columns[i]!;
-        const fn = c.totalsRowFunction;
-        let v: CellValue;
-        if (fn === 'custom') v = { formula: c.totalsRowFormula! };
-        else if (fn && fn !== 'none') {
-          v = { formula: `SUBTOTAL(${SUBTOTAL[fn]},${colRef(t.name, c.name)})` };
-        } else v = c.totalsRowLabel;
+        const v = totalsCell(t.name, columns[i]!);
         if (v !== undefined) ws.setCell(r.bottom + 1, r.left + i + 1, v);
       }
     }
@@ -307,8 +309,8 @@ export function getTable(ws: Worksheet, name: string): Table {
   return t;
 }
 
-/** 0-based first and last data rows of a table (last < first: no data rows). */
-function dataRows(t: Table): { r: CellRange; first: number; last: number } {
+/** @internal 0-based first and last data rows of a table (last < first: no data rows). */
+export function dataRows(t: Table): { r: CellRange; first: number; last: number } {
   const r = decodeRange(t.ref);
   return {
     r,

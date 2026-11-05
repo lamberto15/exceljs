@@ -160,7 +160,7 @@
       "name": "read+write",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "80.1 KB"
+      "limit": "82 KB"
     },
     {
       "name": "lite write-only",

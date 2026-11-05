@@ -197,6 +197,19 @@ tableRows(ws, 'Sales'); // [{ Region: 'North', Units: 120 }, ..., { Region: 'Wes
 
 `addTableRows` inserts sheet rows (cells below the table move down, references follow as with [`insertRows`](#inserting-and-deleting-rows-and-columns)), grows the table and fills calculated columns. `tableRows` returns the data rows keyed by column name; formula cells give their `Formula` object (`.result` is the cached value).
 
+Editing a table (ExcelJS's `table.addColumn` / `removeColumns` / `removeRows` / column rename / `headerRow` / `totalsRow` + `commit()`), applied at once:
+
+```ts
+addTableColumn(ws, 'Sales', { name: 'Tax', calculatedColumnFormula: 'Sales[[#This Row],[Units]]*0.1' });
+renameTableColumn(ws, 'Sales', 'Units', 'Qty'); // header cell + Sales[Units] → Sales[Qty] in every formula
+removeTableRows(ws, 'Sales', 0, 2);             // the first two data rows
+removeTableColumns(ws, 'Sales', 1);             // Sales[Qty] references become #REF!, as in Excel
+setTableHeaderRow(ws, 'Sales', false);
+setTableTotalsRow(ws, 'Sales', true);
+```
+
+As in ExcelJS, the table keeps its top-left cell and only its own cells move: removing rows, columns, the header or the totals row shifts the rest of the table up / left and clears what it no longer covers; adding a column, a header or a totals row grows the table right / down into cells that must be empty (else it throws). Moved cells keep their values and styles; references to moved cells are not adjusted (structured references keep working). In formulas the `[@Col]` shorthand is accepted and written as `[[#This Row],[Col]]`, the form files require.
+
 ## Notes (comments)
 
 ```ts

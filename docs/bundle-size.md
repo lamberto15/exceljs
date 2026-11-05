@@ -61,18 +61,20 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 37.7 KB | 37.29 KB |
-| read+write                     | root `*`                                                       | 80.1 KB | 79.74 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.2 KB | 25.86 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 44.8 KB | 44.41 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30 KB | 29.64 KB |
-| lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.8 KB | 12.51 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 29.7 KB | 29.30 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 37.7 KB | 37.49 KB |
+| read+write                     | root `*`                                                       | 82 KB | 81.60 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.2 KB | 26.02 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 44.8 KB | 44.60 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30 KB | 29.78 KB |
+| lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.8 KB | 12.47 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 29.7 KB | 29.44 KB |
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 17.5 KB | 17.15 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 14 (#103) costs: the table editing functions ~1.4 KB, only in bundles that import them (read+write imports `*`); writing the `[@Col]` shorthand as `[[#This Row],[Col]]` ~0.15 KB on every writer.
 
 What group 13 (#99-#102) costs (brotli, ~1 KB on every xlsx entry; the limits above are the result): shared-formula output (#101: group tracking in the worksheet model plus the `t="shared"` master / follower encoder) ~0.5 KB on write; `cell.hyperlink` / `cell.tooltip`, the `addRow` / `insertRow(s)` style codes and the new sheet view fields ~0.5 KB in the model and sheet reader / writer.
 

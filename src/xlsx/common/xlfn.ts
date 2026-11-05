@@ -38,13 +38,49 @@ const STRIP =
  * a prefix on a name that needs none is left as written.
  */
 export function addXlfn(formula: string): string {
-  return formula.indexOf('(') < 0
-    ? formula
-    : formula.replace(ADD, (m, q?: string, p?: string, name?: string) => {
+  const f = formula.includes('[@') ? expandThisRow(formula) : formula;
+  return f.indexOf('(') < 0
+    ? f
+    : f.replace(ADD, (m, q?: string, p?: string, name?: string) => {
         if (q) return m;
         const want = prefixOf(name!);
         return want && want !== p?.toLowerCase() ? want + name! : m;
       });
+}
+
+/**
+ * Structured references' `@` shorthand (`T[@Col]`, `T[@[Col]]`, `[@Col]`, `T[@]`) is UI-only:
+ * files must say `[#This Row]` (Excel drops a table whose calculated column uses `@`, and shows
+ * #REF! in cells). Strings and quoted sheet names are left alone.
+ */
+export function expandThisRow(f: string): string {
+  let out = '';
+  for (let i = 0; i < f.length; i++) {
+    const ch = f[i]!;
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < f.length && !(f[j] === ch && f[j + 1] !== ch)) j += f[j] === ch ? 2 : 1;
+      out += f.slice(i, j + 1);
+      i = j;
+    } else if (ch === '[' && f[i + 1] === '@') {
+      let depth = 0;
+      let j = i;
+      for (; j < f.length; j++) {
+        if (f[j] === "'") j++;
+        else if (f[j] === '[') depth++;
+        else if (f[j] === ']' && --depth === 0) break;
+      }
+      const rest = f.slice(i + 2, j);
+      out +=
+        rest === ''
+          ? '[#This Row]'
+          : rest.startsWith('[')
+            ? `[[#This Row],${rest}]`
+            : `[[#This Row],[${rest}]]`;
+      i = j;
+    } else out += ch;
+  }
+  return out;
 }
 
 /** Remove canonical future-function prefixes (`_xlfn.XLOOKUP(` → `XLOOKUP(`). */

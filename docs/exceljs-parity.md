@@ -20,8 +20,8 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | integration | 90 | 7 | 1 | 49 | 6 | 153 |
 | issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
-| unit | 61 | 2 | 6 | 44 | 64 | 177 |
-| **all** | 186 | 10 | 7 | 98 | 70 | 371 |
+| unit | 61 | 2 | 0 | 50 | 64 | 177 |
+| **all** | 186 | 10 | 1 | 104 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -46,7 +46,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 8 | 0 | 0 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
-| [tables](../test/exceljs-parity/tables.test.ts) | 1 | 0 | 6 | 2 | 0 | 9 |
+| [tables](../test/exceljs-parity/tables.test.ts) | 1 | 0 | 0 | 8 | 0 | 9 |
 | [values](../test/exceljs-parity/values.test.ts) | 12 | 6 | 0 | 4 | 0 | 22 |
 | (internals, no port) | 0 | 0 | 0 | 0 | 47 | 47 |
 
@@ -69,7 +69,6 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 
 Compared with ExcelJS 4.4.0:
 
-- Table editing beyond `addTableRows` (removing rows, adding / removing / renaming columns, header / totals toggles through a table object); edit cells and `ws.tables` instead.
 
 Different by design: shared formulas (`fillFormula`, `{ sharedFormula }` values, shared formulas read from a file) are written as Excel shared formulas but read back expanded, one plain formula per cell (no `sharedFormula` / `shareType` values). Row / column `collapsed` is a plain settable flag here (`ws.setRowProps(n, { collapsed: true })`, `ws.getColumn('E').collapsed = true` on the summary row / column); in ExcelJS it is a getter derived from the outline level and `ws.properties.outlineLevelRow/Col`. Note `protection` takes booleans (ExcelJS: `'True'` / `'False'` strings).
 
@@ -634,15 +633,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 
 | Test | Status | Area | Notes |
 | --- | --- | --- | --- |
-| adds a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| adds a column | ➖ | tables | `addTableColumn(ws, name, column, values, index)` instead of `table.addColumn` + `commit()` |
 | adds a row | ✅ | tables | `addTableRows` (no `table.addRow` + `commit`) |
 | creates a table | ➖ | tables | `topLeft` (exceljs `ref`), no `totalsRowResult`/`filterButton` |
 | moves the table | ➖ | tables | placed at C2 directly (no `table.commit()`) |
-| removes a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
-| removes a row | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
-| removes header | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
-| removes totals | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
-| renames a column | 🚫 | tables (skip) | no table edit API beyond `addTableRows` |
+| removes a column | ➖ | tables | `removeTableColumns(ws, name, index, count?)` |
+| removes a row | ➖ | tables | `removeTableRows(ws, name, index, count?)` |
+| removes header | ➖ | tables | `setTableHeaderRow(ws, name, false)` |
+| removes totals | ➖ | tables | `setTableTotalsRow(ws, name, false)` |
+| renames a column | ➖ | tables | `renameTableColumn(ws, name, index, newName)`; also renames structured references in every formula |
 
 ### `unit/doc/worksheet-writer.spec.js`
 
