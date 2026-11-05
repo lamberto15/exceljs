@@ -1,6 +1,6 @@
 {
   "name": "turbosheet",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Fast, small, streaming-first XLSX and CSV library for TypeScript on every JavaScript runtime (Node, Bun, Deno, browsers, workers).",
   "keywords": [
     "xlsx",
