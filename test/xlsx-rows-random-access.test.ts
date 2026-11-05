@@ -174,3 +174,35 @@ describe('xlsxRows random-access sources (#86)', () => {
     expect(await collect(cut)).toEqual(viaStream);
   });
 });
+
+describe('stream sources that must buffer a sheet (#89)', () => {
+  it('a byte limit on a buffered sheet points to Blob / bytes', async () => {
+    const buf = await createWriterFile(3000);
+    const { sheet, meta } = sizes(buf);
+    const limits = { maxEntryBytes: Math.floor((sheet + meta) / 2) };
+    const err = await collect(once(buf), { limits }).catch((e) => e);
+    expect(err).toBeInstanceOf(ZipLimitError);
+    expect(err.message).toMatch(/^Zip entry too large: xl\/worksheets\/sheet1\.xml/);
+    expect(err.message).toMatch(/stream source must buffer it.*fs\.openAsBlob\(path\).*bytes/);
+    // the advice is right: the same limits stream from a Blob or bytes
+    expect((await collect(new Blob([buf as BlobPart]), { limits })).length).toBe(3000);
+    expect((await collect(buf, { limits })).length).toBe(3000);
+  });
+
+  it('metadata limits and random-access sources get no hint', async () => {
+    const sst = unzipLazy(EXCEL).get('xl/sharedStrings.xml')!.size;
+    // writeXlsx output stores sharedStrings.xml first, so the stream hits the metadata limit
+    const metaFirst = writeXlsx(readXlsx(EXCEL));
+    const sst2 = unzipLazy(metaFirst).get('xl/sharedStrings.xml')!.size;
+    const err0 = await collect(once(metaFirst), { limits: { maxEntryBytes: sst2 - 1 } }).catch(
+      (e) => e,
+    );
+    expect(err0.message).toMatch(/sharedStrings/);
+    expect(err0.message).not.toMatch(/openAsBlob/);
+    for (const src of [EXCEL, new Blob([EXCEL as BlobPart])]) {
+      const err = await collect(src, { limits: { maxEntryBytes: sst - 1 } }).catch((e) => e);
+      expect(err).toBeInstanceOf(ZipLimitError);
+      expect(err.message).not.toMatch(/openAsBlob/);
+    }
+  });
+});
