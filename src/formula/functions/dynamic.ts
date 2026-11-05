@@ -57,7 +57,8 @@ function fromRows(rows: FormulaScalar[][], cols: number): FormulaArray {
 
 function transpose(a: FormulaArray): FormulaArray {
   const data: FormulaScalar[] = new Array(a.rows * a.cols);
-  for (let i = 0; i < a.rows; i++) for (let j = 0; j < a.cols; j++) data[j * a.rows + i] = a.at(i, j);
+  for (let i = 0; i < a.rows; i++)
+    for (let j = 0; j < a.cols; j++) data[j * a.rows + i] = a.at(i, j);
   return new FormulaArray(a.cols, a.rows, data);
 }
 

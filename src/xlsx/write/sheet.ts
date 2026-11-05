@@ -108,7 +108,6 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
   };
 }
 
-
 // ---- shared formulas ------------------------------------------------------------------
 
 interface SharedRun {
@@ -130,8 +129,6 @@ export interface SharedWrite {
   active: SharedRun[];
   row: number;
 }
-
-
 
 /**
  * Shared-formula state for encoding `ws`'s rows (`rowBase`: absolute index of `ws.rowData[0]`).
@@ -225,6 +222,13 @@ function richCell(ref: string, s: string, rt: RichText): string {
   return `<c r="${ref}"${s} t="inlineStr"><is>${runsXml(rt.richText)}</is></c>`;
 }
 
+/**
+ * An error as a cell value in a file: Excel stores #SPILL! / #CALC! through rich-value metadata
+ * with #VALUE! as the plain value (and repairs a file with them as plain values).
+ */
+const fileError = (e: string): string =>
+  e === '#SPILL!' || e === '#CALC!' ? '#VALUE!' : escapeText(e);
+
 function formulaCell(
   ref: string,
   s: string,
@@ -257,7 +261,7 @@ function formulaCell(
       case 'object':
         if ('error' in res) {
           t = ' t="e"';
-          v = `<v>${escapeText((res as CellError).error)}</v>`;
+          v = `<v>${fileError((res as CellError).error)}</v>`;
         }
         break;
     }
@@ -333,7 +337,7 @@ export function encodeRow(row: RowData, r0: number, ctx: SheetCtx): string {
         out += `<c r="${ref}"${s} t="b"><v>${num[i] ? 1 : 0}</v></c>`;
         break;
       case 5: // Error
-        out += `<c r="${ref}"${s} t="e"><v>${escapeText(obj![i] as string)}</v></c>`;
+        out += `<c r="${ref}"${s} t="e"><v>${fileError(obj![i] as string)}</v></c>`;
         break;
       case 6: // Formula
         out += formulaCell(ref, s, obj![i] as Formula, ctx, r0, col[i]!);

@@ -124,6 +124,10 @@ describe('spilling', () => {
     evaluate(wb);
     expect(res(ws, 'D1')).toEqual({ error: '#SPILL!' });
     expect(res(ws, 'F1')).toEqual({ error: '#REF!' });
+    // files store #SPILL! as #VALUE! (Excel keeps the real code in rich-value metadata)
+    expect(
+      new TextDecoder().decode(unzipSync(writeXlsx(wb)).get('xl/worksheets/sheet1.xml')!),
+    ).toContain('t="e" cm="1"><f t="array" ref="D1">_xlfn.SEQUENCE(3)</f><v>#VALUE!</v>');
     expect(ws.getValue('D2')).toBeNull();
     expect(ws.getValue('D1')).toMatchObject({ array: 'D1' });
     ws.clearCell('D3');
@@ -159,7 +163,13 @@ describe('spilling', () => {
     expect([1, 2, 3, 4].map((n) => res(s2, `D${n}`))).toEqual(['b', 'a', 'c', 'z']);
   });
 
-  it('parses A1# and Sheet!A1#', () => {
+  it('parses A1#, Sheet!A1# and the file form ANCHORARRAY(A1)', () => {
+    expect(parseFormula('_xlfn.ANCHORARRAY(Sheet1!C3)')).toMatchObject({
+      type: 'spill',
+      sheet: 'Sheet1',
+      row: 2,
+      col: 2,
+    });
     expect(parseFormula('SUM(A1#)')).toMatchObject({ args: [{ type: 'spill', row: 0, col: 0 }] });
     expect(parseFormula("'My S'!B2#")).toMatchObject({
       type: 'spill',

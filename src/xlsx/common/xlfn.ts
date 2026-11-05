@@ -40,6 +40,7 @@ const STRIP =
 export function addXlfn(formula: string): string {
   let f = formula.includes('[@') ? expandThisRow(formula) : formula;
   if (/LET\s*\(/i.test(f)) f = addXlpm(f);
+  if (f.includes('#')) f = anchorArray(f);
   return f.indexOf('(') < 0
     ? f
     : f.replace(ADD, (m, q?: string, p?: string, name?: string) => {
@@ -145,3 +146,16 @@ export function addXlpm(f: string): string {
   }
   return toks.join('');
 }
+
+/**
+ * Spill references (`A1#`, `Sheet1!$B$2#`) are stored as `ANCHORARRAY(A1)` in files (Excel
+ * removes a formula with `#`); the caller's prefix pass then adds `_xlfn.`.
+ */
+export function anchorArray(f: string): string {
+  return f.replace(ANCHOR, (m, q?: string, sheet?: string, cell?: string) =>
+    q ? m : `ANCHORARRAY(${sheet ?? ''}${cell})`,
+  );
+}
+
+const ANCHOR =
+  /("(?:[^"]|"")*")|(?<![\w.$])((?:'(?:[^']|'')*'|[A-Za-z_][\w.]*)!)?(\$?[A-Za-z]{1,3}\$?\d+)#/g;

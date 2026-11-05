@@ -242,3 +242,18 @@ describe('LET names get _xlpm. on write', () => {
     expect(addXlfn(f)).toBe(want);
   });
 });
+
+describe('spill references are written as ANCHORARRAY', () => {
+  it.each([
+    ['SUM(A1#)', 'SUM(_xlfn.ANCHORARRAY(A1))'],
+    [
+      "ROWS('My S'!$B$2#)+Sheet1!C3#",
+      "ROWS(_xlfn.ANCHORARRAY('My S'!$B$2))+_xlfn.ANCHORARRAY(Sheet1!C3)",
+    ],
+    ['"A1#"&A1', '"A1#"&A1'],
+    ['IFERROR(A1,#N/A)', 'IFERROR(A1,#N/A)'],
+    ['T[#Data]', 'T[#Data]'],
+  ])('%s → %s', (f, want) => {
+    expect(addXlfn(f)).toBe(want);
+  });
+});

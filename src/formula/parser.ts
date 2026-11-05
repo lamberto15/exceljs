@@ -306,7 +306,14 @@ class Parser {
     const next = s[e];
     if (next === '(') {
       this.#p++;
-      return { type: 'call', name: id.replace(PREFIX, '').toUpperCase(), args: this.#args() };
+      const name = id.replace(PREFIX, '').toUpperCase();
+      const args = this.#args();
+      // files store the spill reference A1# as ANCHORARRAY(A1)
+      const a = args[0];
+      if (name === 'ANCHORARRAY' && args.length === 1 && a?.type === 'cell') {
+        return { type: 'spill', sheet: a.sheet, row: a.row, col: a.col };
+      }
+      return { type: 'call', name, args };
     }
     if (next === '!') return this.#qualified(id);
     if (next === ':' && /^:(?:[\w.]+|'[^']*')!/.test(s.slice(e)))

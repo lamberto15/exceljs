@@ -5,7 +5,7 @@ import type { Formula } from '../../core/types.js';
 
 /** Functions whose results spill: such formulas are dynamic-array formulas by default. */
 export const SPILL_FN: RegExp =
-  /(?:^|[^\w.])(?:_xlfn\.)?(?:_xlws\.)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TRANSPOSE|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
+  /(?:^|[^\w.])(?:_xlfn\.)?(?:_xlws\.)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TRANSPOSE|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY|ANCHORARRAY)\s*\(|\$?[A-Za-z]{1,3}\$?\d+#/i;
 
 /**
  * A dynamic-array formula: `dynamic` when set, else one without `array` that uses a spilling
