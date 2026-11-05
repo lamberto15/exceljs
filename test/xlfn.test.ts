@@ -181,3 +181,32 @@ describe('writers add the prefix, readers strip it', () => {
     expect(c.result).toBe(2);
   });
 });
+
+describe('partial prefixes written by the caller', () => {
+  it('addXlfn completes them and keeps unknown names as written', () => {
+    expect(addXlfn('_xlfn.SORT(A1:A3)')).toBe('_xlfn._xlws.SORT(A1:A3)');
+    expect(addXlfn('_xlws.FILTER(A1:A3,B1:B3)')).toBe('_xlfn._xlws.FILTER(A1:A3,B1:B3)');
+    expect(addXlfn('_XLFN.sort(A1:A3)')).toBe('_xlfn._xlws.sort(A1:A3)');
+    expect(addXlfn('_xlfn._xlws.SORT(A1:A3)')).toBe('_xlfn._xlws.SORT(A1:A3)');
+    expect(addXlfn('_xlfn.XLOOKUP(1,A:A,B:B)')).toBe('_xlfn.XLOOKUP(1,A:A,B:B)');
+    expect(addXlfn('_xlfn.MYFUNC(1)')).toBe('_xlfn.MYFUNC(1)');
+    expect(addXlfn('"_xlfn.SORT(" & _xlfn.SORT(A1:A3)')).toBe(
+      '"_xlfn.SORT(" & _xlfn._xlws.SORT(A1:A3)',
+    );
+  });
+
+  it('_xlfn.SORT / _xlws.SORT are written as dynamic-array formulas with the full prefix', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('s');
+    ws.setCell('A1', { formula: '_xlfn.SORT(C1:C3)' });
+    ws.setCell('B1', { formula: '_xlws.SORT(C1:C3)' });
+    const xml = new TextDecoder().decode(unzipSync(writeXlsx(wb)).get('xl/worksheets/sheet1.xml')!);
+    for (const ref of ['A1', 'B1']) {
+      expect(xml).toMatch(
+        new RegExp(
+          `<c r="${ref}"[^>]*cm="1"><f t="array" ref="${ref}">_xlfn\\._xlws\\.SORT\\(C1:C3\\)</f>`,
+        ),
+      );
+    }
+  });
+});

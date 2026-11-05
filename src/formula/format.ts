@@ -2,7 +2,8 @@
 // separator and scaling commas, percent, scientific (0.00E+00), literals ("text", \x, $ - + ( )
 // : / space), sections (positive;negative;zero;text), General, and dates / times (yyyy yy mmmm
 // mmm mm m dddd ddd dd d hh h mm ss AM/PM A/P [h] [m] [s] .0). Colors and locale tags ([Red],
-// [$-409]) are ignored; conditions ([>100]) and fractions (# ?/?) are not supported.
+// [$-409]) are ignored; conditions ([>100]) are not supported. Fractions: `# ?/?` (mixed),
+// `?/?` (improper), up to three-digit denominators (`??/??`, `???/???`) or a fixed one (`?/8`).
 
 import { serialToDate } from '../core/dates.js';
 import { roundTo } from './functions/math.js';
@@ -69,7 +70,87 @@ export function formatText(v: number | string, fmt: string): string {
   const sk = skeleton(sec);
   const sign = minus ? '-' : '';
   if (/general/i.test(sk)) return sign + numToStr(x);
-  return sign + (/[ymdhs]/i.test(sk.replace(/E[+-]/gi, '')) ? date(x, sec) : number(x, sec));
+  if (/[ymdhs]/i.test(sk.replace(/E[+-]/gi, ''))) return sign + date(x, sec);
+  return sign + (fraction(x, sec) ?? number(x, sec));
+}
+
+/** Literal text of a format fragment (quotes, escapes, `_x` padding; brackets dropped). */
+function literals(s: string): string {
+  return s.replace(
+    /"([^"]*)"?|\\(.)|_.|\*.|\[[^\]]*\]/g,
+    (m, q?: string, e?: string) => q ?? e ?? (m[0] === '_' ? ' ' : ''),
+  );
+}
+
+/**
+ * n/d approximating x with d <= maxD: the last continued-fraction convergent that fits (no
+ * semiconvergents), computed in plain doubles. This is what Excel does: it matched Excel for Mac
+ * on 90 values x `?/?`, `??/??`, `???/???` (e.g. 0.14159 with `??/??` is 1/7, not 14/99).
+ */
+function approx(x: number, maxD: number): [number, number] {
+  let [p0, q0, p1, q1] = [0, 1, 1, 0];
+  let v = x;
+  for (let i = 0; i < 64; i++) {
+    const a = Math.floor(v);
+    const [p2, q2] = [a * p1 + p0, a * q1 + q0];
+    if (q2 > maxD) break;
+    [p0, q0, p1, q1] = [p1, q1, p2, q2];
+    if (v === a) break;
+    v = 1 / (v - a);
+  }
+  return [p1, q1];
+}
+
+/** Placeholder rendering of an integer: `0` pads with zeros, `?` with spaces, `#` not at all. */
+function digitsIn(n: number, ph: string, right = false, zero = false): string {
+  const s = n === 0 && !zero && !/0/.test(ph) ? '' : String(n);
+  if (s.length >= ph.length) return s;
+  const pad = ph
+    .slice(right ? s.length : 0, right ? undefined : ph.length - s.length)
+    .replace(/#/g, '')
+    .replace(/\?/g, ' ');
+  return right ? s + pad : pad + s;
+}
+
+/**
+ * Fraction formats (`# ?/?`, `?/?`, `# ??/16`): undefined when the section has none. The
+ * whole part is shown only when the format has one (otherwise the fraction is improper); a
+ * whole number blanks the fraction to spaces of the same width.
+ */
+function fraction(v: number, sec: string): string | undefined {
+  // mask literals so placeholders inside quotes / escapes are not matched
+  const mask = sec.replace(/"[^"]*"?|\\.|_.|\*.|\[[^\]]*\]/g, (m) => '\u0001'.repeat(m.length));
+  const m = /(?:([#0?,]+)( +))?([#0?]+)( *\/ *)([#0?]+|[1-9]\d*)/.exec(mask);
+  if (!m) return undefined;
+  const all = m[0];
+  const wph = m[1];
+  const gap = m[2] ?? '';
+  const nph = m[3]!;
+  const slash = m[4]!;
+  const dph = m[5]!;
+  const pre = literals(sec.slice(0, m.index));
+  const post = literals(sec.slice(m.index + all.length));
+  const fixed = /^\d/.test(dph) ? Number(dph) : 0;
+  let whole = wph ? Math.floor(v) : 0;
+  const f = v - whole;
+  let [n, d] = fixed
+    ? [Math.round(f * fixed), fixed]
+    : approx(f, 10 ** Math.min(dph.length, 3) - 1);
+  if (wph && n === d) {
+    whole++;
+    n = 0;
+  }
+  const den = fixed ? dph : digitsIn(d, dph, true);
+  let w = '';
+  if (wph) {
+    w = number(whole, wph);
+    if (whole === 0 && n === 0 && w.trim() === '') w = '0';
+  }
+  const frac =
+    wph && n === 0
+      ? ' '.repeat(nph.length + slash.length + den.length)
+      : `${digitsIn(n, nph, false, !wph)}${slash}${den}`;
+  return pre + w + gap + frac + post;
 }
 
 type Tok =

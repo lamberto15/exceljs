@@ -96,7 +96,7 @@ export function newSheetCtx(o: NewSheetCtx): SheetCtx {
 
 /** Functions whose results spill (dynamic arrays): such formulas get the metadata by default. */
 const SPILL =
-  /(?:^|[^\w.])(?:_xlfn\.(?:_xlws\.)?)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
+  /(?:^|[^\w.])(?:_xlfn\.)?(?:_xlws\.)?(?:FILTER|SORT|SORTBY|UNIQUE|SEQUENCE|RANDARRAY|TEXTSPLIT|VSTACK|HSTACK|TOCOL|TOROW|WRAPROWS|WRAPCOLS|TAKE|DROP|CHOOSEROWS|CHOOSECOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(/i;
 
 // ---- caches (module level; contents are deterministic, so sharing is safe) -------------
 
