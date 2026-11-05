@@ -212,7 +212,7 @@ await w.end();                                 // commits the open sheet, finish
 - Sheets are written one after another: `addWorksheet` commits the previous sheet. Rows cannot be changed once added.
 - `s.worksheet` is a metadata-only `Worksheet` (columns, views, merges, feature fields). Set **head** data (columns, views, freeze) before adding rows; feature fields set after the rows (tables, validations, ...) are applied at `commit()`.
 - `w.workbook` holds the shared styles, so `w.workbook.styles.intern(style)` works.
-- Async writers deflate with `CompressionStream('deflate-raw')` when the runtime has it, and with fflate otherwise.
+- Async writers (`xlsxStream`, `createXlsxWriter`) deflate off the main thread: with `node:zlib` in Node, Bun and Deno (the `compression` level is honored), with `CompressionStream('deflate-raw')` elsewhere (browsers, workers: the platform's default level, ~6; `compression` only switches between store and deflate), and with fflate on the main thread when neither exists. Zip CRC-32 uses `zlib.crc32` when available.
 
 ## Features
 

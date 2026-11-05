@@ -644,7 +644,26 @@ describe('createXlsxWriter', () => {
   }, 60_000);
 });
 
-describe('native CompressionStream path', () => {
+describe('native deflate path', () => {
+  it('honors the compression level in async writers (#71)', async () => {
+    const size = async (compression: number) => {
+      let n = 0;
+      const w = createXlsxWriter({ compression, sink: (c) => void (n += c.byteLength) });
+      const s = w.addWorksheet('a');
+      for (let i = 0; i < 20_000; i++) s.addRow([i, `row ${i}`, i * 1.5, `abc${i % 50}`]);
+      await w.end();
+      const wb = new Workbook();
+      const ws = wb.addWorksheet('a');
+      for (let i = 0; i < 20_000; i++) ws.addRow([i, `row ${i}`, i * 1.5, `abc${i % 50}`]);
+      const m = (await readAll(xlsxStream(wb, { compression }))).length;
+      return [n, m];
+    };
+    const [w1, s1] = await size(1);
+    const [w9, s9] = await size(9);
+    expect(w1).toBeGreaterThan(w9! * 1.05);
+    expect(s1).toBeGreaterThan(s9! * 1.05);
+  });
+
   it('is used in this runtime', () => {
     expect(nativeDeflateAvailable()).toBe(true);
   });
