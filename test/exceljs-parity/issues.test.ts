@@ -1,7 +1,7 @@
 // ExcelJS regression tests for GitHub issues (spec/integration/issues/**), ported to turbosheet.
 
 import { describe, expect, it } from 'vitest';
-import { csvStream, parseCsv } from '../../src/csv/index.js';
+import { csvRows, csvStream, parseCsv } from '../../src/csv/index.js';
 import {
   addDataValidation,
   CellKind,
@@ -282,20 +282,37 @@ describe('exceljs parity: github issues', () => {
   it('issue 991: CSV date detection does not turn "00210PRG1"-like strings into dates', () => {
     const text = new TextDecoder().decode(fixture('test-issue-991.csv'));
     const col = parseCsv(text, { parseDates: true }).map((r) => r[0]);
-    // ISO dates are parsed as UTC (exceljs: local time via dayjs)
+    // ISO dates are parsed as UTC by default
     expect(col[0]).toEqual(new Date('2019-11-04T00:00:00Z'));
-    // ➖ "11-04-2019" (US format) is not ISO 8601: turbosheet keeps it a string
+    // "11-04-2019" (US format) is not ISO 8601: without dateFormats it stays a string
     expect(col[1]).toBe('11-04-2019');
     expect(col[2]).toEqual(new Date('2019-11-04T10:17:55Z'));
     expect(col[3]).toBe('00210PRG1');
     expect(col[4]).toBe('1234-5thisisnotadate');
+    // exceljs: its default formats include MM-DD-YYYY and dates are local time (dayjs)
+    const local = parseCsv(text, { dateFormats: ['MM-DD-YYYY'], localDates: true }).map(
+      (r) => r[0],
+    );
+    expect(local).toEqual([
+      new Date(2019, 10, 4),
+      new Date(2019, 10, 4),
+      new Date(2019, 10, 4, 10, 17, 55),
+      '00210PRG1',
+      '1234-5thisisnotadate',
+    ]);
   });
 
   // exceljs: spec/integration/issues/issue-995-encoding.spec.js — "issue 995 - encoding option works fine"
   it('issue 995: non-ASCII text survives a CSV write/read (UTF-8)', async () => {
     const HEBREW = 'משהו שכתוב בעברית';
+    const chunksOf = (b: Uint8Array, n: number) =>
+      Array.from({ length: b.length / n }, (_, i) => b.slice(i * n, i * n + n));
     const bytes = await collect(csvStream([[HEBREW]]));
     expect(parseCsv(new TextDecoder().decode(bytes))[0]![0]).toBe(HEBREW);
+    // byte input with an explicit encoding (exceljs: parserOptions.encoding)
+    const rows: string[][] = [];
+    for await (const r of csvRows(chunksOf(bytes, 1), { encoding: 'utf-8' })) rows.push(r);
+    expect(rows).toEqual([[HEBREW]]);
   });
 
   describe('Shared Formulas - issue xyz - cells copied as a block treat formulas as values', () => {

@@ -68,13 +68,15 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 27.5 KB | 27.38 KB |
 | lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.97 KB |
 | lite write + charts            | lite + `addChart, chartsWriter`                                 | 27 KB | 26.96 KB |
-| csv                            | `./csv` `*`                                                    | 2.9 KB | 2.38 KB |
+| csv                            | `./csv` `*`                                                    | 3.3 KB | 3.14 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 17 KB | 16.75 KB |
 
 Budget policy: each limit is at most the measured size + 0.5 KB (some are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified): worksheet model 13.5 KB, fflate (deflate) 11.6 KB, workbook / styles XML writer 10.6 KB, style registry 7.5 KB, sheet writer 7.4 KB, conditional formatting 6.6 KB, charts 6.5 KB, tables 4.2 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
 
 Native zip helpers (#71) add ~0.15 KB to every write bundle: the runtime `node:zlib` lookup and the `zlib.crc32` hook in the zip writer (the off-thread zlib deflater is only in the async writers). The two lite combo limits were raised by 0.5 KB for it. Sync native zlib (#75: `deflateRawSync` batches in `writeXlsx`, `inflateRawSync` with limit-capped `maxOutputLength` in `readXlsx`) adds ~0.2 KB to write bundles and ~0.5 KB to read+write; the root `*` and lite read+write limits were raised by 0.4 / 0.5 KB. Storing metadata parts before the worksheets (#74: `ZipOut.reserve`) adds ~0.1 KB to write bundles; lite write-only was raised to 24 KB.
+
+CSV read typing and decoding (#81: `parseBooleans`, `parseErrors`, `dateFormats`, `localDates`, `encoding` with BOM sniffing and `'auto'`) adds ~0.76 KB to `./csv` (2.38 to 3.14 KB); its limit was raised from 2.9 to 3.3 KB.
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
 bundles that don't import them.

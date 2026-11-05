@@ -161,6 +161,21 @@ const csv = writeCsv(rows, { escapeFormulas: true });
 
 To turn a worksheet into CSV rows, use `sheetToArrays(ws, { raw: true })` from `turbosheet/json` and pass the result to `writeCsv`; to load CSV into a sheet use `arraysToSheet(ws, parseCsv(text, { parseNumbers: true }))` (empty fields leave cells empty, like ExcelJS).
 
+ExcelJS' `csv.read` types every field; turbosheet types only what you ask for. To match it:
+
+```ts
+const rows = parseCsv(text, {
+  parseNumbers: true,
+  parseBooleans: true, // ExcelJS: exact 'true' / 'false'; turbosheet: any case
+  parseErrors: true, // '#N/A' → { error: '#N/A' }
+  dateFormats: ['MM-DD-YYYY'], // ExcelJS default list: ISO forms + MM-DD-YYYY
+  localDates: true, // ExcelJS (dayjs) parses local time; turbosheet defaults to UTC
+});
+arraysToSheet(new Workbook({ localDates: true }).addWorksheet('Sheet1'), rows);
+```
+
+`dateFormats` uses the same `YYYY MM DD HH mm ss` tokens as dayjs (strict), ISO 8601 is always tried first, and impossible dates such as `31/02/2024` stay text. ExcelJS turns anything `Number()` accepts into a number (`007` → 7, `0x10` → 16); `parseNumbers` accepts only plain decimal numbers. ExcelJS decodes bytes as UTF-8 by default; `csvRows(source, { encoding })` takes any `TextDecoder` label, honors BOMs (UTF-16 included), and `'auto'` falls back to windows-1252.
+
 ## Behavior differences to watch for
 
 - **Synchronous reads/writes block the event loop** for large files. For big data use the streaming writer/reader, or run `readXlsx`/`writeXlsx` in a worker.
