@@ -24,6 +24,12 @@ export interface ZipEntryIn {
 export interface ZipEntryOut {
   path: string;
   chunks: AsyncIterable<Uint8Array>;
+  /**
+   * Declare that the caller consumes this entry incrementally without keeping its data: the
+   * byte limits (`maxEntryBytes`, `maxTotalBytes`) then do not apply to it, only
+   * `maxCompressionRatio`. Call before reading `chunks`.
+   */
+  unbounded(): void;
 }
 
 /** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
@@ -153,7 +159,7 @@ export class ZipStreamWriter {
 // ---------------------------------------------------------------- reading
 
 interface Sink {
-  start(path: string): void;
+  start(path: string, declared: number | undefined): void;
   chunk(data: Uint8Array): void;
   end(): void;
 }
@@ -166,9 +172,16 @@ class Driver {
   /** Compressed bytes seen for the current entry (counted by the inflate decoder). */
   #compressed = 0;
 
-  constructor(sink: Sink, limits?: Partial<Limits>) {
+  readonly budget: Budget;
+
+  /**
+   * `deferCaps`: only the ratio limit is enforced while inflating; the caller applies the byte
+   * limits as it consumes the output (`unzipStream`, so `unbounded()` can opt out).
+   */
+  constructor(sink: Sink, limits?: Partial<Limits>, deferCaps = false) {
     this.#sink = sink;
     const budget = new Budget(limits);
+    this.budget = budget;
     const self = this;
     class CountingInflate implements UnzipDecoder {
       static compression = 8;
@@ -186,18 +199,18 @@ class Driver {
     this.#unzip.register(CountingInflate);
     this.#unzip.register(UnzipPassThrough);
     this.#unzip.onfile = (file) => {
-      if (!budget.enter(file.name, file.originalSize)) return; // directory
+      if (!budget.enter(file.name, deferCaps ? undefined : file.originalSize)) return; // directory
       this.#open = true;
       this.#compressed = 0;
       let out = 0;
       const name = file.name;
       // Stored entries can't be bombs (output == input) and bypass CountingInflate.
       const checkRatio = file.compression !== 0;
-      this.#sink.start(name);
+      this.#sink.start(name, file.originalSize);
       file.ondata = (err, data, final) => {
         if (err) throw err;
         out += data.length;
-        budget.output(name, out, data.length, this.#compressed, checkRatio);
+        budget.output(name, out, data.length, this.#compressed, checkRatio, !deferCaps);
         if (data.length > 0) this.#sink.chunk(data);
         if (final) {
           this.#open = false;
@@ -258,7 +271,10 @@ export function unzipSync(data: Uint8Array, limits?: Partial<Limits>): Map<strin
   return result;
 }
 
-type Event = { t: 's'; path: string } | { t: 'c'; data: Uint8Array } | { t: 'e' };
+type Event =
+  | { t: 's'; path: string; size: number | undefined }
+  | { t: 'c'; data: Uint8Array }
+  | { t: 'e' };
 
 /**
  * Stream entries out of a zip. The `chunks` of an entry must be consumed (or abandoned by
@@ -273,12 +289,14 @@ export async function* unzipStream(
   let head = 0;
   const driver = new Driver(
     {
-      start: (path) => void queue.push({ t: 's', path }),
+      start: (path, size) => void queue.push({ t: 's', path, size }),
       chunk: (data) => void queue.push({ t: 'c', data: data.slice() }),
       end: () => void queue.push({ t: 'e' }),
     },
     limits,
+    true,
   );
+  const budget = driver.budget;
   const it = source[Symbol.asyncIterator]();
   let cur: Uint8Array | null = null;
   let off = 0;
@@ -319,17 +337,36 @@ export async function* unzipStream(
       if (!ev) return;
       if (ev.t !== 's') continue; // leftover data of an abandoned entry
       let done = false;
+      let capped = true;
+      const path = ev.path;
+      const declared = ev.size;
       const chunks: AsyncIterable<Uint8Array> = {
         [Symbol.asyncIterator]: async function* () {
+          // byte limits are applied here, on consumption, so unbounded() can opt out
+          if (capped && declared !== undefined && declared > budget.limits.maxEntryBytes) {
+            throw new ZipLimitError(`Zip entry too large: ${path}`);
+          }
+          let out = 0;
           while (!done) {
             const e = await next();
             if (!e) throw new ZipLimitError('Truncated zip archive');
-            if (e.t === 'c') yield e.data;
-            else if (e.t === 'e') done = true;
+            if (e.t === 'c') {
+              if (capped) {
+                out += e.data.length;
+                budget.output(path, out, e.data.length, 0, false);
+              }
+              yield e.data;
+            } else if (e.t === 'e') done = true;
           }
         },
       };
-      yield { path: ev.path, chunks };
+      yield {
+        path,
+        chunks,
+        unbounded: () => {
+          capped = false;
+        },
+      };
     }
   } finally {
     await it.return?.();

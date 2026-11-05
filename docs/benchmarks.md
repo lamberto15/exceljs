@@ -63,8 +63,9 @@ streaming writers), so `max-speed` (level 1) is now about twice as fast as the d
 | ExcelJS `xlsx.load` (DOM)              |    3628 |                    721 |
 | ExcelJS `WorkbookReader` (streaming)   |    1785 |                     72 |
 
-"Metadata first" is the same data with workbook metadata stored before the sheet (Excel's order), so
-`xlsxRows` needs no buffering. The plain `xlsxRows` row reads the ExcelJS-written order, which buffers some
+"Metadata first" is the same data with workbook metadata (`styles.xml`, `sharedStrings.xml`) stored before
+the sheet, as `writeXlsx` writes it, so `xlsxRows` needs no buffering. Excel 16.x and ExcelJS store the sheet
+first. The plain `xlsxRows` row reads the ExcelJS-written order, which buffers some
 data.
 
 ## Variance

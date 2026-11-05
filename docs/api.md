@@ -192,7 +192,7 @@ interface ReadOptions {
 interface XlsxRow { sheet: string; sheetIndex: number; row: number /* 1-based */; values: CellValue[] /* 0-based by column */ }
 ```
 
-`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive (Excel's order); otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
+`xlsxRows` accepts `Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>`. Memory is constant for sheet data when `workbook.xml`, `styles.xml` and `sharedStrings.xml` come before the worksheets in the archive, as `writeXlsx` and `xlsxStream` write them. Otherwise such a sheet is buffered (see the JSDoc of `xlsxRows`). That includes files saved by Excel 16.x and ExcelJS, which store worksheets before `styles.xml`, and `createXlsxWriter` output (styles and shared strings are only final at `end()`). The byte limits (`maxEntryBytes`, `maxTotalBytes`) apply only to buffered parts. A streamed sheet keeps nothing, so only `maxCompressionRatio` applies to it, and a 1 GiB+ sheet XML is fine. The shared-string table is always held in memory. Rows without values are skipped; hyperlinks are not applied; `features` is ignored. Merged ranges come after the cell data in a sheet's XML, so `xlsxRows` reports them through `onSheetEnd` once the sheet's rows are done.
 
 Other exports: `listPreservedParts(wb)` -> `{ path, contentType }[]` of the parts the next write will emit from the original file; `translateFormula`; `SheetEntry`.
 
@@ -209,6 +209,7 @@ await w.end();                                 // commits the open sheet, finish
 ```
 
 - `profile` defaults to `'low-memory'` here (inline strings: memory stays flat however many distinct strings you write). `profile: 'balanced'` / `strings: 'shared'` writes sharedStrings.xml instead: smaller files when strings repeat a lot, but the table holds every distinct string until `end()` and is serialized in one blocking pass there.
+- Its output stores the worksheets before `styles.xml` / `sharedStrings.xml`, which are only final at `end()`. `xlsxRows` therefore buffers each sheet of such a file before emitting rows, and `readXlsx` is unaffected. `writeXlsx` and `xlsxStream` store the metadata first, so their output streams.
 - Without `sink`, read the zip from `w.readable` (a `ReadableStream<Uint8Array>`). With `sink: (chunk) => void | Promise<void>` the promise applies backpressure.
 - Sheets are written one after another: `addWorksheet` commits the previous sheet. Rows cannot be changed once added.
 - `s.worksheet` is a metadata-only `Worksheet` (columns, views, merges, feature fields). Set **head** data (columns, views, freeze) before adding rows; feature fields set after the rows (tables, validations, ...) are applied at `commit()`.
