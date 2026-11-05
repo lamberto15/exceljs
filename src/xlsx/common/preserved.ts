@@ -118,6 +118,16 @@ export interface PVml {
 }
 
 /**
+ * A part a feature modelled (a chart, see SheetReadCtx.claim): while `model` is unchanged
+ * (`key`, its JSON when read), the original part is written instead of a regenerated one.
+ */
+export interface PModel {
+  readonly model: object;
+  readonly key: string;
+  readonly rel: PRel;
+}
+
+/**
  * A modelled table whose part has relationships of its own (a query table): while the model
  * table is unchanged, its original part is written instead of a regenerated one.
  */
@@ -156,6 +166,8 @@ export interface PSheet {
   readonly drawing: PDrawing | undefined;
   readonly vml?: PVml | undefined;
   readonly tables?: readonly PTable[] | undefined;
+  /** Parts features modelled (charts), kept for writing while unchanged. */
+  readonly models?: readonly PModel[] | undefined;
   readonly links?: readonly PLink[] | undefined;
   /** Writer hooks. */
   readonly w: PresWrite;
@@ -247,6 +259,15 @@ export function presVml(ws: Worksheet): PVml | undefined {
 }
 
 /** The kept part of a table read from the file, while the model table is unchanged. */
+/** The kept part of a modelled object (chart) while it is unchanged since it was read. */
+export function presPart(ws: Worksheet, model: object): PRel | undefined {
+  const p = ws.preserved;
+  // a renamed sheet: kept parts may refer to the old name, regenerate from the model
+  if (!p || p.name !== ws.name) return undefined;
+  const k = p.models?.find((x) => x.model === model);
+  return k && JSON.stringify(model) === k.key ? k.rel : undefined;
+}
+
 export function presTable(ws: Worksheet, t: Table): PTable | undefined {
   const k = ws.preserved?.tables?.find((x) => x.table === t);
   return k && JSON.stringify(t) === k.key ? k : undefined;

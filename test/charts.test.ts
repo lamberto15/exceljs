@@ -234,6 +234,20 @@ const SEQ: Record<string, string[]> = {
     'extLst',
   ],
   'ser/marker': ['symbol', 'size', 'spPr', 'extLst'],
+  'ser/trendline': [
+    'name',
+    'spPr',
+    'trendlineType',
+    'order',
+    'period',
+    'forward',
+    'backward',
+    'intercept',
+    'dispRSqr',
+    'dispEq',
+    'trendlineLbl',
+    'extLst',
+  ],
   strRef: ['f', 'strCache', 'extLst'],
   numRef: ['f', 'numCache', 'extLst'],
   numCache: ['formatCode', 'ptCount', 'pt', 'extLst'],
@@ -478,6 +492,99 @@ describe('charts: schema order', () => {
   });
 });
 
+describe('charts: combos, secondary axes, trendlines, data labels (#114)', () => {
+  it('column + line on a secondary axis: two groups, four axes, valid order', () => {
+    const z = oneChart('column', {
+      series: [TWO[0]!, { ...TWO[1]!, type: 'line', axis: 'secondary', marker: false }],
+      axes: { y: { title: 'Units' }, y2: { title: 'Share', numFmt: '0%' } },
+    });
+    const xml = z.get('xl/charts/chart1.xml')!;
+    expect(schemaProblems(xml)).toEqual([]);
+    expect(count(xml, /<c:barChart>/)).toBe(1);
+    expect(count(xml, /<c:lineChart>/)).toBe(1);
+    expect(count(xml, /<c:valAx>/)).toBe(2);
+    expect(count(xml, /<c:catAx>/)).toBe(2);
+    expect(xml).toMatch(
+      /<c:lineChart>.*<c:idx val="1"\/>.*<c:axId val="30"\/><c:axId val="40"\/><\/c:lineChart>/,
+    );
+    expect(xml).toContain(
+      '<c:axId val="30"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="1"/>',
+    );
+    expect(xml).toMatch(
+      /<c:axId val="40"\/>.*<c:axPos val="r"\/>.*<a:t>Share<\/a:t>.*<c:crosses val="max"\/>/,
+    );
+  });
+
+  it('stacked applies to the chart type only, not to combo series', () => {
+    const xml = oneChart('area', {
+      stacked: 'stacked',
+      series: [TWO[0]!, { ...TWO[1]!, type: 'line' }],
+    }).get('xl/charts/chart1.xml')!;
+    expect(xml).toMatch(/<c:areaChart><c:grouping val="stacked"\/>/);
+    expect(xml).toMatch(/<c:lineChart><c:grouping val="standard"\/>/);
+  });
+
+  it('column + line on one axis share the primary axes', () => {
+    const xml = oneChart('column', { series: [TWO[0]!, { ...TWO[1]!, type: 'line' }] }).get(
+      'xl/charts/chart1.xml',
+    )!;
+    expect(schemaProblems(xml)).toEqual([]);
+    expect(xml).toMatch(/<c:lineChart>.*<c:axId val="10"\/><c:axId val="20"\/><\/c:lineChart>/);
+    expect(count(xml, /<c:valAx>/)).toBe(1);
+  });
+
+  it('invalid combos throw', () => {
+    const ws = dataBook().worksheets[0]!;
+    expect(() => addChart(ws, chartOf('pie', { series: [{ ...TWO[0]!, type: 'line' }] }))).toThrow(
+      'cannot be combined',
+    );
+    expect(() =>
+      addChart(ws, chartOf('bar', { series: [{ ...TWO[0]!, type: 'column' }] })),
+    ).toThrow('cannot be combined');
+  });
+
+  it('trendlines and per-series data labels', () => {
+    for (const type of ['scatter', 'line', 'column', 'area'] as const) {
+      const base = chartOf(type);
+      const z = oneChart(type, {
+        dataLabels: { showValue: true },
+        series: base.series.map((s, i) => ({
+          ...s,
+          trendline:
+            i === 0
+              ? [
+                  { type: 'linear', displayEquation: true, displayRSquared: true, forward: 1 },
+                  { type: 'polynomial', order: 3, name: 'Poly', color: { argb: 'FFFF0000' } },
+                ]
+              : { type: 'movingAverage', period: 2 },
+          dataLabels:
+            i === 1
+              ? false
+              : { showValue: true, position: type === 'area' ? undefined : 't', numFmt: '0.0' },
+        })),
+      });
+      const xml = z.get('xl/charts/chart1.xml')!;
+      expect(schemaProblems(xml), type).toEqual([]);
+      expect(xml).toContain(
+        '<c:trendlineType val="linear"/><c:forward val="1"/><c:dispRSqr val="1"/><c:dispEq val="1"/><c:trendlineLbl>',
+      );
+      expect(xml).toContain('<c:name>Poly</c:name>');
+      expect(xml).toContain('<c:trendlineType val="poly"/><c:order val="3"/>');
+      expect(count(xml, /<c:dLbls>/)).toBe(1); // second series: no labels
+      expect(xml).toContain('<c:numFmt formatCode="0.0" sourceLinked="0"/>');
+    }
+  });
+
+  it('pie ignores trendlines and secondary axes', () => {
+    const xml = oneChart('pie', {
+      series: [{ ...TWO[0]!, axis: 'secondary', trendline: { type: 'linear' } }],
+    }).get('xl/charts/chart1.xml')!;
+    expect(schemaProblems(xml)).toEqual([]);
+    expect(xml).not.toContain('trendline');
+    expect(xml).not.toContain('Ax>');
+  });
+});
+
 describe('charts: references and caches', () => {
   it('qualifies / quotes / absolutizes references and fills caches from cells', () => {
     const xml = oneChart('column').get('xl/charts/chart1.xml')!;
@@ -675,9 +782,10 @@ describe('charts: package', () => {
 
     const wb = readXlsx(first);
     const ws = wb.worksheets[0]!;
-    expect(ws.charts).toBeUndefined(); // charts are not modelled when reading
+    expect(ws.charts).toHaveLength(1); // read charts are modelled (#113)
+    expect(ws.charts![0]).toMatchObject({ type: 'column', title: 'column chart' });
     expect(ws.images).toHaveLength(1);
-    expect(ws.preserved?.drawing?.xml).toContain('<c:chart ');
+    expect(ws.preserved?.drawing?.xml ?? '').not.toContain('<c:chart ');
     addChart(ws, chartOf('pie', { anchor: 'P2:V16' }));
     const z = parts(writeXlsx(wb));
     // the kept chart keeps its name; ours skips the taken number
@@ -762,7 +870,8 @@ describe('charts: lite', () => {
     const wb = readXlsx(writeXlsx(wb0));
     const ws = wb.worksheets[0]!;
     const noImages = [lite.printSetupWriter, lite.themeWriter];
-    expect(() => lite.writeXlsx(wb, { features: noImages })).toThrow(/imagesWriter/);
+    // the read chart is modelled now: writing it needs chartsWriter
+    expect(() => lite.writeXlsx(wb, { features: noImages })).toThrow(/chartsWriter/);
     addChart(ws, chartOf('line'));
     const z = parts(lite.writeXlsx(wb, { features: [lite.chartsWriter, ...noImages] }));
     expect(count(z.get('xl/drawings/drawing1.xml'), /<xdr:graphicFrame /)).toBe(2);

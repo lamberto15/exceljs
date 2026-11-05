@@ -400,13 +400,15 @@ describe('preserve: drawings with charts (mixed ownership)', () => {
     expect(text(z2, drawingOf(z2, 1))).toContain('<c:chart ');
   });
 
-  it('renaming the sheet drops its chart; removing it drops the chart part', async () => {
+  it('renaming the sheet regenerates its chart from the model; removing it drops the chart part', async () => {
     const src = await withChart(false);
+    const kept = unzipSync(writeXlsx(readXlsx(src)))['xl/charts/chart1.xml'];
     const wb = readXlsx(src);
     wb.worksheets[0]!.name = 'Renamed';
     const z = unzipSync(writeXlsx(wb));
     checkPackage(z);
-    expect(z['xl/charts/chart1.xml']).toBeUndefined();
+    expect(z['xl/charts/chart1.xml']).toBeDefined();
+    expect(z['xl/charts/chart1.xml']).not.toEqual(kept);
     const wb2 = readXlsx(src);
     wb2.removeWorksheet('Data');
     expect(listPreservedParts(wb2).map((p) => p.path)).not.toContain('xl/charts/chart1.xml');

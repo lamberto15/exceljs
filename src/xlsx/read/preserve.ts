@@ -39,6 +39,7 @@ import type {
   PForeignSheet,
   PFrag,
   PLink,
+  PModel,
   POwnRel,
   PPart,
   PRel,
@@ -298,7 +299,12 @@ export class Preserver {
   }
 
   /** @internal Build ws.preserved from a finished capture. */
-  finishSheet(c: SheetCap, ws: Worksheet, sheetId: number): void {
+  finishSheet(
+    c: SheetCap,
+    ws: Worksheet,
+    sheetId: number,
+    claims: ReadonlyMap<string, object> = new Map(),
+  ): void {
     const rels = c.rels;
     const frags: [number, number, string][] = [];
     let vmlKept: PVml | undefined;
@@ -366,16 +372,24 @@ export class Preserver {
       }
     }
     let drawing: PDrawing | undefined;
+    const claimed = new Map<string, string>(); // claimed part path → relationship type
     for (const r of rels?.values() ?? []) {
       if (!r.external && relTypeIs(r.type, 'drawing') && c.refs.has(r.id)) {
-        drawing = this.drawing(r.path);
+        drawing = this.drawing(r.path, claims, claimed);
         break;
       }
+    }
+    const models: PModel[] = [];
+    for (const [path, type] of claimed) {
+      const model = claims.get(path)!;
+      const p = this.part(path);
+      if (p) models.push({ model, key: JSON.stringify(model), rel: { type, target: p } });
     }
     const empty =
       frags.length === 0 &&
       implicit.length === 0 &&
       !drawing &&
+      models.length === 0 &&
       !vmlKept &&
       tables.length === 0 &&
       links.length === 0 &&
@@ -397,6 +411,7 @@ export class Preserver {
       drawing,
       vml: vmlKept,
       tables: tables.length ? tables : undefined,
+      models: models.length ? models : undefined,
       links: links.length ? links : undefined,
       w: presWrite,
     };
@@ -404,10 +419,15 @@ export class Preserver {
   }
 
   /** Anchors of a drawing part that are not modelled pictures (see images reader). */
-  private drawing(path: string): PDrawing | undefined {
+  private drawing(
+    path: string,
+    claims: ReadonlyMap<string, object>,
+    claimed: Map<string, string>,
+  ): PDrawing | undefined {
     const xml = this.text(path);
     if (xml === undefined) return undefined;
     const drels = this.pkg.relsOf(path);
+    let owned = false; // the anchor shows a part a feature modelled (a chart)
     const kept: string[] = [];
     let scope: Map<string, string> | undefined;
     let raw: RawXml | undefined;
@@ -426,9 +446,20 @@ export class Preserver {
           if (depth === 2) {
             raw = new RawXml(scope!, relMap(drels), OUT_DRAWING);
             pic = false;
+            owned = false;
             curMax = 0;
           }
           const ln = localName(name);
+          if (ln === 'chart') {
+            for (const k in a) {
+              if (!k.endsWith(':id')) continue;
+              const r = drels?.get(a[k]!);
+              if (r && !r.external && claims.has(r.path)) {
+                owned = true;
+                claimed.set(r.path, r.type);
+              }
+            }
+          }
           if (depth === 3 && ln === 'pic') pic = true;
           if (ln === 'blip' && pic) {
             for (const k in a) {
@@ -451,7 +482,7 @@ export class Preserver {
           if (depth === 2 && raw) {
             raw.end();
             // modelled pictures (direct pic with an embedded blip) are re-emitted by images
-            if (!(pic && /:embed=/.test(raw.result))) {
+            if (!owned && !(pic && /:embed=/.test(raw.result))) {
               kept.push(raw.result);
               if (curMax > maxId) maxId = curMax;
             }

@@ -154,13 +154,13 @@
       "name": "write-only",
       "path": "dist/index.js",
       "import": "{ Workbook, writeXlsx }",
-      "limit": "39.7 KB"
+      "limit": "40.5 KB"
     },
     {
       "name": "read+write",
       "path": "dist/index.js",
       "import": "*",
-      "limit": "85.1 KB"
+      "limit": "87.9 KB"
     },
     {
       "name": "lite write-only",
@@ -172,7 +172,7 @@
       "name": "lite read+write",
       "path": "dist/lite.js",
       "import": "{ Workbook, readXlsx, writeXlsx }",
-      "limit": "45.3 KB"
+      "limit": "45.6 KB"
     },
     {
       "name": "lite write + tables + images",
@@ -190,7 +190,7 @@
       "name": "lite write + charts",
       "path": "dist/lite.js",
       "import": "{ Workbook, writeXlsx, addChart, chartsWriter }",
-      "limit": "30.1 KB"
+      "limit": "31.1 KB"
     },
     {
       "name": "csv",

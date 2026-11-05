@@ -8,7 +8,7 @@
 // not matter for element order (that comes from SheetSlot / BookSlot); `themeWriter` stays last
 // so the theme part and relationship follow the other workbook-level parts.
 
-import { chartsWriter } from './charts.js';
+import { chartsReader, chartsWriter } from './charts.js';
 import { commentsReader, commentsWriter } from './comments.js';
 import {
   conditionalFormattingReader,
@@ -39,6 +39,7 @@ export const WRITERS: readonly FeatureWriter[] = [
 ];
 
 export const READERS: readonly FeatureReader[] = [
+  chartsReader,
   commentsReader,
   conditionalFormattingReader,
   customViewsReader,

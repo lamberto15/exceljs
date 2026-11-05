@@ -278,7 +278,7 @@ Excel 365's in-cell checkboxes (2024+) are boolean cells with a checkbox format 
 
 ## Charts
 
-Bar, column, line, pie, doughnut, scatter and area charts, written as native Excel charts (write only: charts in files you read are kept raw and written back).
+Bar, column, line, pie, doughnut, scatter and area charts, combos, secondary axes and trendlines, written as native Excel charts. Charts in files you read become `ws.charts` too (see below).
 
 ```ts
 ws.addRow(['Month', 'North', 'South']);
@@ -303,7 +303,23 @@ addChart(ws, {
 - References are A1 ranges, optionally sheet-qualified (`'My Data'!$B$2:$B$10`); unqualified ranges mean the chart's own sheet. They are written absolute, with the sheet name quoted when needed.
 - Each reference carries a cache of the cells' current values, so Excel and LibreOffice show the data immediately. The streaming writer holds no cells: it writes references only (Excel recalculates on open; LibreOffice shows an empty chart) unless you pass `series.cache: { name?, categories?, values?, xValues? }`.
 - Series options: `color` (`argb` or `theme` 0-9), `marker: false` and `smooth` (line, scatter), `line: true` (scatter: connect the points; default markers only), `xValues` (scatter). Chart options: `style` (built-in style 1-48), `varyColors` (default on for pie/doughnut), `dataLabels: { showValue, showPercent, showCategoryName, showSeriesName }`, axis `title`, `numFmt`, `min`, `max`, shape `name`.
+- Per series: `type: 'line'` (or `'column'`, `'area'`) mixes series types in one chart (combos of column, line and area; horizontal bars, pie, doughnut and scatter do not mix), `axis: 'secondary'` plots on a right-hand value axis (`axes.y2` sets its title, format, bounds), `trendline` (one or a list: `{ type: 'linear' | 'exponential' | 'logarithmic' | 'polynomial' | 'power' | 'movingAverage', order?, period?, forward?, backward?, intercept?, displayEquation?, displayRSquared?, name?, color? }`), and `dataLabels` (overrides the chart's; `false` for none; also `position` and `numFmt`). `stacked` applies to the series of the chart's own type.
 - Charts share the sheet's drawing with pictures; on a sheet read with charts, the ones you add are written next to the kept ones.
+
+```ts
+addChart(ws, {
+  type: 'column',
+  title: 'Units and share',
+  series: [
+    { name: 'Units', categories: 'A2:A7', values: 'B2:B7', trendline: { type: 'linear', displayRSquared: true } },
+    { name: 'Share', categories: 'A2:A7', values: 'C2:C7', type: 'line', axis: 'secondary', dataLabels: { showValue: true, numFmt: '0%' } },
+  ],
+  axes: { y: { title: 'Units' }, y2: { title: 'Share', numFmt: '0%' } },
+  anchor: 'E2:L16',
+});
+```
+
+Reading: charts of the supported types (including combos, secondary axes, trendlines and data labels) become `ws.charts` when a file is read. A read chart you do not change is written back exactly as it was, Excel's formatting included; once you change it (title, series, anything in the model) it is regenerated from the model, which keeps what the model holds and drops formatting it does not (custom fonts, gradient fills, ...). 3-D, bubble, stock, radar and surface charts, charts on chart sheets and charts with literal (non-reference) data stay raw and are written back unchanged. Renaming a sheet does not update chart references.
 
 ## Conditional formatting
 

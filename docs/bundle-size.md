@@ -24,7 +24,7 @@ Each feature has a write half and a read half, so a write-only bundle never cont
 | notes (comments)       | `ws.comments`, `ws.threadedComments`, `wb.persons` | `commentsWriter`    | `commentsReader`              |
 | custom views           | `wb.customViews`, `ws.customSheetViews` | `customViewsWriter`        | `customViewsReader`           |
 | images                 | `ws.images`, `ws.backgroundImage`    | `imagesWriter`                | `imagesReader`                |
-| charts                 | `ws.charts`                          | `chartsWriter`                | — (read charts are kept raw)  |
+| charts                 | `ws.charts`                          | `chartsWriter`                | `chartsReader`                |
 | conditional formatting | `ws.conditionalFormatting`           | `conditionalFormattingWriter` | `conditionalFormattingReader` |
 | data validation        | `ws.dataValidations`                 | `dataValidationWriter`        | `dataValidationReader`        |
 | print setup            | `ws.pageSetup`, `ws.headerFooter`, `ws.rowBreaks`, `ws.colBreaks` | `printSetupWriter` | `printSetupReader` |
@@ -62,18 +62,20 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 39.7 KB | 39.43 KB |
-| read+write                     | root `*`                                                       | 85.1 KB | 84.78 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 40.5 KB | 40.20 KB |
+| read+write                     | root `*`                                                       | 87.9 KB | 87.56 KB |
 | lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 26.8 KB | 26.69 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 45.3 KB | 45.12 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 45.6 KB | 45.32 KB |
 | lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 30.5 KB | 30.27 KB |
 | lite autofit                   | lite `{ Workbook, autoFitColumns }`                            | 12.8 KB | 12.47 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 30.1 KB | 29.88 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 31.1 KB | 30.80 KB |
 | csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 27.7 KB | 27.27 KB |
 
 Budget policy: each limit is about the measured size + 0.5 KB at most (most are tighter), so growth is a deliberate decision: raise a limit in the same PR as the feature that needs it, with the reason. Where the bytes go in the root write-only bundle (minified, ~108 KB before brotli): worksheet model 14.5 KB, fflate (deflate) 11.3 KB, workbook / styles XML writer 11.1 KB, style registry 8 KB, sheet writer 7.8 KB, conditional formatting 6.5 KB, charts 6.3 KB, tables 4.1 KB, notes 3.6 KB; the zip glue (`write/zipout.ts`, `zip/zip.ts`, the native zlib lookup in `zip/node.ts`) ~2.3 KB. Helpers such as `sortRange`, `fillTemplate`, the row / column edits, `copyWorksheet` and `cellText` cost nothing unless imported.
+
+What group 19 (#113, #114) costs: the chart writer +0.7 KB (combo groups, secondary axes, trendlines, per-series labels); reading charts into the model +2.5 KB in read+write (`chartsReader`); the reader's part-claiming hook +0.2 KB in every reading bundle.
 
 What group 18 (#111, #112) costs: the root bundles +1.5 KB write / +2.7 KB read+write (threaded comments with persons and their legacy notes in the comments feature; the custom views feature); lite bundles only pay when they import `commentsWriter` / `customViewsWriter`.
 
