@@ -90,8 +90,10 @@ describe('fidelity: sheetFormatPr', () => {
     ]) {
       expect(el).toContain(a);
     }
-    // extension attributes would need mc:Ignorable on the root: dropped
-    expect(el).not.toContain('dyDescent');
+    // ws.properties.dyDescent: the root declares x14ac as Ignorable
+    expect(el).toContain('x14ac:dyDescent="0.2"');
+    expect(s).toMatch(/<worksheet [^>]*mc:Ignorable="x14ac"[^>]*>/);
+    expect(s).toMatch(/<worksheet [^>]*xmlns:x14ac=/);
     expect(s.match(/<sheetFormatPr/g)!.length).toBe(1);
     // stable on a second trip
     expect(text(unzipSync(trip(out)), SHEET1).match(/<sheetFormatPr[^>]*\/>/)![0]).toBe(el);
@@ -123,7 +125,7 @@ describe('fidelity: sheetFormatPr', () => {
       ),
     );
     const el = text(unzipSync(writeXlsx(wb)), SHEET1).match(/<sheetFormatPr[^>]*\/>/)![0];
-    expect(el).toBe('<sheetFormatPr defaultRowHeight="15" defaultColWidth="20"/>');
+    expect(el).toBe('<sheetFormatPr defaultColWidth="20" defaultRowHeight="15"/>');
   });
 
   it('writer defaults are not captured (no preserved data for plain sheets)', () => {
@@ -137,10 +139,17 @@ describe('fidelity: sheetFormatPr', () => {
     expect(s).toMatch(/<sheetFormatPr[^>]*defaultRowHeight="16"/);
   });
 
-  it('preserveUnknown: false writes the defaults', () => {
+  it('preserveUnknown: false keeps only what ws.properties models', () => {
     const wb = readXlsx(src(), { preserveUnknown: false });
+    expect(wb.worksheets[0]!.properties).toEqual({
+      defaultColWidth: 12.5,
+      defaultRowHeight: 18,
+      dyDescent: 0.2,
+    });
     const el = text(unzipSync(writeXlsx(wb)), SHEET1).match(/<sheetFormatPr[^>]*\/>/)![0];
-    expect(el).toBe('<sheetFormatPr defaultRowHeight="15"/>');
+    expect(el).toBe(
+      '<sheetFormatPr defaultColWidth="12.5" defaultRowHeight="18" customHeight="1" x14ac:dyDescent="0.2"/>',
+    );
   });
 });
 

@@ -20,8 +20,8 @@ export class WorkbookHandler implements XmlHandler {
   date1904 = false;
   /** `<calcPr fullCalcOnLoad>`. */
   fullCalcOnLoad = false;
-  /** First `<workbookView>`. */
-  view: WorkbookView | undefined;
+  /** `<workbookView>`s (Excel windows). */
+  readonly views: WorkbookView[] = [];
   private dn:
     | { name: string; localSheetId?: number; hidden?: boolean; comment?: string }
     | undefined;
@@ -33,10 +33,11 @@ export class WorkbookHandler implements XmlHandler {
         this.fullCalcOnLoad = attrBool(a.fullCalcOnLoad);
         break;
       case 'workbookView':
-        if (!this.view) {
+        {
           const n = (k: string): number | undefined => (a[k] !== undefined ? +a[k]! : undefined);
           const v: WorkbookView = {};
-          // activeTab is not kept: the sheets' tabSelected carries the selection
+          // the first window's activeTab is not kept: the sheets' tabSelected carries it
+          if (a.activeTab !== undefined && this.views.length) v.activeTab = n('activeTab');
           if (a.firstSheet !== undefined) v.firstSheet = n('firstSheet');
           if (a.xWindow !== undefined) v.x = n('xWindow');
           if (a.yWindow !== undefined) v.y = n('yWindow');
@@ -44,7 +45,7 @@ export class WorkbookHandler implements XmlHandler {
           if (a.windowHeight !== undefined) v.height = n('windowHeight');
           if (a.visibility === 'hidden' || a.visibility === 'veryHidden')
             v.visibility = a.visibility;
-          this.view = v;
+          this.views.push(v);
         }
         break;
       case 'workbookPr':

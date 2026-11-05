@@ -76,5 +76,6 @@ export {
   RowView,
   type SheetState,
   Worksheet,
+  type WorksheetProperties,
   type WorksheetView,
 } from './worksheet.js';

@@ -17,8 +17,10 @@ import {
   spliceRows,
   Workbook,
   type Worksheet,
+  writeXlsx,
 } from '../../src/index.js';
 import { sheetToArrays } from '../../src/json/index.js';
+import { unzipSync } from '../../src/zip/index.js';
 import { fixture, roundtrip } from './helpers.js';
 import { alignment, alignmentBack, font, fontBack, numFmt1, numFmt2, styles } from './test-book.js';
 
@@ -1106,7 +1108,28 @@ describe('exceljs parity: rows and columns', () => {
 
   // exceljs: spec/unit/doc/worksheet.views.spec.js — "adjusts collapsed property of columns"
   // exceljs: spec/unit/doc/worksheet.views.spec.js — "adjusts collapsed property of row"
-  it.skip('row / column `collapsed` and sheet outlineLevelCol/Row properties — not modelled', () => {});
+  // ➖ exceljs derives `collapsed` (outlineLevel > ws.properties.outlineLevel*); here it is a
+  // plain flag you set on the summary row / column, and ws.properties.outlineLevelRow/Col only
+  // raise the written sheet-level outline level (the default is derived from the rows/columns)
+  it('collapsed is a settable flag; sheet outline levels are written as the max', () => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('sheet1');
+    ws.getColumn(2).outlineLevel = 1;
+    ws.getColumn(3).outlineLevel = 2;
+    ws.setRowProps(2, { outlineLevel: 1 });
+    ws.setRowProps(3, { outlineLevel: 2 });
+    expect(ws.getColumn(2).collapsed).toBe(false);
+    expect(ws.getRowProps(2).collapsed).toBeFalsy();
+    ws.getColumn(4).collapsed = true;
+    ws.setRowProps(4, { collapsed: true });
+    ws.properties.outlineLevelRow = 3;
+    ws.properties.outlineLevelCol = 3;
+    const ws2 = roundtrip(wb).getWorksheet('sheet1')!;
+    expect(ws2.getColumn(4).collapsed).toBe(true);
+    expect(ws2.getRowProps(4).collapsed).toBe(true);
+    const xml = new TextDecoder().decode(unzipSync(writeXlsx(wb)).get('xl/worksheets/sheet1.xml')!);
+    expect(xml).toMatch(/<sheetFormatPr [^>]*outlineLevelRow="3" outlineLevelCol="3"/);
+  });
 
   // exceljs: spec/unit/doc/worksheet.views.spec.js — "sets outline levels via column headers"
   it('sets outline levels via column definitions (and round-trips them)', () => {

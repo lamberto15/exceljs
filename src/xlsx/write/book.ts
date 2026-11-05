@@ -170,6 +170,19 @@ export function activeTabOf(
   return first;
 }
 
+/** Windows the sheets' views refer to (max workbookViewId + 1; ids above 255 are ignored). */
+export function windowsOf(sheets: readonly Worksheet[]): number {
+  let n = 1;
+  for (const s of sheets) {
+    const vs = s.views;
+    for (let i = 0; i < vs.length; i++) {
+      const id = vs[i]!.workbookViewId ?? i;
+      if (id >= n && id < 256) n = id + 1;
+    }
+  }
+  return n;
+}
+
 export function sheetEntry(ws: Worksheet): SheetEntry {
   return { name: ws.name, sheetId: ws.id, state: ws.state, autoFilter: ws.autoFilter };
 }
@@ -237,7 +250,8 @@ function* pieces(wb: Workbook, o: ResolvedWriteOptions): Generator<Piece, void, 
     sharedStrings: sst !== undefined,
     formulas: wb.calcProperties?.fullCalcOnLoad ?? formulas,
     activeTab: active,
-    view: wb.views?.[0],
+    views: wb.views,
+    windows: windowsOf(sheets),
     creator: wb.creator,
     lastModifiedBy: wb.lastModifiedBy,
     created: wb.created,

@@ -39,6 +39,26 @@ export interface Note {
   width?: number | undefined;
   /** Box height in pixels (default 79). */
   height?: number | undefined;
+  /**
+   * Text margins (ExcelJS shape). `insetmode: 'custom'` uses `inset` = [left, top, right,
+   * bottom] in centimetres; 'auto' (default) lets Excel choose.
+   */
+  margins?:
+    | {
+        insetmode?: 'auto' | 'custom' | undefined;
+        inset?: number[] | undefined;
+      }
+    | undefined;
+  /**
+   * Note protection, effective when the sheet is protected: `locked` (the note box) and
+   * `lockText` (its text). Excel's default for both is true.
+   */
+  protection?: { locked?: boolean | undefined; lockText?: boolean | undefined } | undefined;
+  /**
+   * How the box follows cell edits: 'absolute' (default, like Excel: don't move or size with
+   * cells), 'oneCells' (move but don't size), 'twoCells' (move and size).
+   */
+  editAs?: 'twoCells' | 'oneCells' | 'absolute' | undefined;
 }
 
 /** Add (or replace) the note of a cell; returns the stored note. */
@@ -114,13 +134,16 @@ function offset(i: number, px: (i: number) => number): number {
 function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): string {
   const cols = c.ws.columnData;
   const rows = c.ws.rowData;
+  const p = c.ws.properties;
+  const defW = p.defaultColWidth ?? 9.140625;
+  const defH = p.defaultRowHeight ? Math.round((p.defaultRowHeight * 96) / 72) : 20;
   const colPx = (i: number): number => {
     const d = cols[i];
-    return d?.hidden ? 0 : colWidthPx(d?.width ?? 9.140625);
+    return d?.hidden ? 0 : colWidthPx(d?.width ?? defW);
   };
   const rowPx = (i: number): number => {
     const d = rows[i];
-    return d?.hidden ? 0 : d?.height ? Math.round((d.height * 96) / 72) : 20;
+    return d?.hidden ? 0 : d?.height ? Math.round((d.height * 96) / 72) : defH;
   };
   // shape ids come in blocks of 1024 per <o:idmap> entry, unique within the package; shapes
   // kept from the read file (form controls) keep theirs (controls refer to them)
@@ -142,7 +165,15 @@ function vmlXml(c: SheetWriteCtx, notes: readonly Note[], cells: string[]): stri
     const [r, ro] = walk(l, 15 + w, colPx);
     const [b, bo] = walk(t, 10 + h, rowPx);
     const anchor = `${l}, 15, ${t}, 10, ${r}, ${ro}, ${b}, ${bo}`;
-    s += `<v:shape id="_x0000_s${id}" type="#_x0000_t202" style="position:absolute;margin-left:${pt(offset(l, colPx) + 15)};margin-top:${pt(offset(t, rowPx) + 10)};width:${pt(w)};height:${pt(h)};z-index:${i + 1};visibility:${vis}" fillcolor="#ffffe1" o:insetmode="auto"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>${anchor}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>${row}</x:Row><x:Column>${col}</x:Column>${n.visible ? '<x:Visible/>' : ''}</x:ClientData></v:shape>`;
+    const m = n.margins;
+    // inset in mm (ExcelJS: centimetres x 10)
+    const inset = m?.inset?.length
+      ? ` inset="${m.inset.map((x) => `${Math.round(x * 1000) / 100}mm`).join(',')}"`
+      : '';
+    const pr = n.protection;
+    const tf = (k: string, v: boolean | undefined): string =>
+      v === undefined ? '' : `<x:${k}>${v ? 'True' : 'False'}</x:${k}>`;
+    s += `<v:shape id="_x0000_s${id}" type="#_x0000_t202" style="position:absolute;margin-left:${pt(offset(l, colPx) + 15)};margin-top:${pt(offset(t, rowPx) + 10)};width:${pt(w)};height:${pt(h)};z-index:${i + 1};visibility:${vis}" fillcolor="#ffffe1" o:insetmode="${m?.insetmode === 'custom' ? 'custom' : 'auto'}"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"${inset}><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note">${n.editAs === 'twoCells' ? '' : n.editAs === 'oneCells' ? '<x:SizeWithCells/>' : '<x:MoveWithCells/><x:SizeWithCells/>'}<x:Anchor>${anchor}</x:Anchor>${tf('Locked', pr?.locked)}<x:AutoFill>False</x:AutoFill>${tf('LockText', pr?.lockText)}<x:Row>${row}</x:Row><x:Column>${col}</x:Column>${n.visible ? '<x:Visible/>' : ''}</x:ClientData></v:shape>`;
   }
   return `${s}</xml>`;
 }
@@ -227,6 +258,9 @@ interface Shape {
   visible: boolean;
   width?: number | undefined;
   height?: number | undefined;
+  margins?: Note['margins'];
+  protection?: Note['protection'];
+  editAs?: Note['editAs'];
 }
 
 const PX_PER: Record<string, number> = { pt: 4 / 3, px: 1, in: 96, cm: 96 / 2.54, mm: 9.6 / 2.54 };
@@ -239,6 +273,15 @@ function cssPx(style: string, prop: string): number | undefined {
   return Math.round(+m[1]! * (PX_PER[(m[2] ?? 'px').toLowerCase()] ?? 1) * 100) / 100;
 }
 
+/** VML inset ("2.5mm,1.3mm,...") → centimetres. */
+function insetCm(v: string): number[] | undefined {
+  const out = v.split(',').map((x) => {
+    const px = cssPx(`w:${x}`, 'w');
+    return px === undefined ? Number.NaN : Math.round((px * 254) / 96) / 100;
+  });
+  return out.length === 4 && out.every((x) => x - x === 0) ? out : undefined;
+}
+
 /** VML note shapes keyed by "row,col" (0-based). */
 function readVml(xml: string): Map<string, Shape> {
   const out = new Map<string, Shape>();
@@ -248,6 +291,11 @@ function readVml(xml: string): Map<string, Shape> {
   let field = '';
   let row = '';
   let col = '';
+  let mode = '';
+  let inset: number[] | undefined;
+  let prot: Record<string, boolean> = {};
+  let flag = '';
+  let pos = 0;
   parseXml(xml, {
     open(name, a) {
       const ln = localName(name);
@@ -257,23 +305,47 @@ function readVml(xml: string): Map<string, Shape> {
         visible = false;
         row = '';
         col = '';
-      } else if (ln === 'ClientData') note = a.ObjectType === 'Note';
+        mode = a['o:insetmode'] ?? '';
+        inset = undefined;
+        prot = {};
+        pos = 0;
+      } else if (ln === 'textbox') inset = a.inset ? insetCm(a.inset) : undefined;
+      else if (ln === 'ClientData') note = a.ObjectType === 'Note';
       else if (ln === 'Visible') visible = true;
+      else if (ln === 'MoveWithCells') pos |= 1;
+      else if (ln === 'SizeWithCells') pos |= 2;
       else if (ln === 'Row' || ln === 'Column') field = ln;
+      else if (ln === 'Locked' || ln === 'LockText') {
+        field = ln;
+        flag = '';
+      }
     },
     text(t) {
       if (field === 'Row') row += t;
       else if (field === 'Column') col += t;
+      else if (field) flag += t;
     },
     close(name) {
       const ln = localName(name);
-      if (ln === 'Row' || ln === 'Column') field = '';
+      if (ln === 'Locked' || ln === 'LockText') {
+        const f = flag.trim().toLowerCase();
+        if (f) prot[ln === 'Locked' ? 'locked' : 'lockText'] = f !== 'false' && f !== 'f';
+        field = '';
+      } else if (ln === 'Row' || ln === 'Column') field = '';
       else if (ln === 'shape' && note && row && col) {
-        out.set(`${+row},${+col}`, {
+        const s: Shape = {
           visible: visible || /visibility\s*:\s*visible/i.test(style),
           width: cssPx(style, 'width'),
           height: cssPx(style, 'height'),
-        });
+        };
+        if (mode === 'custom' || inset) {
+          s.margins = mode === 'custom' || mode === 'auto' ? { insetmode: mode } : {};
+          if (inset) s.margins.inset = inset;
+        }
+        if (Object.keys(prot).length) s.protection = prot;
+        // present = does NOT move / size with cells (Excel's note default: both)
+        if (pos !== 3) s.editAs = pos & 2 ? 'oneCells' : 'twoCells';
+        out.set(`${+row},${+col}`, s);
       }
     },
   });
@@ -314,6 +386,9 @@ export const commentsReader: FeatureReader = {
           if (s.visible) n.visible = true;
           if (s.width !== undefined && Math.abs(s.width - W) > 0.5) n.width = s.width;
           if (s.height !== undefined && Math.abs(s.height - H) > 0.5) n.height = s.height;
+          if (s.margins) n.margins = s.margins;
+          if (s.protection) n.protection = s.protection;
+          if (s.editAs) n.editAs = s.editAs;
         }
       }
       ctx.ws.comments = notes;

@@ -51,9 +51,54 @@ describe('exceljs parity: misc', () => {
     });
 
     // exceljs: spec/integration/workbook/workbook.spec.js — "company, manager, etc"
+    it('company, manager', async () => {
+      const wb = new Workbook();
+      wb.addWorksheet('Hello').getCell('A1').value = 'World!';
+      wb.company = 'Cyber Sapiens, Ltd';
+      wb.manager = 'Guyon Roche';
+      const bytes = writeXlsx(wb);
+      const wb2 = readXlsx(bytes);
+      expect(wb2.company).toBe(wb.company);
+      expect(wb2.manager).toBe(wb.manager);
+      const x = await exceljsLoad(bytes);
+      expect(x.company).toBe(wb.company);
+      expect(x.manager).toBe(wb.manager);
+    });
+
     // exceljs: spec/integration/workbook/workbook.spec.js — "title, subject, etc"
+    it('title, subject, keywords, category, description', () => {
+      const wb = new Workbook();
+      wb.addWorksheet('Hello').getCell('A1').value = 'World!';
+      wb.title = 'the title';
+      wb.subject = 'the subject';
+      wb.keywords = 'the keywords';
+      wb.category = 'the category';
+      wb.description = 'the description';
+      const wb2 = roundtrip(wb);
+      expect(wb2.title).toBe(wb.title);
+      expect(wb2.subject).toBe(wb.subject);
+      expect(wb2.keywords).toBe(wb.keywords);
+      expect(wb2.category).toBe(wb.category);
+      expect(wb2.description).toBe(wb.description);
+    });
+
     // exceljs: spec/integration/workbook/workbook.spec.js — "language, revision and contentStatus"
-    it.skip('document properties beyond creator/lastModifiedBy/created/modified — not modelled', () => {});
+    it('language, revision and contentStatus', async () => {
+      const wb = new Workbook();
+      wb.addWorksheet('Hello').getCell('A1').value = 'World!';
+      wb.language = 'Klingon';
+      wb.revision = 2;
+      wb.contentStatus = 'Final'; // the exceljs spec misspells it (contentStauts)
+      const bytes = writeXlsx(wb);
+      const wb2 = readXlsx(bytes);
+      expect(wb2.language).toBe(wb.language);
+      expect(wb2.revision).toBe(wb.revision);
+      expect(wb2.contentStatus).toBe(wb.contentStatus);
+      // exceljs's typings lack language / revision
+      const x = (await exceljsLoad(bytes)) as unknown as { language: string; revision: number };
+      expect(x.language).toBe('Klingon');
+      expect(x.revision).toBe(2);
+    });
 
     // exceljs: spec/integration/workbook/workbook.spec.js — "auto filter"
     it('auto filter', async () => {
@@ -108,9 +153,11 @@ describe('exceljs parity: misc', () => {
         topLeftCell: 'C4',
         activeCell: 'D5',
       });
-      // ➖ one sheet view per sheet (extra views belong to other workbook views, which are not
-      // supported); the other two exceljs views on sheets of their own:
-      expect(ws2.views).toHaveLength(1);
+      // one view per Excel window (workbookViewId = position in ws.views)
+      expect(ws2.views).toHaveLength(3);
+      expect(ws2.views[1]).toMatchObject({ state: 'frozen', ySplit: 1, topLeftCell: 'A2' });
+      expect(ws2.views[2]).toMatchObject({ state: 'frozen', xSplit: 1, topLeftCell: 'B1' });
+      // and on sheets of their own:
       const wb3 = new Workbook();
       wb3.addWorksheet('a').views = [{ state: 'frozen', ySplit: 1 }];
       wb3.addWorksheet('b').views = [{ state: 'frozen', xSplit: 1 }];
@@ -146,7 +193,9 @@ describe('exceljs parity: misc', () => {
         topLeftCell: 'C4',
         activeCell: 'D5',
       });
-      expect(ws2.views).toHaveLength(1); // ➖ see frozen panes
+      expect(ws2.views).toHaveLength(3);
+      expect(ws2.views[1]).toMatchObject({ state: 'split', ySplit: 1500, topLeftCell: 'A10' });
+      expect(ws2.views[2]).toMatchObject({ state: 'split', xSplit: 1500 });
       const wb3 = new Workbook();
       wb3.addWorksheet('a').views = [{ state: 'split', ySplit: 1500, topLeftCell: 'A10' }];
       wb3.addWorksheet('b').views = [{ state: 'split', xSplit: 1500 }];
@@ -160,7 +209,89 @@ describe('exceljs parity: misc', () => {
     });
 
     // exceljs: spec/integration/workbook/workbook.spec.js — "multiple book views"
-    it.skip('workbook views (wb.views) — not supported', () => {});
+    it('multiple book views', async () => {
+      const wb = new Workbook();
+      // spec/utils/data/views.json
+      const book = [
+        {
+          x: 0,
+          y: 0,
+          width: 10000,
+          height: 20000,
+          firstSheet: 0,
+          activeTab: 1,
+          visibility: 'visible' as const,
+        },
+        {
+          x: 1,
+          y: 2,
+          width: 10001,
+          height: 20002,
+          firstSheet: 1,
+          activeTab: 1,
+          visibility: 'hidden' as const,
+        },
+      ];
+      wb.views = book;
+      const ws1 = wb.addWorksheet('one');
+      ws1.views = [
+        {
+          workbookViewId: 0,
+          state: 'frozen',
+          xSplit: 2,
+          ySplit: 3,
+          topLeftCell: 'C4',
+          activeCell: 'D5',
+        },
+      ];
+      const ws2 = wb.addWorksheet('two');
+      ws2.views = [
+        {
+          workbookViewId: 1,
+          state: 'split',
+          xSplit: 2000,
+          ySplit: 3000,
+          topLeftCell: 'C4',
+          activeCell: 'D5',
+        },
+      ];
+      const bytes = writeXlsx(wb);
+      const wb2 = readXlsx(bytes);
+      // ➖ the first window's activeTab is carried by the sheets' tabSelected; 'visible' is the default
+      expect(wb2.views).toEqual([
+        { x: 0, y: 0, width: 10000, height: 20000, firstSheet: 0 },
+        {
+          x: 1,
+          y: 2,
+          width: 10001,
+          height: 20002,
+          firstSheet: 1,
+          activeTab: 1,
+          visibility: 'hidden',
+        },
+      ]);
+      // ➖ only fields that differ from the defaults are modelled; workbookViewId only when it is
+      // not the view's position in ws.views
+      expect(wb2.getWorksheet('one')!.views[0]).toMatchObject({
+        state: 'frozen',
+        xSplit: 2,
+        ySplit: 3,
+        topLeftCell: 'C4',
+        activeCell: 'D5',
+      });
+      expect(wb2.getWorksheet('one')!.views[0]!.workbookViewId).toBeUndefined();
+      expect(wb2.getWorksheet('two')!.views[0]).toMatchObject({
+        workbookViewId: 1,
+        state: 'split',
+        xSplit: 2000,
+        ySplit: 3000,
+        topLeftCell: 'C4',
+        activeCell: 'D5',
+      });
+      const x = await exceljsLoad(bytes);
+      expect(x.views).toEqual(book);
+      expect(x.getWorksheet('two')!.views[0]).toMatchObject({ workbookViewId: 1, state: 'split' });
+    });
   });
 
   describe('reader robustness', () => {

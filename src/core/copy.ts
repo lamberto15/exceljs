@@ -86,7 +86,7 @@ export function copyWorksheet(
   const sw = src.workbook;
   const ws = target.addWorksheet(name ?? uniqueSheetName(target, src.name));
   ws.state = src.state;
-  ws.tabColor = src.tabColor;
+  ws.properties = structuredClone(src.properties);
   ws.views = structuredClone(src.views);
   ws.autoFilter = src.autoFilter;
   const xfOf = styleMap(sw, target);
