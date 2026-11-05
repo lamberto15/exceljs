@@ -61,14 +61,14 @@ and tree-shake individually. On the root, `features` adds custom `FeatureWriter`
 
 | size-limit entry               | Import                                                         | Limit | Size     |
 | ------------------------------ | -------------------------------------------------------------- | ----- | -------- |
-| write-only                     | root `{ Workbook, writeXlsx }`                                 | 35 KB | 34.87 KB |
-| read+write                     | root `*`                                                       | 76 KB | 75.87 KB |
-| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 24 KB | 23.52 KB |
-| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 42.5 KB | 42.11 KB |
-| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 27.5 KB | 27.38 KB |
-| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 11 KB | 10.97 KB |
-| lite write + charts            | lite + `addChart, chartsWriter`                                 | 27 KB | 26.96 KB |
-| csv                            | `./csv` `*`                                                    | 3.3 KB | 3.14 KB |
+| write-only                     | root `{ Workbook, writeXlsx }`                                 | 36 KB | 35.84 KB |
+| read+write                     | root `*`                                                       | 76.6 KB | 76.43 KB |
+| lite write-only                | lite `{ Workbook, writeXlsx }`                                 | 24.6 KB | 24.52 KB |
+| lite read+write                | lite `{ Workbook, readXlsx, writeXlsx }`                       | 42.9 KB | 42.75 KB |
+| lite write + tables + images   | lite + `addTable, tablesWriter, addImage, placeImage, imagesWriter` | 28.5 KB | 28.32 KB |
+| lite + autofit                 | lite `{ Workbook, autoFitColumns }`                            | 12.1 KB | 11.99 KB |
+| lite write + charts            | lite + `addChart, chartsWriter`                                 | 28.1 KB | 27.91 KB |
+| csv                            | `./csv` `*`                                                    | 3.3 KB | 3.16 KB |
 | crypto                         | `./crypto` `*`                                                 | 7.7 KB | 7.18 KB |
 | formula                        | `./formula` `*`                                                | 17 KB | 16.75 KB |
 
@@ -77,6 +77,8 @@ Budget policy: each limit is at most the measured size + 0.5 KB (some are tighte
 Native zip helpers (#71) add ~0.15 KB to every write bundle: the runtime `node:zlib` lookup and the `zlib.crc32` hook in the zip writer (the off-thread zlib deflater is only in the async writers). The two lite combo limits were raised by 0.5 KB for it. Sync native zlib (#75: `deflateRawSync` batches in `writeXlsx`, `inflateRawSync` with limit-capped `maxOutputLength` in `readXlsx`) adds ~0.2 KB to write bundles and ~0.5 KB to read+write; the root `*` and lite read+write limits were raised by 0.4 / 0.5 KB. Storing metadata parts before the worksheets (#74: `ZipOut.reserve`) adds ~0.1 KB to write bundles; lite write-only was raised to 24 KB.
 
 CSV read typing and decoding (#81: `parseBooleans`, `parseErrors`, `dateFormats`, `localDates`, `encoding` with BOM sniffing and `'auto'`) adds ~0.76 KB to `./csv` (2.38 to 3.14 KB); its limit was raised from 2.9 to 3.3 KB.
+
+ExcelJS iteration / shared-formula compatibility (#80) adds ~1 KB to every bundle with a `Workbook`: accepting `{ sharedFormula }` cell values needs `translateFormula` in the worksheet model (~0.55 KB; before, only read bundles and the row / column edit helpers had it), plus the `{ includeEmpty }` paths of `eachRow` / `row.eachCell`, the new `column.eachCell` and the master-cell lookup (~0.45 KB). Every limit that includes the worksheet model was raised to the measured size + at most 0.2 KB.
 
 Row / column structure edits (`insertRows`, `spliceRows`, ...) add ~3.7 KB to `*` and nothing to
 bundles that don't import them.

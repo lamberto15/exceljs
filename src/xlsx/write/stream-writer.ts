@@ -24,7 +24,7 @@
 //   everything before reading cannot deadlock); flush()/addRows() do.
 
 import { SharedStrings } from '../../core/sharedstrings.js';
-import type { CellValue, Style, WriteOptions } from '../../core/types.js';
+import type { CellValueInput, Style, WriteOptions } from '../../core/types.js';
 import { Workbook, type WorksheetOptions } from '../../core/workbook.js';
 import {
   type ColumnDef,
@@ -79,7 +79,7 @@ export interface StreamSheetOptions extends WorksheetOptions {
   autoFilter?: string | undefined;
 }
 
-type RowValues = readonly CellValue[] | RowObject;
+type RowValues = readonly CellValueInput[] | RowObject;
 
 export class StreamSheet {
   /** Metadata holder (columns, views, merges, autoFilter, state). Never contains cells. */
@@ -202,6 +202,7 @@ export class StreamSheet {
     // rows placed on the metadata sheet before the first flush (e.g. the header row written by
     // `columns` with headers) are emitted first; buffered rows follow them
     if (!this._started) this._base = ws.rowData.length;
+    sc._rowBase = this._base;
     this._scratch = sc;
     return sc;
   }

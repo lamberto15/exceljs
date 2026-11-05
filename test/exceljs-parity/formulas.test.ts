@@ -30,18 +30,38 @@ describe('exceljs parity: formulas', () => {
   });
 
   // exceljs: spec/integration/workbook-xlsx-writer/workbook-xlsx-writer.spec.js — "shared formula"
-  it('streaming writer: shared formula values are rejected, plain formulas work', async () => {
+  it('streaming writer: { sharedFormula } values are written as translated plain formulas', async () => {
     const bytes = await streamWrite((w) => {
       const s = w.addWorksheet('Hello');
-      // ➖ { sharedFormula: 'A1' } is not a CellValue
-      expect(() => s.addRow([{ sharedFormula: 'A1', result: 3 } as never])).toThrow(TypeError);
       s.addRow([
         { formula: 'ROW()+COLUMN()', result: 2 },
-        { formula: 'ROW()+COLUMN()', result: 3 },
+        { sharedFormula: 'A1', result: 3 },
+      ]);
+      s.addRow([
+        { sharedFormula: 'A1', result: 3 },
+        { sharedFormula: 'A1', result: 4 },
       ]);
     });
     const ws = readXlsx(bytes).getWorksheet('Hello')!;
+    // ➖ read back as plain formulas (exceljs: { sharedFormula: 'A1', result } / shareType)
+    expect(ws.getValue('A1')).toEqual({ formula: 'ROW()+COLUMN()', result: 2 });
     expect(ws.getValue('B1')).toEqual({ formula: 'ROW()+COLUMN()', result: 3 });
+    expect(ws.getValue('A2')).toEqual({ formula: 'ROW()+COLUMN()', result: 3 });
+    expect(ws.getValue('B2')).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
+    const x = (await exceljsLoad(bytes)).getWorksheet('Hello')!;
+    expect(x.getCell('B2').value).toEqual({ formula: 'ROW()+COLUMN()', result: 4 });
+  });
+
+  // exceljs: spec/unit/doc/cell.spec.js — "shares formulas"
+  it('{ sharedFormula } takes the master formula with relative references moved', () => {
+    const ws = new Workbook().addWorksheet('s');
+    ws.getCell('A1').value = 1;
+    ws.getCell('B1').value = { formula: 'A1+1', result: 2 };
+    ws.getCell('C1').value = { sharedFormula: 'B1', result: 3 };
+    expect(ws.getCell('B1').kind).toBe(CellKind.Formula);
+    // ➖ stored as a plain formula (no master / shared formula types)
+    expect(ws.getCell('C1').kind).toBe(CellKind.Formula);
+    expect(ws.getCell('C1').value).toEqual({ formula: 'B1+1', result: 3 });
   });
 
   // exceljs: spec/unit/doc/worksheet.shared-formula.spec.js — "Fills formula using 2D array values"
@@ -50,8 +70,7 @@ describe('exceljs parity: formulas', () => {
   // exceljs: spec/unit/doc/worksheet.shared-formula.spec.js — "Fills formula across using 1D array values"
   // exceljs: spec/unit/doc/worksheet.shared-formula.spec.js — "Fills formula down and across using 1D array values"
   // exceljs: spec/unit/doc/worksheet.shared-formula.spec.js — "Fills formula using function"
-  // exceljs: spec/unit/doc/cell.spec.js — "shares formulas"
-  it.skip('ws.fillFormula / { sharedFormula } values — not supported (shared formulas are expanded on read)', () => {});
+  it.skip('ws.fillFormula producing shared formulas — not supported (fillFormula writes plain formulas; shared formulas are expanded on read)', () => {});
 
   it('shared formulas in a file are expanded with translated references', () => {
     const ws = readXlsx(fixture('fibonacci.xlsx')).getWorksheet('fib')!;

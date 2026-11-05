@@ -35,10 +35,10 @@ import {
   MAX_COLS,
   MAX_ROWS,
 } from './address.js';
-import type { CellValue, DefinedName, Formula, Style } from './types.js';
+import type { CellValueInput, DefinedName, Formula, Style } from './types.js';
 import { CellKind, Column, RowData, type RowObject, type Worksheet } from './worksheet.js';
 
-type RowValues = readonly CellValue[] | RowObject;
+type RowValues = readonly CellValueInput[] | RowObject;
 
 /** Private Worksheet / Column state this module rewires (runtime-visible TS privates). */
 interface WsState {
@@ -862,7 +862,7 @@ export function spliceRows(
 export function insertColumns(
   ws: Worksheet,
   pos: number | string,
-  cols: number | readonly (readonly CellValue[])[],
+  cols: number | readonly (readonly CellValueInput[])[],
 ): void {
   const c0 = colArg(pos) - 1;
   const count = typeof cols === 'number' ? cols : cols.length;
@@ -886,7 +886,7 @@ export function spliceColumns(
   ws: Worksheet,
   start: number | string,
   count: number,
-  ...inserts: (readonly CellValue[])[]
+  ...inserts: (readonly CellValueInput[])[]
 ): void {
   const c0 = colArg(start) - 1;
   check(false, c0, Math.max(count, inserts.length));
@@ -910,7 +910,7 @@ export function spliceColumns(
   fillCols(ws, c0, inserts);
 }
 
-function fillCols(ws: Worksheet, c0: number, cols: readonly (readonly CellValue[])[]): void {
+function fillCols(ws: Worksheet, c0: number, cols: readonly (readonly CellValueInput[])[]): void {
   cols.forEach((values, k) => {
     for (let r = 0; r < values.length; r++) {
       const v = values[r];

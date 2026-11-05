@@ -17,11 +17,11 @@ Counts are per `it(...)` in the ExcelJS sources (a loop such as the three "Hidde
 | Group | ✅ | 🐛 | 🚫 | ➖ | ❓ | total |
 | --- | --- | --- | --- | --- | --- | --- |
 | end-to-end | 0 | 1 | 0 | 0 | 0 | 1 |
-| integration | 78 | 7 | 16 | 46 | 6 | 153 |
+| integration | 85 | 7 | 10 | 45 | 6 | 153 |
 | issues | 25 | 0 | 0 | 2 | 0 | 27 |
 | prs | 10 | 0 | 0 | 3 | 0 | 13 |
-| unit | 55 | 2 | 22 | 34 | 64 | 177 |
-| **all** | 168 | 10 | 38 | 85 | 70 | 371 |
+| unit | 58 | 2 | 20 | 33 | 64 | 177 |
+| **all** | 178 | 10 | 30 | 83 | 70 | 371 |
 
 Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2, { style })` for `row.font = ...`). Ported tests that also cover the turbosheet side of a difference live next to them.
 
@@ -33,7 +33,7 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [csv](../test/exceljs-parity/csv.test.ts) | 1 | 0 | 0 | 1 | 0 | 2 |
 | [data-validation](../test/exceljs-parity/data-validation.test.ts) | 2 | 0 | 0 | 1 | 0 | 3 |
 | [defined-names](../test/exceljs-parity/defined-names.test.ts) | 2 | 0 | 0 | 6 | 1 | 9 |
-| [formulas](../test/exceljs-parity/formulas.test.ts) | 7 | 1 | 8 | 0 | 0 | 16 |
+| [formulas](../test/exceljs-parity/formulas.test.ts) | 8 | 1 | 7 | 0 | 0 | 16 |
 | [hyperlinks](../test/exceljs-parity/hyperlinks.test.ts) | 0 | 1 | 2 | 0 | 0 | 3 |
 | [images](../test/exceljs-parity/images.test.ts) | 11 | 0 | 0 | 1 | 18 | 30 |
 | [issues](../test/exceljs-parity/issues.test.ts) | 25 | 0 | 0 | 2 | 0 | 27 |
@@ -42,8 +42,8 @@ Most ➖ tests pass with a small API translation (for example `ws.setRowProps(2,
 | [notes](../test/exceljs-parity/notes.test.ts) | 1 | 0 | 3 | 0 | 0 | 4 |
 | [print](../test/exceljs-parity/print.test.ts) | 3 | 0 | 0 | 0 | 0 | 3 |
 | [prs](../test/exceljs-parity/prs.test.ts) | 10 | 0 | 0 | 3 | 0 | 13 |
-| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 46 | 2 | 8 | 34 | 0 | 90 |
-| [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 3 | 0 | 5 | 1 | 0 | 9 |
+| [rows-columns](../test/exceljs-parity/rows-columns.test.ts) | 50 | 2 | 6 | 32 | 0 | 90 |
+| [streaming-read](../test/exceljs-parity/streaming-read.test.ts) | 8 | 0 | 0 | 1 | 0 | 9 |
 | [streaming-write](../test/exceljs-parity/streaming-write.test.ts) | 5 | 0 | 0 | 4 | 0 | 9 |
 | [styles](../test/exceljs-parity/styles.test.ts) | 5 | 0 | 0 | 10 | 0 | 15 |
 | [tables](../test/exceljs-parity/tables.test.ts) | 0 | 0 | 7 | 2 | 0 | 9 |
@@ -67,10 +67,10 @@ No failure was caused by the `_xlfn.` future-function prefix work happening on a
 
 ## Notable unsupported features
 
-- Shared-formula authoring (`fillFormula`, `{ sharedFormula }` values); shared formulas in files are expanded on read.
+- Shared-formula output: `fillFormula` and `{ sharedFormula }` values are written as plain formulas; shared formulas in files are expanded on read.
 - Workbook views (`wb.views`), several sheet views per sheet, `activePane`, row/column `collapsed`, sheet `properties` (defaultRowHeight, outlineLevelCol/Row).
 - Document properties beyond creator / lastModifiedBy / created / modified (company, manager, title, subject, keywords, category, description, language, revision, contentStatus).
-- Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`); `maxRows` / `maxCols` read limits; `getRows`, `getSheetValues`, `column.eachCell`, `eachRow({ includeEmpty })`, `actualRowCount`.
+- Note margins / protection / editAs; page breaks (kept raw on round trip but not modelled); pivot table authoring; table editing API (`table.commit()`).
 
 ## Additions made for parity
 
@@ -331,15 +331,15 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | Should integer part of row equals nativeRow | ✅ | images | anchors use whole cell indexes + offsets |
 | Should integer part of row equals nativeRow | ✅ | images | anchors use whole cell indexes + offsets |
 | edit styles of single row instead of all | ✅ | styles | immutable interned styles make this safe by design |
-| should bail out if the file contains more cells than the limit | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
-| should bail out if the file contains more rows than the limit | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
-| should bail out if the file contains more rows than the limit | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
+| should bail out if the file contains more cells than the limit | ✅ | streaming-read | `readXlsx` / `xlsxRows` `maxRows` / `maxCols` throw `SheetLimitError` (message adds sheet and row / column) |
+| should bail out if the file contains more rows than the limit | ✅ | streaming-read | `readXlsx` / `xlsxRows` `maxRows` / `maxCols` throw `SheetLimitError` (message adds sheet and row / column) |
+| should bail out if the file contains more rows than the limit | ✅ | streaming-read | `readXlsx` / `xlsxRows` `maxRows` / `maxCols` throw `SheetLimitError` (message adds sheet and row / column) |
 | should be classified as a formula cell | ✅ | formulas / hyperlinks | hyperlinked formula: kind is Formula (➖) |
 | should be classified as a formula cell | ✅ | formulas / hyperlinks | hyperlinked formula: kind is Formula (➖) |
 | should contain the linked url | 🐛 | hyperlinks | hyperlink on a formula cell was dropped on read and lost on round trip; now kept raw and written back while the cell holds that formula (`fix(read)`) |
 | should decode the underscore | ✅ | misc |  |
-| should fail fast on a huge file | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
-| should fail fast on a huge file | 🚫 | streaming-read (skip) | no `maxRows`/`maxCols` (break out of `xlsxRows`) |
+| should fail fast on a huge file | ✅ | streaming-read | stops at the first cell beyond the limit |
+| should fail fast on a huge file | ✅ | streaming-read | stops at the first cell beyond the limit |
 | should have text corresponding to the evaluated formula result | ✅ | formulas / hyperlinks |  |
 | should have text corresponding to the evaluated formula result | ✅ | formulas / hyperlinks |  |
 | should have the formula source | ✅ | formulas / hyperlinks | `_xlfn.` prefix kept as stored |
@@ -367,7 +367,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | rich text | ➖ | values | 6-digit argb reads back with alpha `FF` |
 | serializes and deserializes dataValidations | ✅ | data-validation |  |
 | serializes row styles and columns properly | ➖ | styles | row style given to `addRow`; styled column without width reads Excel default width |
-| shared formula | 🐛 | formulas | `{ sharedFormula }` is not a value (➖); the rejected row used to stay half-written and shift later rows — fixed (`fix(core)`) |
+| shared formula | 🐛 | formulas | the rejected row used to stay half-written and shift later rows — fixed (`fix(core)`); `{ sharedFormula }` values are now accepted and written as translated plain formulas (read back without `shareType`, ➖) |
 | with background image | ✅ | images |  |
 | with background image where worksheet is commited in advance | ✅ | images |  |
 | with conditional formatting | ✅ | conditional-formatting |  |
@@ -486,8 +486,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | inserts rows by object | ➖ | rows-columns | function `insertRow`; no `getRows`; `eachCell` gets values |
 | inserts rows by sparse array | ➖ | rows-columns | function `insertRow`; 0-based arrays |
 | inserts rows with style option | ➖ | rows-columns | `inheritStyle: 'above' / 'below'` instead of `i` / `o` / `n`; every inserted row is styled |
-| iterates over collumn cells | 🚫 | rows-columns (skip) | `column.eachCell` not supported |
-| iterates over rows | ➖ | rows-columns | no `includeEmpty` |
+| iterates over collumn cells | ✅ | rows-columns | `column.eachCell([options], cb)`; the callback gets the value |
+| iterates over rows | ✅ | rows-columns | `eachRow({ includeEmpty: true }, cb)` |
 | keep first 31 characters | ➖ | rows-columns | throws instead of truncating |
 | merges and unmerges | ✅ | merges | `unmergeCells` |
 | merges styles | ➖ | merges | no style copy on merge |
@@ -540,7 +540,7 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | inherits column styles | ✅ | styles |  |
 | inherits row styles | ✅ | styles |  |
 | merges | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
-| shares formulas | 🚫 | formulas (skip) |  |
+| shares formulas | ✅ | formulas | stored as the translated plain formula (no master / shared formula types) |
 | stores values | ✅ | values |  |
 | upgrades from string to hyperlink | 🚫 | hyperlinks (skip) | no `cell.hyperlink` setter |
 | validates options on construction | ❓ | — | Cell class internals (no `cell.html`, no Merge type) |
@@ -710,8 +710,8 @@ Area = file in `test/exceljs-parity/` (`(skip)` = `it.skip` there). Spec paths a
 | calculates columnCount and actualColumnCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
 | calculates rowCount and actualRowCount | ➖ | rows-columns | no `actualRowCount`/`actualColumnCount` |
 | handles column keys | 🐛 | rows-columns | `spliceColumns` kept width / style of an overwritten column; fixed (`feat(core)` structure edits) |
-| iterates over collumn cells | 🚫 | rows-columns (skip) |  |
-| iterates over rows | ➖ | rows-columns |  |
+| iterates over collumn cells | ✅ | rows-columns | `column.eachCell([options], cb)` |
+| iterates over rows | ✅ | rows-columns | `eachRow({ includeEmpty: true }, cb)` |
 | returns sheet values | ➖ | rows-columns |  |
 | splices columns | ✅ | rows-columns |  |
 | stores shared string values properly | ✅ | values |  |

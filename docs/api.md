@@ -41,7 +41,7 @@ Document properties (plain fields, written to docProps and read back): `title`, 
 | `unmergeCells(range)`, `merges` (A1 strings), `mergeRanges` (0-based) | |
 | `rowCount`, `columnCount`, `dimensions` | Last row / column with content; `dimensions` is `{ top, left, bottom, right, ref }` (1-based) or `undefined`. |
 | `columns` (get/set) | Setting `ColumnDef[]` (`header`, `key`, `width`, `style`, `hidden`, `outlineLevel`) writes a header row when any def has a `header`. |
-| `getColumn(numberOrLetterOrKey)` | `Column`: `number`, `letter`, `key`, `header`, `width`, `hidden`, `outlineLevel`, `style`. |
+| `getColumn(numberOrLetterOrKey)` | `Column`: `number`, `letter`, `key`, `header`, `width`, `hidden`, `outlineLevel`, `style`, `eachCell([options], (value, rowNumber) => {})` (non-empty cells; `{ includeEmpty: true }`: rows 1 to `rowCount`, `null` for empty cells). |
 
 Feature fields (plain properties, `undefined` until set): `pageSetup`, `headerFooter`, `comments`, `images`, `backgroundImage`, `conditionalFormatting`, `dataValidations`, `protection`, `tables`, `preserved`. See [Features](#features).
 
@@ -55,6 +55,7 @@ ws.addRows(iterable, style?)
 ws.getRow(n)                 // RowView handle
 ws.getRowProps(n) / ws.setRowProps(n, { height, hidden, outlineLevel, style, styleIndex })
 ws.eachRow((row, rowNumber) => {})   // rows that contain cells, ascending
+ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {})   // every row 1..rowCount (ExcelJS)
 ```
 
 Cells (fast path, no allocation):
@@ -91,7 +92,7 @@ groupRows(ws, from, to, { collapsed? })         // outline one level deeper (max
 groupColumns(ws, from, to, { collapsed? })      // summary column to the right
 ```
 
-Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { date1904 })` from `turbosheet/formula` give the text Excel shows (number formats applied); `richTextFromHtml(html)` → RichText; `columnValues(ws, col)` / `eachColumnCell(ws, col, cb)` (ExcelJS `column.values` / `eachCell`).
+Display and conversion: `cellText(ws, addr)` / `formatValue(value, numFmt, { date1904 })` from `turbosheet/formula` give the text Excel shows (number formats applied); `richTextFromHtml(html)` → RichText; `columnValues(ws, col)` / `eachColumnCell(ws, col, [options], cb)` (ExcelJS `column.values` / `eachCell`; `{ includeEmpty: true }` visits rows 1 to `rowCount` with `null` for empty cells).
 
 Sort and templates: `sortRange(ws, range, keys: SortKey | SortKey[], { header? })` (`SortKey = { col, desc? }`); `fillTemplate(wb, data, { sheets?, missing? })` (`{{path}}`, repeated rows with `{{items[].field}}`). ExcelJS helpers: `actualRowCount(ws)`, `lastRow(ws)`, `getRows(ws, start, n)`, `getSheetValues(ws)`.
 
@@ -101,7 +102,7 @@ Copy: `copyWorksheet(src, target = src.workbook, name?) -> Worksheet` (adds the 
 
 Iterators: `for (const row of ws.rows())` (rows that contain cells) and `for (const [col, value] of row.cells())` (non-empty cells). Row props also have `collapsed` (`setRowProps(n, { collapsed: true })`); columns have `column.collapsed`.
 
-`RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell((value, colNumber, xf) => {})`, `height`, `hidden`, `outlineLevel`.
+`RowView`: `number`, `cellCount`, `values` (sparse array indexed by 1-based column, index 0 unused), `getValue(col)`, `setValue(col, value, style?)`, `getCell(col)`, `eachCell([options], (value, colNumber, xf) => {})` (`{ includeEmpty: true }`: columns 1 to the row's last cell, styled empty cells included; empty cells get `null` and their effective style index), `height`, `hidden`, `outlineLevel`.
 
 ## CellValue
 
@@ -118,6 +119,7 @@ type CellValue = number | string | boolean | Date | CellError | Formula | RichTe
 | `Hyperlink` | `{ text, hyperlink, tooltip? }` |
 | `CellError` | `{ error: '#N/A' }` (codes: `#NULL! #DIV/0! #VALUE! #REF! #NAME? #NUM! #N/A #GETTING_DATA`) |
 | `null` / `undefined` | empty |
+| `{ sharedFormula: 'B1', result? }` | setters only (`CellValueInput`): ExcelJS shared-formula value, stored as the master cell's formula with relative references moved by the offset (`translateFormula`); the master must already hold a formula, otherwise a `TypeError`. In the streaming writer the master must be in a row not yet flushed. Never returned by getters. |
 
 
 `Formula.dynamic`: dynamic-array (spilling) formula, written with Excel's metadata so no `@` is added; automatic for FILTER / SORT / UNIQUE / SEQUENCE / ... unless `array` is set (legacy array formula) or `dynamic: false`.
@@ -184,6 +186,8 @@ interface ReadOptions {
   limits?: Partial<Limits>;        // maxEntries 10_000, maxEntryBytes 1 GiB, maxTotalBytes 2 GiB, maxCompressionRatio 1000
   preserveUnknown?: boolean;       // default true: keep charts, pivots, shapes, VBA, ... and write them back
   sheets?: readonly string[];      // only load these sheets (case-insensitive)
+  maxRows?: number;                // throw SheetLimitError at the first cell in a row after maxRows (also xlsxRows)
+  maxCols?: number;                // same for columns after maxCols; unset / 0 = no limit
   localDates?: boolean;            // Dates by local wall clock instead of UTC (also xlsxRows)
   onSheetEnd?: (info: { sheet: string; sheetIndex: number; merges: string[] }) => void; // xlsxRows: after each sheet's last row
   profile?: 'low-memory' | 'balanced' | 'max-speed';  // used by xlsxRows (low-memory re-deflates buffered sheets)
@@ -372,6 +376,7 @@ toNumber(v) toText(v) toBoolean(v) scalarValues(v) isError(v)   // helpers for c
 | --- | --- | --- |
 | `XlsxParseError` | `readXlsx`, `xlsxRows` | Broken XML or package structure. |
 | `EncryptedFileError` (extends `XlsxParseError`) | `readXlsx` | Input is an OLE container (password-protected, or a legacy `.xls`); use `decryptXlsx`. |
+| `SheetLimitError` | `readXlsx`, `xlsxRows` | A sheet has a cell beyond `maxRows` / `maxCols`; thrown at the first such cell. Fields `sheet`, `limit` (`'maxRows' \| 'maxCols'`), `max`. |
 | `ZipLimitError`, `ZipPathError` | `readXlsx`, `xlsxRows` | A `limits` bound was exceeded, or an unsafe path (`ZipPathError` extends `ZipLimitError`). Exported from `turbosheet` and `turbosheet/lite`. |
 | `RangeError`, `TypeError` | model methods | Invalid addresses, overlapping merges, bad sheet names, bad options. |
 | `WrongPasswordError`, `IntegrityError`, `UnsupportedEncryptionError`, `CfbError` | `turbosheet/crypto` | Wrong password; tampered or corrupt data; RC4 / extensible encryption; malformed container. |
