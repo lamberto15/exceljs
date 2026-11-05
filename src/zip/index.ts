@@ -1,4 +1,5 @@
-export type { LazyEntry } from './lazy.js';
+export { type BlobEntry, unzipBlob } from './blob.js';
+export type { LazyEntry, LazyOptions } from './lazy.js';
 export { unzipLazy } from './lazy.js';
 export { assertSafePath, ZipLimitError, ZipPathError } from './limits.js';
 export { nativeCompressor, nativeDeflateAvailable } from './native.js';

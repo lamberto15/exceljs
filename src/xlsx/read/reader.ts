@@ -6,7 +6,13 @@ import type { CellValue, DefinedName, ReadOptions } from '../../core/types.js';
 import { Workbook } from '../../core/workbook.js';
 import type { Worksheet } from '../../core/worksheet.js';
 import { localName, type XmlHandler } from '../../xml/index.js';
-import { unzipLazy, unzipStream } from '../../zip/index.js';
+import {
+  unzipBlob,
+  unzipLazy,
+  unzipStream,
+  ZipLimitError,
+  type ZipEntryOut,
+} from '../../zip/index.js';
 import { decodeChunks, decodePart, relTypeIs } from '../common/r-opc.js';
 import type {
   FeatureReader,
@@ -402,7 +408,112 @@ function modelNames(names: readonly DefinedName[], sheetMap: Map<number, number>
 
 // ---------------------------------------------------------------- streaming mode
 
-type Source = Uint8Array | ArrayBuffer | AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>;
+type Source =
+  | Uint8Array
+  | ArrayBuffer
+  | Blob
+  | AsyncIterable<Uint8Array>
+  | ReadableStream<Uint8Array>;
+
+/** An archive entry that can be read at any time, in any order (random-access sources). */
+interface RandomEntry {
+  readonly path: string;
+  read(unbounded: boolean): AsyncIterable<Uint8Array> | Iterable<Uint8Array>;
+}
+
+/**
+ * Entries of a random-access archive in the order xlsxRows needs: content types and every
+ * .rels first, then the workbook, styles and shared-strings parts (resolved from the rels just
+ * read — the consumer processes each entry before asking for the next), then the rest in
+ * archive order. Sheets then never wait for metadata, whatever order the file stores them in.
+ */
+async function* metadataFirst(
+  entries: readonly RandomEntry[],
+  pkg: XlsxPackage,
+): AsyncGenerator<ZipEntryOut, void, undefined> {
+  for (const e of entries) pkg.addName(e.path);
+  const byName = new Map(entries.map((e) => [e.path.toLowerCase(), e]));
+  const done = new Set<RandomEntry>();
+  const open = (e: RandomEntry): ZipEntryOut => {
+    done.add(e);
+    let unbounded = false;
+    return {
+      path: e.path,
+      unbounded: () => {
+        unbounded = true;
+      },
+      chunks: {
+        async *[Symbol.asyncIterator]() {
+          yield* e.read(unbounded);
+        },
+      },
+    };
+  };
+  for (const e of entries) if (e.path === CT_PATH || e.path.endsWith('.rels')) yield open(e);
+  for (const part of [() => pkg.workbookPath(), () => pkg.stylesPath(), () => pkg.sstPath()]) {
+    const p = part();
+    const e = p ? byName.get(p.toLowerCase()) : undefined;
+    if (e !== undefined && !done.has(e)) yield open(e);
+  }
+  for (const e of entries) if (!done.has(e)) yield open(e);
+}
+
+/**
+ * Inflating in-memory bytes is synchronous: hand the event loop a turn about every 50 ms so
+ * timers and I/O keep running during a long read.
+ */
+async function* yielding(it: Iterable<Uint8Array>): AsyncGenerator<Uint8Array, void, undefined> {
+  let t = Date.now();
+  for (const c of it) {
+    yield c;
+    if (Date.now() - t > 50) {
+      await new Promise((r) => setTimeout(r, 0));
+      t = Date.now();
+    }
+  }
+}
+
+/**
+ * Archive entries for xlsxRows. Bytes and Blobs are random-access: they are indexed by the
+ * central directory and read metadata-first. Streams are read in archive order; so are bytes
+ * whose central directory cannot be read (truncated / streamed-only archives).
+ */
+async function* entriesOf(
+  source: Source,
+  opts: ReadOptions,
+  pkg: XlsxPackage,
+): AsyncGenerator<ZipEntryOut, void, undefined> {
+  const lim = opts.limits;
+  if (typeof Blob !== 'undefined' && source instanceof Blob) {
+    const m = await unzipBlob(source, lim, { deferSizeCheck: true });
+    yield* metadataFirst(
+      [...m.values()].map((e) => ({ path: e.path, read: (u) => e.chunks(u) })),
+      pkg,
+    );
+    return;
+  }
+  if (source instanceof Uint8Array || source instanceof ArrayBuffer) {
+    const bytes = toBytes(source);
+    let m: ReturnType<typeof unzipLazy> | undefined;
+    try {
+      m = unzipLazy(bytes, lim, { deferSizeCheck: true });
+    } catch (e) {
+      // no readable central directory: fall back to reading local headers in order
+      if (!(e instanceof ZipLimitError) || !/^Malformed|Truncated/.test(e.message)) throw e;
+    }
+    if (m !== undefined) {
+      yield* metadataFirst(
+        [...m.values()].map((e) => ({
+          path: e.path,
+          read: (u) => yielding(e.chunks(256 * 1024, u)),
+        })),
+        pkg,
+      );
+      return;
+    }
+  }
+  yield* unzipStream(fromSource(source as Exclude<Source, Blob>), lim);
+}
 
 async function* fromSource(src: Source): AsyncGenerator<Uint8Array, void, undefined> {
   if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
@@ -618,20 +729,29 @@ class StreamReader {
 /**
  * Stream the rows of every worksheet (or `opts.sheets`) of an XLSX file.
  *
- * Memory: constant for sheet data when the archive stores workbook.xml, styles.xml and
- * sharedStrings.xml (and their relationship parts) BEFORE the worksheets, as turbosheet's
- * `writeXlsx` / `xlsxStream` do. When a worksheet precedes any of them (files saved by Excel
- * 16.x, ExcelJS, `createXlsxWriter`, Google Sheets, LibreOffice, ...), that worksheet's
- * decompressed XML is buffered in memory (as raw UTF-8 bytes, off the JS heap) until the
- * metadata is available — exceljs spools such sheets to temp files instead.
+ * Sources: `Uint8Array` / `ArrayBuffer`, `Blob` / `File`, `ReadableStream<Uint8Array>` or any
+ * `AsyncIterable<Uint8Array>`.
+ *
+ * Memory:
+ * - Bytes and Blobs are random-access: the central directory is read first, then the content
+ *   types, rels, workbook, styles and shared strings, then the sheets, each inflated as it is
+ *   parsed. Sheet data uses constant memory whatever order the archive stores its parts in
+ *   (Excel 16.x, ExcelJS and `createXlsxWriter` store worksheets before styles.xml). For a
+ *   large local file, pass a lazily read Blob: `xlsxRows(await fs.openAsBlob(path))` in Node
+ *   (>= 19.8), a `File` from an `<input>` in browsers.
+ * - Streams are read in archive order. Sheets stream at constant memory when workbook.xml,
+ *   styles.xml and sharedStrings.xml come first (`writeXlsx` / `xlsxStream` output); a sheet
+ *   stored before them is buffered (raw UTF-8 bytes, off the JS heap) until the metadata
+ *   arrives. With `profile: 'low-memory'` buffered XML is re-deflated (level 1), ~5-10x less
+ *   memory for some extra CPU.
+ * - The shared-string table is always held in memory.
  *
  * Limits: a sheet parsed as it inflates keeps nothing, so `maxEntryBytes` / `maxTotalBytes` do
- * not apply to it (only `maxCompressionRatio`); buffered parts are subject to every limit. With `profile: 'low-memory'` the buffered XML is re-deflated (level 1), cutting that
- * memory ~5-10x for some extra CPU. The shared-string table is always held in memory.
+ * not apply to it, only `maxCompressionRatio`; metadata and buffered parts get every limit.
  *
- * Sheets are emitted in zip order when streamed directly; buffered sheets are emitted in tab
- * order as soon as they can be decoded. Rows are emitted in file order (row numbers ascending in
- * well-formed files). Rows without any value are skipped.
+ * Order: random-access sources and streams emit sheets in archive order (buffered sheets in tab
+ * order as soon as they can be decoded). Rows are emitted in file order (row numbers ascending
+ * in well-formed files). Rows without any value are skipped.
  *
  * `maxRows` / `maxCols`: a sheet with a cell beyond them throws SheetLimitError while it is
  * parsed (rows yielded before stay yielded; the rest of the file is not read).
@@ -677,7 +797,7 @@ async function* xlsxRowsImpl(
     }
   }
 
-  for await (const entry of unzipStream(fromSource(source), opts.limits)) {
+  for await (const entry of entriesOf(source, opts, pkg)) {
     const path = entry.path;
     pkg.addName(path);
     if (path === CT_PATH || path.endsWith('.rels')) {

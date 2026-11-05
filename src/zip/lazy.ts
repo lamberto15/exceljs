@@ -25,7 +25,16 @@ export interface LazyEntry {
    * 64 KiB); yielded chunks are typically 5-20x larger for XML. Chunks are fresh arrays
    * (stored entries: views into the archive buffer).
    */
-  chunks(chunkSize?: number): Iterable<Uint8Array>;
+  chunks(chunkSize?: number, unbounded?: boolean): Iterable<Uint8Array>;
+}
+
+export interface LazyOptions {
+  /**
+   * Check declared entry sizes against `maxEntryBytes` when an entry is read (`bytes()`,
+   * `chunks()`) instead of while indexing, so a `chunks(_, true)` read of a large entry is
+   * possible. Default false.
+   */
+  deferSizeCheck?: boolean;
 }
 
 /** Max compressed bytes fed to the inflater at once; bounds the memory burst of a bomb. */
@@ -74,22 +83,37 @@ function findDirectory(data: Uint8Array, dv: DataView): [number, number, number]
   return malformed('end of central directory not found (not a zip file?)');
 }
 
+/** One central directory record. */
+export interface DirEntry {
+  readonly name: string;
+  readonly flags: number;
+  readonly method: number;
+  readonly csize: number;
+  readonly usize: number;
+  /** Offset of the local file header. */
+  readonly lho: number;
+}
+
 /**
- * Index a zip archive without decompressing anything. Entry count, names and declared sizes are
- * validated up front; byte/ratio limits are enforced while inflating. Directory entries are
- * skipped. Encrypted entries and methods other than stored/deflate throw on access.
+ * Parse `count` central directory records from `cd` (a buffer starting at the directory).
+ * Validates entry count, names, duplicates and (unless `defer`) declared sizes; directory
+ * entries are skipped.
  */
-export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<string, LazyEntry> {
-  const budget = new Budget(limits);
-  const out = new Map<string, LazyEntry>();
-  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const [count, cdOff] = findDirectory(data, dv);
+export function parseDirectory(
+  cd: Uint8Array,
+  count: number,
+  budget: Budget,
+  defer: boolean,
+): DirEntry[] {
   if (count > budget.limits.maxEntries) {
     throw new ZipLimitError(`Too many zip entries (max ${budget.limits.maxEntries})`);
   }
-  let p = cdOff;
+  const dv = new DataView(cd.buffer, cd.byteOffset, cd.byteLength);
+  const out: DirEntry[] = [];
+  const seen = new Set<string>();
+  let p = 0;
   for (let k = 0; k < count; k++) {
-    if (p + 46 > data.length || dv.getUint32(p, true) !== 0x02014b50) {
+    if (p + 46 > cd.length || dv.getUint32(p, true) !== 0x02014b50) {
       malformed('bad central directory entry');
     }
     const flags = dv.getUint16(p + 8, true);
@@ -100,7 +124,7 @@ export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<strin
     const xl = dv.getUint16(p + 30, true);
     const cl = dv.getUint16(p + 32, true);
     let lho = dv.getUint32(p + 42, true);
-    const nameBytes = data.subarray(p + 46, p + 46 + nl);
+    const nameBytes = cd.subarray(p + 46, p + 46 + nl);
     const name = flags & 0x800 ? utf8.decode(nameBytes) : latin1(nameBytes);
     if (usize === 0xffffffff || csize === 0xffffffff || lho === 0xffffffff) {
       // ZIP64 extended information extra field
@@ -126,9 +150,38 @@ export function unzipLazy(data: Uint8Array, limits?: Partial<Limits>): Map<strin
       }
     }
     p += 46 + nl + xl + cl;
-    if (!budget.enter(name, usize)) continue;
-    if (out.has(name)) throw new ZipPathError(`Duplicate zip entry: ${name}`);
-    out.set(name, new Entry(data, dv, budget, name, flags, method, csize, usize, lho));
+    if (!budget.enter(name, defer ? undefined : usize)) continue;
+    if (seen.has(name)) throw new ZipPathError(`Duplicate zip entry: ${name}`);
+    seen.add(name);
+    out.push({ name, flags, method, csize, usize, lho });
+  }
+  return out;
+}
+
+/**
+ * Index a zip archive without decompressing anything. Entry count, names and declared sizes are
+ * validated up front; byte/ratio limits are enforced while inflating. Directory entries are
+ * skipped. Encrypted entries and methods other than stored/deflate throw on access.
+ */
+export function unzipLazy(
+  data: Uint8Array,
+  limits?: Partial<Limits>,
+  opts?: LazyOptions,
+): Map<string, LazyEntry> {
+  const budget = new Budget(limits);
+  const out = new Map<string, LazyEntry>();
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const [count, cdOff] = findDirectory(data, dv);
+  for (const e of parseDirectory(
+    data.subarray(cdOff),
+    count,
+    budget,
+    opts?.deferSizeCheck === true,
+  )) {
+    out.set(
+      e.name,
+      new Entry(data, dv, budget, e.name, e.flags, e.method, e.csize, e.usize, e.lho),
+    );
   }
   return out;
 }
@@ -169,7 +222,18 @@ class Entry implements LazyEntry {
     return this.data.subarray(this.start, end);
   }
 
-  private account(out: number, compressed: number, ratio: boolean): void {
+  /** Declared size vs maxEntryBytes (a no-op when already checked while indexing). */
+  private declared(capped: boolean): void {
+    if (capped && this.size > this.budget.limits.maxEntryBytes) {
+      throw new ZipLimitError(`Zip entry too large: ${this.path}`);
+    }
+  }
+
+  private account(out: number, compressed: number, ratio: boolean, capped = true): void {
+    if (!capped) {
+      this.budget.output(this.path, out, 0, compressed, ratio, false);
+      return;
+    }
     const fresh = out > this.seen ? out - this.seen : 0;
     if (fresh) this.seen = out;
     this.budget.output(this.path, out, fresh, compressed, ratio);
@@ -181,10 +245,12 @@ class Entry implements LazyEntry {
    * limits are enforced through zlib's `maxOutputLength`, so a bomb never allocates more than
    * one byte past a limit.
    */
-  private native(raw: Uint8Array, cap: number): Uint8Array | undefined {
+  private native(raw: Uint8Array, cap: number, capped = true): Uint8Array | undefined {
     const L = this.budget.limits;
     const ratioMax = Math.max(RATIO_MIN_BYTES, raw.length * L.maxCompressionRatio);
-    const max = Math.min(L.maxEntryBytes, this.budget.remaining() + this.seen, ratioMax, cap);
+    const max = capped
+      ? Math.min(L.maxEntryBytes, this.budget.remaining() + this.seen, ratioMax, cap)
+      : Math.min(ratioMax, cap);
     let out: Uint8Array | 'over' | undefined;
     try {
       out = zlibInflateSync(raw, max + 1);
@@ -196,14 +262,15 @@ class Entry implements LazyEntry {
     if (out === undefined) return undefined;
     if (out === 'over') {
       if (max === cap) return undefined;
-      this.account(max + 1, raw.length, true); // throws the matching ZipLimitError
+      this.account(max + 1, raw.length, true, capped); // throws the matching ZipLimitError
       return undefined;
     }
-    this.account(out.length, raw.length, true);
+    this.account(out.length, raw.length, true, capped);
     return out;
   }
 
   bytes(): Uint8Array {
+    this.declared(true);
     const raw = this.raw();
     if (this.compression === 0) {
       this.account(raw.length, raw.length, false);
@@ -227,20 +294,23 @@ class Entry implements LazyEntry {
     return buf;
   }
 
-  *chunks(chunkSize = 64 * 1024): Generator<Uint8Array, void, undefined> {
+  *chunks(chunkSize = 64 * 1024, unbounded = false): Generator<Uint8Array, void, undefined> {
+    const capped = !unbounded;
+    this.declared(capped);
     const raw = this.raw();
     const step = Math.max(SLICE, chunkSize | 0);
     const len = raw.length;
     if (this.compression === 0) {
       for (let i = 0; i < len; i += step) {
         const end = Math.min(i + step, len);
-        this.account(end, end, false);
+        this.account(end, end, false, capped);
         yield raw.subarray(i, end);
       }
       return;
     }
     // moderate entries: one native inflate, then slices (memory bounded by NATIVE_CHUNKS_MAX)
-    const whole = this.size <= NATIVE_CHUNKS_MAX ? this.native(raw, NATIVE_CHUNKS_MAX) : undefined;
+    const whole =
+      this.size <= NATIVE_CHUNKS_MAX ? this.native(raw, NATIVE_CHUNKS_MAX, capped) : undefined;
     if (whole) {
       for (let i = 0; i < whole.length; i += step) yield whole.subarray(i, i + step);
       return;
@@ -253,7 +323,7 @@ class Entry implements LazyEntry {
       if (final) done = true;
       if (d.length === 0) return;
       out += d.length;
-      this.account(out, fed, true);
+      this.account(out, fed, true, capped);
       pending.push(d);
     });
     if (len === 0) inf.push(EMPTY, true);
