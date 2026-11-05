@@ -225,7 +225,7 @@ addConditionalFormatting(ws, 'B2:B3', [
 | `turbosheet/json`     | worksheet to/from objects, arrays, NDJSON                   | not size-budgeted yet          |
 | `turbosheet/crypto`   | password-protected files (MS-OFFCRYPTO)                     | 7.2 KB                         |
 | `turbosheet/formula`  | formula parser and evaluator (`evaluate(wb)` fills cached results) | 17 KB                    |
-| `turbosheet/xlsb`     | read .xlsb (Excel binary workbook)                          | 23.5 KB                        |
+| `turbosheet/xlsb`     | read .xlsb (Excel binary workbook)                          | 23.6 KB                        |
 | `turbosheet/xls`      | read legacy .xls (Excel 97-2003, BIFF8)                     | 20.2 KB                        |
 
 Sizes are from `pnpm size` for the 0.6.0 build (tree-shaken imports: write-only `{ Workbook, writeXlsx }`, lite read + write `{ Workbook, readXlsx, writeXlsx }`, others `*`; budgets in [docs/bundle-size.md](./docs/bundle-size.md)). The only runtime dependency is [fflate](https://github.com/101arrowz/fflate).

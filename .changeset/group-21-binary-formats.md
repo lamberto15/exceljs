@@ -10,4 +10,4 @@ Binary workbooks, group 21 (#116, #117): two new read-only entries produce the s
 - Formulas are decompiled to text with their cached results: references (incl. 3-D, whole rows / columns, shared formulas), array formulas, operators, constants, array constants, built-in and future functions, defined names. A formula using an unsupported token (structured references, external links, ...) keeps its cached value.
 - Errors: `BiffParseError`, `EncryptedXlsError` (password-protected `.xls`). An encrypted `.xlsb` is read with `readXlsb(await decryptXlsx(bytes, password))`.
 - Not read: charts, pictures, comments, data validation, conditional formatting, tables, pivot tables, sheet views, print setup, document properties. Excel 95 and older `.xls` files are rejected.
-- The existing bundles do not change; `./xlsb` is 23.5 KB and `./xls` 20.2 KB (min + brotli).
+- The existing bundles do not change; `./xlsb` is 23.6 KB and `./xls` 20.2 KB (min + brotli).
