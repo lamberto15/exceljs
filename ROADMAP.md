@@ -18,7 +18,7 @@ Where turbosheet stands and what is next. Update this file with every release.
 
 Tracked as [GitHub issues](https://github.com/lamberto15/turbosheet/issues) (many picked from upvoted ExcelJS issues, label `from-exceljs`; none open at the moment). Larger themes:
 
-1. **Formula engine** — financial, date/text/information functions (statistical and math functions, structured references, `LET`, dynamic-array spilling and incremental recalculation are done).
+1. **Formula engine** — 213 functions, structured references, `LET`, dynamic-array spilling and incremental recalculation are done; next: `LAMBDA`, the remaining array functions (`VSTACK`, `TAKE`, ...), engineering functions.
 2. **Custom sheet views** (`<customSheetViews>`; several sheet views with split / frozen panes are supported since 0.5.0).
 3. **Threaded comments** as an editable model (currently preserved raw); chart reading into the model; more chart types (combo, secondary axes, trendlines).
 4. **Excel for Windows verification** of the excel pack (only Excel for Mac 16.114 verified so far).

@@ -437,13 +437,18 @@ describe('docs/formula.md', () => {
     const s1 = src.addWorksheet('Sheet1');
     for (let r = 2; r <= 9; r++) s1.setCell(r, 2, r);
     s1.setCell('D10', { formula: 'SUM(B2:B9)' });
-    s1.setCell('E1', { formula: 'NPV(0.1,B2:B3)' });
+    s1.setCell('E1', { formula: 'BESSELJ(1.9,2)' });
     addDefinedName(src, 'Rate', '0.5');
     const bytes = writeXlsx(src);
 
     const wb = readXlsx(bytes);
     const report = evaluate(wb);
-    expect(report).toMatchObject({ evaluated: 2, circular: [], unsupported: ['NPV'], errors: [] });
+    expect(report).toMatchObject({
+      evaluated: 2,
+      circular: [],
+      unsupported: ['BESSELJ'],
+      errors: [],
+    });
     const out = writeXlsx(wb);
     expect(readXlsx(out).getWorksheet('Sheet1')!.getValue('D10')).toEqual({
       formula: 'SUM(B2:B9)',

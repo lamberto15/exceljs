@@ -9,7 +9,7 @@ import { evaluate, evaluateCell, evaluateFormula, track } from 'turbosheet/formu
 
 const wb = readXlsx(bytes);
 const report = evaluate(wb); // every formula cell gets a fresh Formula.result
-// report: { evaluated, circular: ['Sheet1!A1', ...], unsupported: ['NPV', ...], errors: [...] }
+// report: { evaluated, circular: ['Sheet1!A1', ...], unsupported: ['BESSELJ', ...], errors: [...] }
 const out = writeXlsx(wb); // the results are written as cached values (<v>)
 
 evaluateCell(wb, 'Sheet1', 'D10'); // one cell and what it depends on
@@ -175,7 +175,7 @@ a previous, larger spill are cleared.
 
 ## Functions
 
-163 built-in functions. `formatValue(value, numFmt)` / `cellText(ws, addr)` apply number formats like Excel's display (the `TEXT` renderer; General shows at most 11 characters). `supportedFunctions()` lists them; anything else evaluates to `#NAME?`
+213 built-in functions. `formatValue(value, numFmt)` / `cellText(ws, addr)` apply number formats like Excel's display (the `TEXT` renderer; General shows at most 11 characters). `supportedFunctions()` lists them; anything else evaluates to `#NAME?`
 and is reported in `unsupported`. Files store newer functions with an `_xlfn.` prefix; it is
 stripped (`_xlfn.CONCAT` is `CONCAT`).
 
@@ -187,9 +187,13 @@ stripped (`_xlfn.CONCAT` is `CONCAT`).
 | Logical | `IF` `IFS` `IFERROR` `IFNA` `LET` `AND` `OR` `NOT` `XOR` `SWITCH` `TRUE` `FALSE` | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH` and `CHOOSE` only evaluate the branch they return. `IF` with an array condition (array formulas) picks element-wise. `AND`/`OR`/`XOR` ignore text and blanks in ranges and give `#VALUE!` when there is no logical value. |
 | Lookup | `VLOOKUP` `HLOOKUP` `XLOOKUP` `LOOKUP` `INDEX` `MATCH` `XMATCH` `CHOOSE` `OFFSET` `INDIRECT` `ROW` `COLUMN` `ROWS` `COLUMNS` | Approximate modes use Excel's binary search on sorted data (`MATCH` -1: descending). `XLOOKUP`/`XMATCH`: match modes 0, -1, 1, 2 and search modes 1, -1 (2 / -2 are searched linearly). `XLOOKUP` and `INDEX` return references (`SUM(INDEX(A1:B5,0,2))`, `XLOOKUP(...):XLOOKUP(...)`). `INDEX` with a row or column of 0 returns the whole column / row. `OFFSET` and `INDIRECT` return references (negative `OFFSET` heights / widths extend up / left; `INDIRECT` takes A1 text, sheet-qualified refs and defined names, not R1C1). `LOOKUP`: vector and array forms, approximate match on sorted data. |
 | Text | `CONCAT` `CONCATENATE` `TEXTJOIN` `LEFT` `RIGHT` `MID` `LEN` `LOWER` `UPPER` `PROPER` `TRIM` `SUBSTITUTE` `REPLACE` `FIND` `SEARCH` `TEXT` `VALUE` `EXACT` `REPT` | `FIND` is case-sensitive, `SEARCH` case-insensitive with wildcards. `TRIM` removes ASCII spaces only. `TEXT`: see [TEXT formats](#text-formats). `VALUE` uses the conversions above. Lengths count UTF-16 code units (as Excel). |
+| Text (more) | `CHAR` `CODE` `UNICHAR` `UNICODE` `CLEAN` `FIXED` `DOLLAR` `NUMBERVALUE` `T` `TEXTBEFORE` `TEXTAFTER` `TEXTSPLIT` | `CHAR` / `CODE` use Windows-1252 for codes 128-159, as Excel for Windows and the web (Excel for Mac uses Mac Roman: `CHAR(128)` is `Ä` there, `€` here). `DOLLAR` uses `$` and parentheses for negatives (Excel uses the machine's currency). `FIXED` / `DOLLAR` round half away from zero; negative decimals round left of the point. `NUMBERVALUE` takes the decimal / group separators and trailing `%` signs. `TEXTBEFORE` / `TEXTAFTER`: instance from the end with a negative number, case-insensitive mode, match at the end, several delimiters (`{",",";"}`), `if_not_found`. `TEXTSPLIT` spills (rows and columns, `ignore_empty`, `pad_with`). |
 | Date | `DATE` `TODAY` `NOW` `YEAR` `MONTH` `DAY` `WEEKDAY` `EDATE` `EOMONTH` `DATEDIF` `DAYS` | `DATE` normalizes month/day overflow and adds 1900 to years below 1900. `WEEKDAY` types 1, 2, 3, 11-17. `DATEDIF` units `Y` `M` `D` `MD` `YM` `YD` (`MD` follows Excel's formula and can be negative at month ends, as in Excel). |
+| Date / time (more) | `TIME` `HOUR` `MINUTE` `SECOND` `DATEVALUE` `TIMEVALUE` `WEEKNUM` `ISOWEEKNUM` `NETWORKDAYS` `NETWORKDAYS.INTL` `WORKDAY` `WORKDAY.INTL` `YEARFRAC` | `TIME` wraps past 24 hours and normalizes negative minutes / seconds (a negative total is `#NUM!`). `HOUR` / `MINUTE` / `SECOND` round to the second and accept time text. `DATEVALUE` / `TIMEVALUE` take text only (en-US dates, see Limits). `WEEKNUM` types 1, 2, 11-17, 21. Weekends for the `.INTL` functions: codes 1-7, 11-17 or a `"0000011"` mask (Monday first); holidays from a range or array. `YEARFRAC` bases 0-4 (US 30/360, actual/actual, actual/360, actual/365, European 30/360). |
+| Financial | `PMT` `IPMT` `PPMT` `PV` `FV` `NPER` `NPV` `IRR` `XNPV` `XIRR` `RATE` `SLN` `DB` `DDB` `EFFECT` `NOMINAL` | Excel's sign convention (money paid out is negative) and `type` (0 end, 1 start of period). `IRR` / `RATE` (20 steps) and `XIRR` (100 steps) use Newton's method from the guess (default 0.1) and give `#NUM!` when it does not converge; cash flows need a positive and a negative value. `XNPV` / `XIRR` use actual/365 from the first date. `DB` rounds its rate to three decimals and handles a partial first year (`month`); `DDB` never depreciates below the salvage value. |
 | Dynamic arrays | `FILTER` `SORT` `SORTBY` `UNIQUE` `SEQUENCE` `TRANSPOSE` `RANDARRAY` | Results spill (see [Dynamic arrays](#dynamic-arrays)). `FILTER` with no match and no fallback, `UNIQUE` / `SEQUENCE` with an empty result give `#CALC!`. `SORT` / `SORTBY` order numbers < text < logicals < errors, blanks last, stable; several sort keys (`SORT(A1:C9,{1,2},{1,-1})`), `by_col`. `UNIQUE` compares text case-insensitively; `exactly_once`. |
 | Info | `ISBLANK` `ISNUMBER` `ISTEXT` `ISNONTEXT` `ISLOGICAL` `ISERROR` `ISERR` `ISNA` `NA` | A formula cell is never blank (`ISBLANK` of a cell holding `=""` is FALSE). |
+| Info (more) | `N` `TYPE` `ISEVEN` `ISODD` `ISREF` `ISFORMULA` `ERROR.TYPE` `ADDRESS` `HYPERLINK` | `TYPE` of a multi-cell reference intersects like other functions (an array is 64). `ERROR.TYPE` codes 1-8, `#SPILL!` 9, `#CALC!` 14; not an error → `#N/A`. `ADDRESS`: the four `abs_num` modes, R1C1 style, a sheet name (quoted when needed). `HYPERLINK` returns its friendly name (or the link); it does not create a link. |
 | Other | `SINGLE` | What files store for the `@` operator. |
 
 ## TEXT formats
@@ -220,7 +224,7 @@ are ignored (`[Red]`, `[$-409]`) and conditions (`[>100]`) are not implemented.
   union (`(A1,B1)`) and intersection (space) operators. R1C1 notation is not supported either
   (`R1C1` reads as an unknown name: `#NAME?`).
 - Not implemented (→ `#NAME?`, listed in `unsupported`): every function not in the table, notably
-  financial, engineering and most information functions, `LAMBDA`, and the newer array functions
+  engineering, database and cube functions, `LAMBDA`, and the newer array functions
   (`VSTACK`, `TAKE`, `TEXTSPLIT`, ...). Register your own with `createEvaluator({ functions })`.
 - A formula returning an array spills only when it is a dynamic-array formula (see
   [Dynamic arrays](#dynamic-arrays)); otherwise legacy implicit intersection applies, as in a
